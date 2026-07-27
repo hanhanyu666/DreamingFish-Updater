@@ -902,6 +902,17 @@
     -fx-padding: 3 10 6 0;
     -fx-background-insets: 0;
     -fx-border-width: 0;
+    -fx-table-cell-border-color: transparent;
+}
+
+.local-file-tree .column-header-background,
+.local-file-tree .column-header,
+.local-file-tree .filler {
+    -fx-min-height: 0;
+    -fx-pref-height: 0;
+    -fx-max-height: 0;
+    -fx-padding: 0;
+    -fx-opacity: 0;
 }
 
 .local-file-tree .scroll-bar:horizontal {
@@ -911,24 +922,35 @@
     -fx-opacity: 0;
 }
 
-.local-file-tree .tree-cell {
-    -fx-padding: 7 5 7 2;
+.local-file-tree .tree-table-row-cell {
     -fx-background-color: transparent;
     -fx-text-fill: #fff8dc;
 }
 
-.local-file-tree .tree-cell:filled:hover,
-.local-file-tree .tree-cell:filled:selected {
+.local-file-tree .tree-table-row-cell:filled:hover,
+.local-file-tree .tree-table-row-cell:filled:selected {
     -fx-background-color: rgba(255, 255, 255, 0.05);
     -fx-background-radius: 7;
 }
 
-.local-file-tree .tree-cell > .tree-disclosure-node > .arrow {
+.local-file-tree .tree-table-cell {
+    -fx-padding: 7 4 7 2;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.local-file-tree .tree-table-row-cell > .tree-disclosure-node > .arrow,
+.local-file-tree .tree-table-cell > .tree-disclosure-node > .arrow {
     -fx-background-color: rgba(255, 248, 220, 0.50);
 }
 
-.local-file-row {
-    -fx-padding: 1 2 1 0;
+.local-file-tree .local-file-control-cell {
+    -fx-padding: 7 10 7 4;
+    -fx-alignment: center-right;
+}
+
+.local-file-labels {
+    -fx-max-width: infinity;
 }
 
 .local-file-name {

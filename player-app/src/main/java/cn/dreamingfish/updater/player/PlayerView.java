@@ -36,9 +36,10 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
-import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
-import javafx.scene.control.TreeView;
+import javafx.scene.control.TreeTableCell;
+import javafx.scene.control.TreeTableColumn;
+import javafx.scene.control.TreeTableView;
 import javafx.scene.control.Alert;
 import javafx.scene.effect.DisplacementMap;
 import javafx.scene.effect.Effect;
@@ -175,7 +176,11 @@ final class PlayerView {
     private final Label modWarning = new Label("停用必要模组可能导致游戏崩溃或无法连接服务器。更改会在本次更新完成前重新校验；游戏已经启动时则从下次启动生效。");
     private final Button restoreMods = new Button("恢复整合包默认");
     private final VBox modPage = new VBox(12);
-    private final TreeView<LocalFileEntry> localFileTree = new TreeView<>();
+    private final TreeTableView<LocalFileEntry> localFileTree = new TreeTableView<>();
+    private final TreeTableColumn<LocalFileEntry, LocalFileEntry> localFileInfoColumn =
+            new TreeTableColumn<>();
+    private final TreeTableColumn<LocalFileEntry, LocalFileEntry> localFileControlColumn =
+            new TreeTableColumn<>();
     private final Map<String, TreeItem<LocalFileEntry>> localFileItems = new LinkedHashMap<>();
     private final Label localFileEmpty = new Label();
     private final StackPane localFileTreePane = new StackPane(localFileTree, localFileEmpty);
@@ -1150,9 +1155,9 @@ final class PlayerView {
         localFileWarning.getStyleClass().add("mod-warning");
         localFileWarning.setWrapText(true);
         localFileTree.getStyleClass().add("local-file-tree");
+        configureLocalFileColumns();
         localFileTree.setShowRoot(false);
         localFileTree.setFixedCellSize(52);
-        localFileTree.setCellFactory(tree -> createLocalFileCell());
         localFileEmpty.getStyleClass().add("drawer-empty");
         localFileEmpty.setMouseTransparent(true);
         StackPane.setAlignment(localFileEmpty, Pos.TOP_LEFT);
@@ -1450,8 +1455,31 @@ final class PlayerView {
         localFileEmpty.setVisible(empty);
     }
 
-    private TreeCell<LocalFileEntry> createLocalFileCell() {
-        return new TreeCell<>() {
+    private void configureLocalFileColumns() {
+        for (TreeTableColumn<LocalFileEntry, LocalFileEntry> column
+                : List.of(localFileInfoColumn, localFileControlColumn)) {
+            column.setCellValueFactory(data -> data.getValue().valueProperty());
+            column.setSortable(false);
+            column.setReorderable(false);
+        }
+        localFileInfoColumn.setMinWidth(160);
+        localFileInfoColumn.setCellFactory(column -> createLocalFileInfoCell());
+        localFileControlColumn.setMinWidth(82);
+        localFileControlColumn.setPrefWidth(82);
+        localFileControlColumn.setMaxWidth(82);
+        localFileControlColumn.setResizable(false);
+        localFileControlColumn.setCellFactory(column -> createLocalFileControlCell());
+        localFileTree.getColumns().clear();
+        localFileTree.getColumns().add(localFileInfoColumn);
+        localFileTree.getColumns().add(localFileControlColumn);
+        localFileTree.setTreeColumn(localFileInfoColumn);
+        localFileTree.setColumnResizePolicy(
+                TreeTableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        localFileTree.setTableMenuButtonVisible(false);
+    }
+
+    private TreeTableCell<LocalFileEntry, LocalFileEntry> createLocalFileInfoCell() {
+        return new TreeTableCell<>() {
             @Override
             protected void updateItem(LocalFileEntry entry, boolean empty) {
                 super.updateItem(entry, empty);
@@ -1471,39 +1499,54 @@ final class PlayerView {
                 detail.setMinWidth(0);
                 detail.setTooltip(new Tooltip(detail.getText()));
                 VBox labels = new VBox(2, name, detail);
+                labels.getStyleClass().add("local-file-labels");
                 labels.setMinWidth(0);
                 labels.setMaxWidth(Double.MAX_VALUE);
-                HBox.setHgrow(labels, Priority.ALWAYS);
-
-                CheckBox managed = new CheckBox(entry.forced() ? "强制"
-                        : entry.inheritedExclusion() != null ? "随目录" : "管理");
-                managed.getStyleClass().add("mod-toggle");
-                managed.setMinWidth(Region.USE_PREF_SIZE);
-                managed.setSelected(entry.managed());
-                managed.setIndeterminate(entry.partiallyExcluded() && !entry.forced());
-                managed.setDisable(entry.forced() || entry.inheritedExclusion() != null);
-                if (entry.forced()) {
-                    managed.setTooltip(new Tooltip("管理端已为该目录启用强制同步"));
-                } else if (entry.inheritedExclusion() != null) {
-                    managed.setTooltip(new Tooltip(
-                            "由目录 " + entry.inheritedExclusion() + " 控制"));
-                }
-                managed.setOnAction(event -> {
-                    boolean requested = entry.partiallyExcluded() || managed.isSelected();
-                    localFileToggleAction.accept(entry, requested);
-                });
-                HBox row = new HBox(12, labels, managed);
-                row.getStyleClass().add("local-file-row");
-                row.setAlignment(Pos.CENTER_LEFT);
-                row.setMinHeight(36);
-                row.setPrefHeight(36);
-                row.setMaxHeight(36);
-                row.setMaxWidth(Double.MAX_VALUE);
-                row.prefWidthProperty().bind(widthProperty().subtract(44));
+                getStyleClass().add("local-file-info-cell");
                 setText(null);
-                setGraphic(row);
+                setGraphic(labels);
             }
         };
+    }
+
+    private TreeTableCell<LocalFileEntry, LocalFileEntry> createLocalFileControlCell() {
+        return new TreeTableCell<>() {
+            @Override
+            protected void updateItem(LocalFileEntry entry, boolean empty) {
+                super.updateItem(entry, empty);
+                if (empty || entry == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                CheckBox managed = createLocalFileCheckBox(entry);
+                getStyleClass().add("local-file-control-cell");
+                setAlignment(Pos.CENTER_RIGHT);
+                setText(null);
+                setGraphic(managed);
+            }
+        };
+    }
+
+    private CheckBox createLocalFileCheckBox(LocalFileEntry entry) {
+        CheckBox managed = new CheckBox(entry.forced() ? "强制"
+                : entry.inheritedExclusion() != null ? "随目录" : "管理");
+        managed.getStyleClass().add("mod-toggle");
+        managed.setMinWidth(Region.USE_PREF_SIZE);
+        managed.setSelected(entry.managed());
+        managed.setIndeterminate(entry.partiallyExcluded() && !entry.forced());
+        managed.setDisable(entry.forced() || entry.inheritedExclusion() != null);
+        if (entry.forced()) {
+            managed.setTooltip(new Tooltip("管理端已为该目录启用强制同步"));
+        } else if (entry.inheritedExclusion() != null) {
+            managed.setTooltip(new Tooltip(
+                    "由目录 " + entry.inheritedExclusion() + " 控制"));
+        }
+        managed.setOnAction(event -> {
+            boolean requested = entry.partiallyExcluded() || managed.isSelected();
+            localFileToggleAction.accept(entry, requested);
+        });
+        return managed;
     }
 
     private static String localFileDetail(LocalFileEntry entry) {

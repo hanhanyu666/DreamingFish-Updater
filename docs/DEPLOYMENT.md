@@ -275,7 +275,7 @@ dreamingfish-player-windows-x64\
     .dreamingfish-bootstrap\
     DreamingFishUpdater\
         app\
-            0.1.10\
+            0.1.11\
                 DreamingFishUpdater.exe
                 app\
                 runtime\
@@ -288,17 +288,17 @@ dreamingfish-player-windows-x64\
 [6] 发布玩家端程序
 ```
 
-当前玩家端 `0.1.10` 示例应填写：
+当前玩家端 `0.1.11` 示例应填写：
 
 | 终端问题 | 填写内容 |
 | --- | --- |
 | 平台 | `windows-x64` |
-| 玩家端程序版本 | `0.1.10` |
-| 玩家端完整 app-image 目录 | `...\DreamingFishUpdater\app\0.1.10` |
+| 玩家端程序版本 | `0.1.11` |
+| 玩家端完整 app-image 目录 | `...\DreamingFishUpdater\app\0.1.11` |
 | 该目录内的启动程序路径 | `DreamingFishUpdater.exe` |
 | 最低启动引导器版本 | `0.1.2` |
 
-必须选择直接包含 `DreamingFishUpdater.exe`、`app/` 和 `runtime/` 的 `0.1.10` 目录，不要选择外层的 `DreamingFishUpdater`。
+必须选择直接包含 `DreamingFishUpdater.exe`、`app/` 和 `runtime/` 的 `0.1.11` 目录，不要选择外层的 `DreamingFishUpdater`。
 
 最后输入 `Y` 确认发布。
 
@@ -317,7 +317,7 @@ dreamingfish-player-windows-x64\
 | 终端问题 | 首次发布示例 |
 | --- | --- |
 | 本次显示版本 | `1.0.0` |
-| 最低玩家端程序版本 | `0.1.10` |
+| 最低玩家端程序版本 | `0.1.11` |
 | 更新记录 | `建筑服首次发布` |
 | 确认不可变版本 | `Y` |
 
@@ -419,7 +419,7 @@ dreamingfish-player-windows-x64-<版本号>.zip
 ```text
 <实例>\.dreamingfish-bootstrap\bootstrap-agent.jar
 <实例>\DreamingFishUpdater\state\active-player.properties
-<实例>\DreamingFishUpdater\app\0.1.10\DreamingFishUpdater.exe
+<实例>\DreamingFishUpdater\app\0.1.11\DreamingFishUpdater.exe
 ```
 
 `.dreamingfish-bootstrap` 是隐藏目录，复制时不能漏掉。
