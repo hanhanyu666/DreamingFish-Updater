@@ -9,6 +9,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.function.Consumer;
 
 final class PlayerLog {
@@ -38,6 +39,18 @@ final class PlayerLog {
 
     Path file() {
         return file;
+    }
+
+    List<String> readRecentLines(int maximum) {
+        if (maximum <= 0 || !Files.isRegularFile(file)) return List.of();
+        try {
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            return lines.size() <= maximum
+                    ? List.copyOf(lines)
+                    : List.copyOf(lines.subList(lines.size() - maximum, lines.size()));
+        } catch (IOException e) {
+            return List.of();
+        }
     }
 
     private void write(String level, String message, Throwable error) {

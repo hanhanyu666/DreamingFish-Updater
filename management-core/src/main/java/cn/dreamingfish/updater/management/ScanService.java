@@ -3,6 +3,8 @@ package cn.dreamingfish.updater.management;
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.ManifestFile;
+import cn.dreamingfish.updater.protocol.ModMetadata;
+import cn.dreamingfish.updater.protocol.ModMetadataReader;
 import cn.dreamingfish.updater.protocol.PathSafety;
 import cn.dreamingfish.updater.protocol.ReleaseManifest;
 
@@ -143,6 +145,7 @@ public final class ScanService {
         try {
             BasicFileAttributes before = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
             String hash = CryptoSupport.sha256(file);
+            ModMetadata metadata = ModMetadataReader.read(file).orElse(null);
             BasicFileAttributes after = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
             if (before.size() != after.size()
                     || !before.lastModifiedTime().equals(after.lastModifiedTime())
@@ -155,7 +158,9 @@ public final class ScanService {
                     after.size(),
                     after.lastModifiedTime().toMillis(),
                     decision.policy(),
-                    file.getFileSystem().supportedFileAttributeViews().contains("posix") && Files.isExecutable(file)
+                    file.getFileSystem().supportedFileAttributeViews().contains("posix") && Files.isExecutable(file),
+                    metadata == null ? null : metadata.componentId(),
+                    metadata == null ? null : metadata.displayName()
             );
         } catch (IOException e) {
             throw new java.io.UncheckedIOException(e);
@@ -177,6 +182,10 @@ public final class ScanService {
                 changes.add(new PreviewChange(ChangeKind.MODIFIED, file.path(), old.sha256(), file.sha256(), file.size()));
             } else if (old.policy() != file.policy() || old.executable() != file.executable()) {
                 changes.add(new PreviewChange(ChangeKind.POLICY_CHANGED, file.path(), old.sha256(), file.sha256(), 0));
+            } else if (!java.util.Objects.equals(old.componentId(), file.componentId())
+                    || !java.util.Objects.equals(old.displayName(), file.displayName())) {
+                changes.add(new PreviewChange(ChangeKind.METADATA_CHANGED,
+                        file.path(), old.sha256(), file.sha256(), 0));
             }
         }
         for (ManifestFile old : previous) {

@@ -3,7 +3,11 @@ package cn.dreamingfish.updater.player;
 import cn.dreamingfish.updater.protocol.Branding;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlayerViewBrandingTest {
     @Test
@@ -30,5 +34,21 @@ class PlayerViewBrandingTest {
         assertEquals("灾变之后，仍有人在这里守望。", display.subtitle());
         assertEquals("#112233", display.accentColor());
         assertEquals("#445566", display.secondaryAccentColor());
+    }
+
+    @Test
+    void formatsHoverDetailsByFileOperationAndLimitsLongUpdates() {
+        List<Path> installed = java.util.stream.IntStream.range(0, 32)
+                .mapToObj(index -> Path.of("mods", "updated-" + index + ".jar"))
+                .toList();
+
+        String details = PlayerView.formatUpdateFileDetails(
+                installed,
+                List.of(Path.of("mods", "removed.jar")),
+                List.of(Path.of("mods", "archived.jar")));
+
+        assertTrue(details.contains("安装 / 更新"));
+        assertTrue(details.contains("mods/updated-0.jar"));
+        assertTrue(details.contains("另外 4 项未展开"));
     }
 }

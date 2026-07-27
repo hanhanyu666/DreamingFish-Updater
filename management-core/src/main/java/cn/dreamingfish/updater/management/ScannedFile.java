@@ -8,6 +8,12 @@ public record ScannedFile(
         long size,
         long lastModifiedMillis,
         FilePolicy policy,
-        boolean executable
+        boolean executable,
+        String componentId,
+        String displayName
 ) {
+    public ScannedFile(String path, String sha256, long size, long lastModifiedMillis,
+                       FilePolicy policy, boolean executable) {
+        this(path, sha256, size, lastModifiedMillis, policy, executable, null, null);
+    }
 }

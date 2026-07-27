@@ -4,6 +4,7 @@ import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.PlayerProgramManifest;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
+import cn.dreamingfish.updater.protocol.ReleaseHistory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -32,7 +33,7 @@ class PublicFileServerTest {
         byte[] content = "0123456789".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         Files.write(fixture.source.resolve("mods/example.jar"), content);
         fixture.scanner.createPreview("demo");
-        StoredRelease release = fixture.publisher.publish("demo", "1.0.0", "0.1.0", "Ready");
+        StoredRelease release = fixture.publisher.publish("demo", "1.0.0", "0.1.0", "建筑先行服已开启");
         String hash = fixture.database.readManifest(release).files().getFirst().sha256();
         Path playerSource = Files.createDirectories(temporary.resolve("player-program"));
         byte[] playerBytes = "player-launcher".getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -55,6 +56,17 @@ class PublicFileServerTest {
             assertTrue(CryptoSupport.verify(
                     manifest.body(), Base64.getDecoder().decode(signature),
                     CryptoSupport.decodePublicKey(project.publicKey())));
+
+            HttpResponse<byte[]> historyResponse = client.send(
+                    HttpRequest.newBuilder(URI.create(base + "/v1/projects/demo/history"))
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(200, historyResponse.statusCode());
+            assertEquals("application/json; charset=utf-8",
+                    historyResponse.headers().firstValue("Content-Type").orElseThrow());
+            ReleaseHistory history = new JsonCodec().read(historyResponse.body(), ReleaseHistory.class);
+            assertEquals(1, history.releases().size());
+            assertEquals("建筑先行服已开启", history.releases().getFirst().changelog());
 
             HttpResponse<byte[]> playerManifestResponse = client.send(
                     HttpRequest.newBuilder(URI.create(base

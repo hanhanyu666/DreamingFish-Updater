@@ -184,7 +184,8 @@ public final class PublishService {
                     .anyMatch(directory -> insideDirectory(file.path(), directory))
                     ? cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED
                     : file.policy();
-            result.add(new ManifestFile(file.path(), file.sha256(), file.size(), policy, file.executable()));
+            result.add(new ManifestFile(file.path(), file.sha256(), file.size(), policy,
+                    file.executable(), file.componentId(), file.displayName()));
         }
         result.sort(Comparator.comparing(ManifestFile::path));
         return List.copyOf(result);

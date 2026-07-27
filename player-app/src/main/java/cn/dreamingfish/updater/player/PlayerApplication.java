@@ -3,6 +3,8 @@ package cn.dreamingfish.updater.player;
 import cn.dreamingfish.updater.engine.CancellationToken;
 import cn.dreamingfish.updater.engine.ProgressEvent;
 import cn.dreamingfish.updater.engine.ProgressListener;
+import cn.dreamingfish.updater.engine.GameUpdateLock;
+import cn.dreamingfish.updater.engine.LocalFileOverrides;
 import cn.dreamingfish.updater.engine.PlayerProgramUpdateOutcome;
 import cn.dreamingfish.updater.engine.PlayerProgramUpdateResult;
 import cn.dreamingfish.updater.engine.PlayerProgramUpdater;
@@ -26,33 +28,33 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
-import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.paint.Color;
-import javafx.stage.DirectoryChooser;
+import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.util.Duration;
 
 import java.awt.Desktop;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.5";
+    static final String VERSION = "0.1.9";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
     private final JsonCodec json = new JsonCodec();
     private final AtomicBoolean cancelled = new AtomicBoolean();
+    private final Object localPreferenceLock = new Object();
+    private final ReleaseHistoryClient releaseHistoryClient = new ReleaseHistoryClient();
     private PlayerArguments arguments;
     private BootstrapPermitClient permitClient;
     private ProjectBinding binding;
@@ -67,6 +69,19 @@ public final class PlayerApplication extends Application {
     private Timeline autoCloseCountdown;
     private BackgroundMusic backgroundMusic;
     private Path lastArchiveDirectory;
+    private LocalModManager localModManager;
+    private LocalFileManager localFileManager;
+
+    private record LocalSettingsSnapshot(
+            long modRevision,
+            long fileRevision,
+            LocalFileOverrides overrides
+    ) {
+        boolean sameRevision(LocalSettingsSnapshot other) {
+            return other != null && modRevision == other.modRevision
+                    && fileRevision == other.fileRevision;
+        }
+    }
 
     public static void main(String[] args) {
         launch(args);
@@ -80,6 +95,7 @@ public final class PlayerApplication extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        loadBundledFont();
         stage = primaryStage;
         stage.initStyle(StageStyle.TRANSPARENT);
         stage.setTitle("DreamingFish Updater");
@@ -102,6 +118,10 @@ public final class PlayerApplication extends Application {
         });
         view.setDetailsOpenedAction(this::keepWindowOpen);
         view.setMusicToggleAction(this::toggleBackgroundMusic);
+        view.setLocalModToggleAction(this::changeLocalModPreference);
+        view.setRestoreModsAction(this::restoreLocalModDefaults);
+        view.setLocalFileToggleAction(this::changeLocalFilePreference);
+        view.setRestoreFilesAction(this::restoreLocalFileDefaults);
         view.setPlayerIdentity(arguments.playerName());
         stage.setOnCloseRequest(event -> {
             event.consume();
@@ -120,7 +140,8 @@ public final class PlayerApplication extends Application {
             stage.show();
             stage.centerOnScreen();
             view.playEntrance();
-            Platform.runLater(this::completeFirstRunOrUpdate);
+            refreshLocalManagementAsync();
+            Platform.runLater(this::startUpdate);
         } catch (Exception e) {
             showInitializationFailure(e);
         }
@@ -143,6 +164,15 @@ public final class PlayerApplication extends Application {
         view.playEntrance();
     }
 
+    private static void loadBundledFont() {
+        try (InputStream fontStream = PlayerApplication.class
+                .getResourceAsStream("fonts/HarmonyOS_Sans_SC_Bold.ttf")) {
+            if (fontStream != null) Font.loadFont(fontStream, 12);
+        } catch (IOException ignored) {
+            // The CSS keeps system-font fallbacks so a font-loading failure is non-fatal.
+        }
+    }
+
     private void loadConfiguration() throws IOException {
         binding = json.read(arguments.bindingFile(), ProjectBinding.class);
         ManifestValidator.validateBinding(binding);
@@ -150,82 +180,13 @@ public final class PlayerApplication extends Application {
         Files.createDirectories(playerHome);
         log = new PlayerLog(playerHome);
         log.setListener(line -> Platform.runLater(() -> view.appendLog(line)));
+        view.setLogs(log.readRecentLines(5000));
+        localModManager = new LocalModManager(arguments.instanceRoot(), playerHome);
+        localFileManager = new LocalFileManager(playerHome);
         view.setBranding(binding.fallbackBranding());
         view.setBackground(resolveBundledCover(binding));
+        view.setReleaseHistory(releaseHistoryClient.loadCached(binding, playerHome));
         log.info("Player updater started for project " + binding.projectId());
-    }
-
-    private void completeFirstRunOrUpdate() {
-        Path marker = playerHome.resolve("state/first-run-complete");
-        if (Files.isRegularFile(marker)) {
-            startUpdate();
-            return;
-        }
-
-        ButtonType keep = new ButtonType("保留推荐位置", ButtonBar.ButtonData.OK_DONE);
-        ButtonType choose = new ButtonType("选择其他位置", ButtonBar.ButtonData.OTHER);
-        ButtonType cancel = new ButtonType("取消启动", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert prompt = new Alert(Alert.AlertType.CONFIRMATION,
-                "更新器默认保存在当前 Minecraft 实例内。这个位置适合随整合包一起移动，也可以改到你选择的目录。",
-                keep, choose, cancel);
-        prompt.initOwner(stage);
-        prompt.setTitle("首次启动");
-        prompt.setHeaderText("更新器保存位置");
-        Optional<ButtonType> selected = prompt.showAndWait();
-        if (selected.isEmpty() || selected.get() == cancel) {
-            closeAndDeny("玩家取消了首次启动");
-        } else if (selected.get() == choose) {
-            choosePlayerHome();
-        } else {
-            try {
-                Files.createDirectories(marker.getParent());
-                Files.writeString(marker, "1\n", StandardCharsets.US_ASCII);
-                startUpdate();
-            } catch (IOException e) {
-                showFailure("无法保存首次启动设置", e);
-            }
-        }
-    }
-
-    private void choosePlayerHome() {
-        DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("选择更新器保存位置");
-        Path parent = playerHome.getParent();
-        if (parent != null && Files.isDirectory(parent)) chooser.setInitialDirectory(parent.toFile());
-        var selected = chooser.showDialog(stage);
-        if (selected == null) {
-            completeFirstRunOrUpdate();
-            return;
-        }
-        Path target = selected.toPath().toAbsolutePath().normalize();
-        if (target.equals(playerHome)) {
-            try {
-                Path marker = playerHome.resolve("state/first-run-complete");
-                Files.createDirectories(marker.getParent());
-                Files.writeString(marker, "1\n", StandardCharsets.US_ASCII);
-                startUpdate();
-            } catch (IOException e) {
-                showFailure("无法保存首次启动设置", e);
-            }
-            return;
-        }
-        working = true;
-        view.showProgress(new ProgressEvent(UpdateStage.PREPARING,
-                "正在迁移更新器", target.toString(), 0, 0));
-        Thread.ofVirtual().name("player-home-relocation").start(() -> {
-            try {
-                ProjectBinding relocated = new PlayerHomeRelocator().relocate(playerHome, target,
-                        arguments.instanceRoot(), arguments.bindingFile(), binding);
-                binding = relocated;
-                playerHome = target;
-                log.info("Player updater relocated to " + target);
-                working = false;
-                Platform.runLater(this::startUpdate);
-            } catch (Exception e) {
-                working = false;
-                Platform.runLater(() -> showFailure("无法移动更新器", e));
-            }
-        });
     }
 
     private void startUpdate() {
@@ -236,12 +197,11 @@ public final class PlayerApplication extends Application {
                 "正在连接更新服务", null, 0, 0));
         ProgressListener progress = throttledProgress();
         CancellationToken cancellation = cancelled::get;
-        UpdateRequest request = new UpdateRequest(arguments.instanceRoot(), playerHome, binding,
-                VERSION, Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC),
-                null, null, null, cancellation);
 
         Thread.ofVirtual().name("startup-update").start(() -> {
             try {
+                LocalSettingsSnapshot snapshot = reconcileLocalState();
+                UpdateRequest request = updateRequest(snapshot, cancellation);
                 PlayerProgramUpdateResult programResult = new PlayerProgramUpdater()
                         .checkAndInstall(request, BOOTSTRAP_AGENT_VERSION, null, progress);
                 if (programResult.outcome() == PlayerProgramUpdateOutcome.CHECK_UNAVAILABLE) {
@@ -257,9 +217,29 @@ public final class PlayerApplication extends Application {
                     return;
                 }
 
-                UpdateResult result = new UpdateEngine().update(request, progress);
-                permitClient.allow();
-                launchPermitted = true;
+                UpdateResult result = null;
+                UpdateEngine engine = new UpdateEngine();
+                while (true) {
+                    UpdateResult pass = engine.update(updateRequest(snapshot, cancellation), progress);
+                    result = mergeResults(result, pass);
+                    boolean preferencesChanged;
+                    try (GameUpdateLock gameLock = acquireGameUpdateLock()) {
+                        synchronized (localPreferenceLock) {
+                            localModManager.reconcileDesiredState(result.release());
+                            LocalSettingsSnapshot latest = localSettingsSnapshot();
+                            preferencesChanged = !snapshot.sameRevision(latest);
+                            if (preferencesChanged) {
+                                snapshot = latest;
+                            } else {
+                                localModManager.finalizeSuccessfulUpdate();
+                                permitClient.allow(gameLock::close);
+                                launchPermitted = true;
+                            }
+                        }
+                    }
+                    if (!preferencesChanged) break;
+                    log.info("Local mod preferences changed during the update; reconciling again");
+                }
                 working = false;
                 log.info("Launch permission granted for release " + result.release().releaseId());
                 if (!result.archivedFiles().isEmpty()) {
@@ -269,11 +249,153 @@ public final class PlayerApplication extends Application {
                             + " local files to " + result.archiveDirectory());
                     result.archivedFiles().forEach(path -> log.info("Archived local file: " + path));
                 }
-                Platform.runLater(() -> finishSuccessfully(result));
+                List<LocalModEntry> mods = localModManager.scan(result.release());
+                List<LocalFileEntry> files = localFileManager.scan(result.release());
+                UpdateResult completedResult = result;
+                Platform.runLater(() -> {
+                    view.setLocalMods(mods);
+                    view.setLocalFiles(files);
+                    finishSuccessfully(completedResult);
+                });
+                refreshReleaseHistory();
             } catch (Exception e) {
                 working = false;
                 log.error("Update failed", e);
                 Platform.runLater(() -> showFailure(errorTitle(e), e));
+            }
+        });
+    }
+
+    private LocalSettingsSnapshot reconcileLocalState() throws IOException {
+        try (GameUpdateLock gameLock = acquireGameUpdateLock()) {
+            synchronized (localPreferenceLock) {
+                var installed = localModManager.loadInstalledManifest(binding.projectId());
+                localModManager.reconcileDesiredState(installed);
+                return localSettingsSnapshot();
+            }
+        }
+    }
+
+    private LocalSettingsSnapshot localSettingsSnapshot() throws IOException {
+        LocalModManager.Snapshot mods = localModManager.snapshot();
+        LocalFileManager.Snapshot files = localFileManager.snapshot();
+        return new LocalSettingsSnapshot(mods.revision(), files.revision(),
+                mods.overrides().merge(files.overrides()));
+    }
+
+    private GameUpdateLock acquireGameUpdateLock() {
+        Path marker = arguments.instanceRoot().resolve(".dreamingfish-bootstrap/game.lock");
+        GameUpdateLock lock = GameUpdateLock.tryAcquire(marker);
+        if (lock == null) {
+            throw new UpdateException(UpdateErrorCode.GAME_RUNNING,
+                    "Minecraft is already running in this instance");
+        }
+        return lock;
+    }
+
+    private UpdateRequest updateRequest(LocalSettingsSnapshot snapshot,
+                                        CancellationToken cancellation) {
+        return new UpdateRequest(arguments.instanceRoot(), playerHome, binding,
+                VERSION, Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC),
+                null, null, null, cancellation, snapshot.overrides());
+    }
+
+    private UpdateResult mergeResults(UpdateResult previous, UpdateResult current) {
+        if (previous == null) return current;
+        List<Path> installed = combinePaths(previous.installedPaths(), current.installedPaths());
+        List<Path> deleted = combinePaths(previous.deletedPaths(), current.deletedPaths());
+        List<Path> archived = combinePaths(previous.archivedFiles(), current.archivedFiles());
+        return new UpdateResult(
+                current.outcome(), current.release(), installed.size(), deleted.size(),
+                previous.downloadedBytes() + current.downloadedBytes(),
+                current.unmanagedMods(), archived,
+                current.archiveDirectory() != null
+                        ? current.archiveDirectory() : previous.archiveDirectory(),
+                installed, deleted);
+    }
+
+    private static List<Path> combinePaths(List<Path> first, List<Path> second) {
+        java.util.LinkedHashSet<Path> paths = new java.util.LinkedHashSet<>(first);
+        paths.addAll(second);
+        return List.copyOf(paths);
+    }
+
+    private void changeLocalModPreference(LocalModEntry entry, Boolean disabled) {
+        keepWindowOpen();
+        try {
+            synchronized (localPreferenceLock) {
+                localModManager.setDisabled(entry, Boolean.TRUE.equals(disabled));
+            }
+            refreshLocalManagementAsync();
+        } catch (IOException e) {
+            log.error("Unable to save local mod preference", e);
+            showFailure("无法保存模组设置", e);
+        }
+    }
+
+    private void restoreLocalModDefaults() {
+        keepWindowOpen();
+        try {
+            synchronized (localPreferenceLock) {
+                localModManager.restoreDefaults();
+            }
+            refreshLocalManagementAsync();
+        } catch (IOException e) {
+            log.error("Unable to restore local mod defaults", e);
+            showFailure("无法恢复模组设置", e);
+        }
+    }
+
+    private void changeLocalFilePreference(LocalFileEntry entry, Boolean managed) {
+        keepWindowOpen();
+        try {
+            synchronized (localPreferenceLock) {
+                localFileManager.setManaged(entry, Boolean.TRUE.equals(managed));
+            }
+            refreshLocalManagementAsync();
+        } catch (IOException e) {
+            log.error("Unable to save local file preference", e);
+            showFailure("无法保存本地文件设置", e);
+        }
+    }
+
+    private void restoreLocalFileDefaults() {
+        keepWindowOpen();
+        try {
+            synchronized (localPreferenceLock) {
+                localFileManager.restoreDefaults();
+            }
+            refreshLocalManagementAsync();
+        } catch (IOException e) {
+            log.error("Unable to restore local file defaults", e);
+            showFailure("无法恢复文件管理设置", e);
+        }
+    }
+
+    private void refreshLocalManagementAsync() {
+        if (localModManager == null || localFileManager == null) return;
+        Thread.ofVirtual().name("local-management-scan").start(() -> {
+            try {
+                var release = localModManager.loadInstalledManifest(binding.projectId());
+                List<LocalModEntry> mods = localModManager.scan(release);
+                List<LocalFileEntry> files = localFileManager.scan(release);
+                Platform.runLater(() -> {
+                    view.setLocalMods(mods);
+                    view.setLocalFiles(files);
+                });
+            } catch (IOException e) {
+                log.error("Unable to scan local management settings", e);
+            }
+        });
+    }
+
+    private void refreshReleaseHistory() {
+        Thread.ofVirtual().name("release-history").start(() -> {
+            try {
+                var history = releaseHistoryClient.fetch(binding, playerHome);
+                Platform.runLater(() -> view.setReleaseHistory(history));
+            } catch (IOException e) {
+                log.info("Release history is unavailable; using locally cached records");
             }
         });
     }

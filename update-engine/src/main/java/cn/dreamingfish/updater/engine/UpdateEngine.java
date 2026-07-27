@@ -65,7 +65,9 @@ public final class UpdateEngine {
                 return allowOfflineOrFail(paths, local, request, progress, e);
             }
 
-            UpdatePlan plan = planner.create(paths, target, local, progress,
+            LocalFileOverrides effectiveOverrides = request.localFileOverrides()
+                    .withForcedDirectories(target.manifest().forcedSyncDirectories());
+            UpdatePlan plan = planner.create(paths, target, local, effectiveOverrides, progress,
                     request.cancellationToken());
             boolean sameRelease = local != null && local.release().sha256().equals(target.sha256());
             if (sameRelease && plan.operations().isEmpty()) {
@@ -73,7 +75,8 @@ public final class UpdateEngine {
                 progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
                         "Installation is up to date", null, 1, 1));
                 return new UpdateResult(UpdateOutcome.UP_TO_DATE, target.manifest(),
-                        0, 0, 0, plan.unmanagedMods(), List.of(), null);
+                        0, 0, 0, plan.unmanagedMods(), List.of(), null,
+                        List.of(), List.of());
             }
 
             if (gameUpdateLock == null) throw gameRunning();
@@ -82,12 +85,14 @@ public final class UpdateEngine {
             progress.onProgress(new ProgressEvent(UpdateStage.PREPARING,
                     "Preparing update transaction", null, 0, plan.operations().size()));
             InstallResult installResult = installer.install(
-                    paths, plan, progress, request.cancellationToken());
+                    paths, plan, progress, effectiveOverrides,
+                    request.cancellationToken());
             progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
                     "Update installed", null, 1, 1));
             return new UpdateResult(UpdateOutcome.UPDATED, target.manifest(),
                     plan.installCount(), plan.deleteCount(), downloaded, plan.unmanagedMods(),
-                    installResult.archivedFiles(), installResult.archiveDirectory());
+                    installResult.archivedFiles(), installResult.archiveDirectory(),
+                    plan.paths(OperationKind.INSTALL), plan.paths(OperationKind.DELETE));
         }
     }
 
@@ -106,12 +111,16 @@ public final class UpdateEngine {
         }
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
                 "Update service unavailable; verifying the last installation", null, 0, 0));
-        if (!localStore.verifyFiles(paths, local, progress, request.cancellationToken())) {
+        LocalFileOverrides effectiveOverrides = request.localFileOverrides()
+                .withForcedDirectories(local.release().manifest().forcedSyncDirectories());
+        if (!localStore.verifyFiles(paths, local, progress, effectiveOverrides,
+                request.cancellationToken())) {
             throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID,
                     "The update service is unavailable and the last installation is no longer valid",
                     networkFailure);
         }
-        UpdatePlan localPlan = planner.create(paths, local.release(), local, progress,
+        UpdatePlan localPlan = planner.create(paths, local.release(), local,
+                effectiveOverrides, progress,
                 request.cancellationToken());
         if (!localPlan.operations().isEmpty()) {
             throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID,
@@ -121,7 +130,8 @@ public final class UpdateEngine {
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
                 "Using the last verified installation", null, 1, 1));
         return new UpdateResult(UpdateOutcome.OFFLINE_ALLOWED, local.release().manifest(),
-                0, 0, 0, localPlan.unmanagedMods(), List.of(), null);
+                0, 0, 0, localPlan.unmanagedMods(), List.of(), null,
+                List.of(), List.of());
     }
 
     private void persistBundledBaseline(EnginePaths paths, LocalInstallation local) {

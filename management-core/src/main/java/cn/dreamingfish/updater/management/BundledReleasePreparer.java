@@ -33,7 +33,9 @@ public final class BundledReleasePreparer {
             "trust-state.json",
             "release-manifest.json",
             "release-manifest.sig",
-            "first-run-complete",
+            "local-mod-preferences.json",
+            "local-file-preferences.json",
+            "release-history.json",
             "instance.lock",
             "background-music-muted"
     );
@@ -234,7 +236,7 @@ public final class BundledReleasePreparer {
 
     private void clearRuntimeState(Path instance, Path playerHome) {
         try {
-            for (String directory : List.of("cache", "staging", "logs", "backups")) {
+            for (String directory : List.of("cache", "staging", "logs", "backups", "local-mods")) {
                 deleteInside(playerHome, playerHome.resolve(directory));
             }
             deleteInside(playerHome, playerHome.resolve("state/transactions"));

@@ -24,7 +24,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.1.4"));
+        assertTrue(version.out().contains("0.1.8"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -55,9 +55,13 @@ class ManagementCliTest {
         assertEquals(0, scan.exitCode(), scan.err());
         assertTrue(scan.out().contains("1 changes"));
 
+        Path changelogFile = temporary.resolve("changelog.txt");
+        Files.writeString(changelogFile, "删除信雅互联残留文件\n保留玩家本地设置");
         Invocation publish = invoke(
                 "--data", data.toString(), "project", "publish", "demo",
-                "--version", "1.0.0", "--yes"
+                "--version", "1.0.0",
+                "--changelog-file", changelogFile.toString(),
+                "--yes"
         );
         assertEquals(0, publish.exitCode(), publish.err());
         assertTrue(publish.out().contains("Published 1.0.0"));
@@ -66,9 +70,12 @@ class ManagementCliTest {
         ManagementDatabase managementDatabase = new ManagementDatabase(
                 managementPaths, new JsonCodec());
         managementDatabase.initialize();
-        String releaseId = managementDatabase.latestRelease("demo").orElseThrow().releaseId();
+        var latestRelease = managementDatabase.latestRelease("demo").orElseThrow();
+        String releaseId = latestRelease.releaseId();
+        assertEquals("删除信雅互联残留文件\n保留玩家本地设置",
+                latestRelease.changelog());
         assertEquals(List.of("mods"), managementDatabase.readManifest(
-                managementDatabase.latestRelease("demo").orElseThrow()).forcedSyncDirectories());
+                latestRelease).forcedSyncDirectories());
 
         Invocation releases = invoke("--data", data.toString(), "--json", "project", "releases", "demo");
         assertEquals(0, releases.exitCode(), releases.err());
@@ -169,6 +176,8 @@ class ManagementCliTest {
         assertTrue(invocation.out().contains("管理数据目录：" + data));
         assertTrue(!invocation.out().contains("管理数据目录 ["));
         assertTrue(invocation.out().contains("本次内容范围：config/、mods/"));
+        assertTrue(invocation.out().contains("实际将保存的更新记录："));
+        assertTrue(invocation.out().contains("首次发布"));
         assertTrue(invocation.out().contains("发布完成：1.0.0"));
         assertTrue(Files.isRegularFile(settingsFile));
 
@@ -181,6 +190,7 @@ class ManagementCliTest {
         ManagementDatabase database = new ManagementDatabase(paths, new JsonCodec());
         database.initialize();
         var release = database.latestRelease("interactive-pack").orElseThrow();
+        assertEquals("首次发布", release.changelog());
         var managedPaths = database.readManifest(release).files().stream()
                 .map(file -> file.path())
                 .toList();

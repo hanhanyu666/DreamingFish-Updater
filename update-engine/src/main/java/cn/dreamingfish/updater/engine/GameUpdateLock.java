@@ -9,16 +9,17 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
 /** Holds the exclusive side of the Agent's shared game-run lock. */
-final class GameUpdateLock implements AutoCloseable {
+public final class GameUpdateLock implements AutoCloseable {
     private final FileChannel channel;
     private final FileLock lock;
+    private boolean closed;
 
     private GameUpdateLock(FileChannel channel, FileLock lock) {
         this.channel = channel;
         this.lock = lock;
     }
 
-    static GameUpdateLock tryAcquire(Path marker) {
+    public static GameUpdateLock tryAcquire(Path marker) {
         FileChannel channel = null;
         try {
             Files.createDirectories(marker.getParent());
@@ -48,7 +49,9 @@ final class GameUpdateLock implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (closed) return;
+        closed = true;
         try {
             lock.release();
         } catch (IOException ignored) {

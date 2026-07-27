@@ -35,7 +35,11 @@ class BundledReleasePreparerTest {
         Path playerHome = Files.createDirectories(instance.resolve("DreamingFishUpdater"));
         Path state = Files.createDirectories(playerHome.resolve("state"));
         Files.writeString(state.resolve("active-player.properties"), "schema=1\n");
-        Files.writeString(state.resolve("first-run-complete"), "1\n");
+        Files.writeString(state.resolve("local-mod-preferences.json"), "local choices\n");
+        Files.writeString(state.resolve("local-file-preferences.json"), "local file choices\n");
+        Files.writeString(state.resolve("release-history.json"), "cached history\n");
+        Files.createDirectories(playerHome.resolve("local-mods/disabled"));
+        Files.writeString(playerHome.resolve("local-mods/disabled/custom.jar"), "disabled");
         Files.createDirectories(playerHome.resolve("logs"));
         Files.writeString(playerHome.resolve("logs/player-updater.log"), "test run");
 
@@ -50,7 +54,10 @@ class BundledReleasePreparerTest {
         assertTrue(Files.isRegularFile(instance.resolve(
                 ".dreamingfish-bootstrap/bundled-release/manifest.sig")));
         assertTrue(Files.isRegularFile(state.resolve("active-player.properties")));
-        assertFalse(Files.exists(state.resolve("first-run-complete")));
+        assertFalse(Files.exists(state.resolve("local-mod-preferences.json")));
+        assertFalse(Files.exists(state.resolve("local-file-preferences.json")));
+        assertFalse(Files.exists(state.resolve("release-history.json")));
+        assertFalse(Files.exists(playerHome.resolve("local-mods")));
         assertFalse(Files.exists(playerHome.resolve("logs")));
     }
 
@@ -68,7 +75,7 @@ class BundledReleasePreparerTest {
         Path instance = Files.createDirectories(temporary.resolve("wrong-instance"));
         Path playerHome = Files.createDirectories(instance.resolve("DreamingFishUpdater"));
         Path state = Files.createDirectories(playerHome.resolve("state"));
-        Files.writeString(state.resolve("first-run-complete"), "must-survive\n");
+        Files.writeString(state.resolve("local-mod-preferences.json"), "must-survive\n");
         Path instanceMod = instance.resolve("mods/example.jar");
         Files.createDirectories(instanceMod.getParent());
         Files.writeString(instanceMod, "release-two");
@@ -77,7 +84,8 @@ class BundledReleasePreparerTest {
                 () -> new BundledReleasePreparer(fixture.paths, fixture.database, fixture.json)
                         .prepare("demo", releaseOne.releaseId(), instance, playerHome));
         assertEquals("release-two", Files.readString(instanceMod));
-        assertEquals("must-survive\n", Files.readString(state.resolve("first-run-complete")));
+        assertEquals("must-survive\n",
+                Files.readString(state.resolve("local-mod-preferences.json")));
         assertFalse(Files.exists(instance.resolve(
                 ".dreamingfish-bootstrap/bundled-release/manifest.json")));
     }

@@ -568,14 +568,169 @@ class UpdateEngineTest {
         }
     }
 
+    @Test
+    void locallyDisabledManagedModStaysAbsentOnlineAndOfflineWhileOtherFilesAreRepaired()
+            throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(temporary.resolve("local-disabled"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            TestUpdateServer.TestFile mod = server.mod(
+                    "mods/legacy-renderer.jar", "renderer", FilePolicy.ENFORCED,
+                    "legacy_renderer", "Legacy Renderer");
+            TestUpdateServer.TestFile config = server.file(
+                    "config/required.toml", "correct", FilePolicy.ENFORCED);
+            ReleaseManifest release = server.release(1, "release-1", mod, config);
+            server.bundle(instance, release, true);
+            server.serve(release);
+
+            Files.delete(instance.resolve("mods/legacy-renderer.jar"));
+            Files.writeString(instance.resolve("config/required.toml"), "damaged");
+            LocalFileOverrides overrides = new LocalFileOverrides(
+                    Set.of("legacy_renderer"), Set.of("mods/legacy-renderer.jar"));
+
+            UpdateResult repaired = new UpdateEngine().update(
+                    request(instance, playerHome, server.binding(), overrides), null);
+            assertEquals(UpdateOutcome.UPDATED, repaired.outcome());
+            assertFalse(Files.exists(instance.resolve("mods/legacy-renderer.jar")));
+            assertEquals("correct", Files.readString(instance.resolve("config/required.toml")));
+            assertEquals(List.of(Path.of("config/required.toml")), repaired.installedPaths());
+
+            server.unavailable = true;
+            UpdateResult offline = new UpdateEngine().update(
+                    request(instance, playerHome, server.binding(), overrides), null);
+            assertEquals(UpdateOutcome.OFFLINE_ALLOWED, offline.outcome());
+            assertFalse(Files.exists(instance.resolve("mods/legacy-renderer.jar")));
+        }
+    }
+
+    @Test
+    void locallyExcludedFileAndDirectoryStayUntouchedOnlineAndOffline() throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(temporary.resolve("local-file-exclusions"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            TestUpdateServer.TestFile personal = server.file(
+                    "config/personal.toml", "remote", FilePolicy.ENFORCED);
+            TestUpdateServer.TestFile nested = server.file(
+                    "config/visual/client.toml", "remote-visual", FilePolicy.ENFORCED);
+            TestUpdateServer.TestFile required = server.file(
+                    "defaultconfigs/required.toml", "correct", FilePolicy.ENFORCED);
+            ReleaseManifest release = server.release(
+                    1, "release-1", personal, nested, required);
+            server.bundle(instance, release, true);
+            server.serve(release);
+
+            Files.writeString(instance.resolve("config/personal.toml"), "player-choice");
+            Files.delete(instance.resolve("config/visual/client.toml"));
+            Files.writeString(instance.resolve("defaultconfigs/required.toml"), "damaged");
+            LocalFileOverrides overrides = new LocalFileOverrides(
+                    Set.of(), Set.of("config/personal.toml"), Set.of("config/visual"));
+
+            UpdateResult repaired = new UpdateEngine().update(
+                    request(instance, playerHome, server.binding(), overrides), null);
+            assertEquals("player-choice",
+                    Files.readString(instance.resolve("config/personal.toml")));
+            assertFalse(Files.exists(instance.resolve("config/visual/client.toml")));
+            assertEquals("correct",
+                    Files.readString(instance.resolve("defaultconfigs/required.toml")));
+            assertEquals(List.of(Path.of("defaultconfigs/required.toml")),
+                    repaired.installedPaths());
+
+            server.unavailable = true;
+            assertEquals(UpdateOutcome.OFFLINE_ALLOWED, new UpdateEngine().update(
+                    request(instance, playerHome, server.binding(), overrides), null).outcome());
+        }
+    }
+
+    @Test
+    void forcedSyncOverridesLocalExemptionsAndArchivesAllExtraFiles()
+            throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(temporary.resolve("forced-local-disabled"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            TestUpdateServer.TestFile managed = server.mod(
+                    "mods/renderer.jar", "renderer", FilePolicy.ENFORCED,
+                    "renderer", "Renderer");
+            ReleaseManifest release = server.release(
+                    1, "release-1", List.of("mods"), managed);
+            server.bundle(instance, release, true);
+            server.serve(release);
+            Files.delete(instance.resolve("mods/renderer.jar"));
+            Files.writeString(instance.resolve("mods/player-disabled.jar"), "personal-disabled");
+            Files.writeString(instance.resolve("mods/remove-me.jar"), "remove-me");
+
+            LocalFileOverrides overrides = new LocalFileOverrides(
+                    Set.of("renderer"),
+                    Set.of("mods/renderer.jar", "mods/player-disabled.jar"),
+                    Set.of("mods"));
+            UpdateResult result = new UpdateEngine().update(
+                    forcedRequest(instance, playerHome, server.binding(), overrides), null);
+
+            assertEquals("renderer", Files.readString(instance.resolve("mods/renderer.jar")));
+            assertFalse(Files.exists(instance.resolve("mods/player-disabled.jar")));
+            assertFalse(Files.exists(instance.resolve("mods/remove-me.jar")));
+            assertEquals(List.of(
+                    Path.of("mods/player-disabled.jar"),
+                    Path.of("mods/remove-me.jar")), result.archivedFiles());
+        }
+    }
+
+    @Test
+    void componentIdKeepsARenamedModDisabledUntilThePlayerRestoresIt() throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(temporary.resolve("renamed-disabled"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            TestUpdateServer.TestFile oldMod = server.mod(
+                    "mods/renderer-1.jar", "old", FilePolicy.ENFORCED,
+                    "renderer", "Renderer");
+            ReleaseManifest first = server.release(1, "release-1", oldMod);
+            server.bundle(instance, first, true);
+            Files.delete(instance.resolve("mods/renderer-1.jar"));
+
+            TestUpdateServer.TestFile newMod = server.mod(
+                    "mods/renderer-2.jar", "new", FilePolicy.ENFORCED,
+                    "renderer", "Renderer");
+            ReleaseManifest second = server.release(2, "release-2", newMod);
+            server.serve(second);
+            LocalFileOverrides disabled = new LocalFileOverrides(
+                    Set.of("renderer"), Set.of("mods/renderer-1.jar"));
+
+            UpdateResult heldBack = new UpdateEngine().update(
+                    request(instance, playerHome, server.binding(), disabled), null);
+            assertEquals(UpdateOutcome.UPDATED, heldBack.outcome());
+            assertFalse(Files.exists(instance.resolve("mods/renderer-1.jar")));
+            assertFalse(Files.exists(instance.resolve("mods/renderer-2.jar")));
+            assertTrue(heldBack.installedPaths().isEmpty());
+
+            UpdateResult restored = new UpdateEngine().update(
+                    request(instance, playerHome, server.binding(), LocalFileOverrides.NONE), null);
+            assertEquals(UpdateOutcome.UPDATED, restored.outcome());
+            assertEquals("new", Files.readString(instance.resolve("mods/renderer-2.jar")));
+            assertEquals(List.of(Path.of("mods/renderer-2.jar")), restored.installedPaths());
+        }
+    }
+
     private UpdateRequest request(Path instance, Path playerHome, ProjectBinding binding) {
         return UpdateRequest.defaults(instance, playerHome, binding, "0.1.0", Set.of());
+    }
+
+    private UpdateRequest request(Path instance, Path playerHome, ProjectBinding binding,
+                                  LocalFileOverrides overrides) {
+        return new UpdateRequest(instance, playerHome, binding, "0.1.0", Set.of(),
+                null, null, null, CancellationToken.NEVER, overrides);
     }
 
     private UpdateRequest forcedRequest(Path instance, Path playerHome, ProjectBinding binding) {
         return UpdateRequest.defaults(instance, playerHome, binding, "0.1.4",
                 Set.of(cn.dreamingfish.updater.protocol.ProtocolConstants
                         .CAPABILITY_FORCED_DIRECTORY_SYNC));
+    }
+
+    private UpdateRequest forcedRequest(Path instance, Path playerHome, ProjectBinding binding,
+                                        LocalFileOverrides overrides) {
+        return new UpdateRequest(instance, playerHome, binding, "0.1.4",
+                Set.of(cn.dreamingfish.updater.protocol.ProtocolConstants
+                        .CAPABILITY_FORCED_DIRECTORY_SYNC),
+                null, null, null, CancellationToken.NEVER, overrides);
     }
 
     private static final class SimulatedCrash extends Error {

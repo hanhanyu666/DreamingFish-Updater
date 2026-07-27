@@ -19,7 +19,7 @@ import java.nio.file.Path;
 @CommandLine.Command(
         name = "dfs-admin",
         mixinStandardHelpOptions = true,
-        version = "DreamingFish Update System 0.1.4",
+        version = "DreamingFish Update System 0.1.8",
         description = "Self-hosted Minecraft modpack update management",
         subcommands = {
                 InitCommand.class,

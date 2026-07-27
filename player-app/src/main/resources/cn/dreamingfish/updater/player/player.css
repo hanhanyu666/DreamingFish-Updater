@@ -3,7 +3,8 @@
     -dfs-secondary: #b06cff;
     -fx-background-color: #05090b;
     -fx-background-radius: 29;
-    -fx-font-family: "Microsoft YaHei UI", "Noto Sans SC", "Segoe UI";
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Noto Sans SC", "Segoe UI";
+    -fx-font-weight: bold;
 }
 
 .image-shade {
@@ -29,9 +30,13 @@
 .liquid-glass-rim {
     -fx-background-color: transparent;
     -fx-background-radius: 29;
-    -fx-border-color: transparent;
-    -fx-border-width: 0;
-    -fx-effect: innershadow(gaussian, rgba(255, 255, 255, 0.09), 10, 0.12, 0, 1);
+    -fx-border-color: linear-gradient(to bottom right,
+        rgba(255, 255, 255, 0.20) 0%,
+        rgba(46, 232, 223, 0.42) 46%,
+        rgba(176, 108, 255, 0.38) 100%);
+    -fx-border-width: 1;
+    -fx-border-radius: 29;
+    -fx-effect: dropshadow(gaussian, rgba(78, 230, 225, 0.22), 7, 0.12, 0, 0);
 }
 
 .liquid-glass-sweep {
@@ -65,7 +70,7 @@
 
 .brand-dreaming,
 .brand-fish {
-    -fx-font-family: "Segoe UI", "Microsoft YaHei UI";
+    -fx-font-family: "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI";
     -fx-font-size: 14px;
     -fx-font-weight: 700;
 }
@@ -76,6 +81,33 @@
 
 .brand-fish {
     -fx-text-fill: -dfs-secondary;
+}
+
+.top-navigation {
+    -fx-alignment: center;
+}
+
+.top-nav-button {
+    -fx-min-height: 52px;
+    -fx-pref-height: 52px;
+    -fx-padding: 2 2 0 2;
+    -fx-background-color: transparent;
+    -fx-background-radius: 0;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 2 0;
+    -fx-text-fill: rgba(255, 248, 226, 0.62);
+    -fx-font-size: 14px;
+    -fx-font-weight: 600;
+    -fx-cursor: hand;
+}
+
+.top-nav-button:hover {
+    -fx-text-fill: rgba(255, 255, 255, 0.94);
+}
+
+.top-nav-button:selected {
+    -fx-border-color: transparent transparent -dfs-accent transparent;
+    -fx-text-fill: #ffffff;
 }
 
 .window-button {
@@ -104,7 +136,7 @@
 }
 
 .music-button {
-    -fx-font-family: "Segoe UI Symbol", "Microsoft YaHei UI";
+    -fx-font-family: "Segoe UI Symbol", "HarmonyOS Sans SC", "Microsoft YaHei UI";
     -fx-font-size: 18px;
     -fx-font-weight: 700;
 }
@@ -116,7 +148,7 @@
 
 .music-note-glyph {
     -fx-text-fill: rgba(255, 248, 220, 0.86);
-    -fx-font-family: "Segoe UI Symbol", "Microsoft YaHei UI";
+    -fx-font-family: "Segoe UI Symbol", "HarmonyOS Sans SC", "Microsoft YaHei UI";
     -fx-font-size: 19px;
     -fx-font-weight: 700;
 }
@@ -189,6 +221,57 @@
     -fx-border-radius: 19;
     -fx-border-width: 1;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.36), 24, 0.18, 0, 9);
+}
+
+.update-summary {
+    -fx-padding: 14 17 13 17;
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(46, 232, 223, 0.10), rgba(176, 108, 255, 0.055)),
+        rgba(3, 7, 8, 0.54);
+    -fx-background-radius: 16;
+    -fx-border-color: rgba(255, 255, 255, 0.16);
+    -fx-border-radius: 16;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.24), 18, 0.14, 0, 6);
+}
+
+.update-summary:hover {
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(46, 232, 223, 0.16), rgba(176, 108, 255, 0.09)),
+        rgba(3, 7, 8, 0.62);
+    -fx-border-color: rgba(46, 232, 223, 0.42);
+}
+
+.tooltip.update-file-tooltip {
+    -fx-padding: 13 15 13 15;
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(255, 255, 255, 0.09), rgba(46, 232, 223, 0.035)),
+        rgba(4, 9, 11, 0.97);
+    -fx-background-radius: 12;
+    -fx-border-color: rgba(255, 255, 255, 0.18);
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+    -fx-text-fill: rgba(255, 248, 220, 0.88);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 11px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.48), 24, 0.18, 0, 8);
+}
+
+.update-summary-version {
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 11px;
+    -fx-font-weight: 800;
+}
+
+.update-summary-changelog {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+}
+
+.update-summary-counts {
+    -fx-text-fill: rgba(255, 248, 220, 0.58);
+    -fx-font-size: 10px;
 }
 
 .stage-label {
@@ -267,7 +350,110 @@
 .updater-info {
     -fx-text-fill: rgba(255, 248, 226, 0.58);
     -fx-font-size: 10px;
-    -fx-font-family: "Segoe UI", "Microsoft YaHei UI";
+    -fx-font-family: "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI";
+}
+
+.content-page-layer {
+    -fx-background-color:
+        linear-gradient(to right, rgba(3, 7, 8, 0.91) 0%, rgba(3, 7, 8, 0.78) 68%, rgba(3, 7, 8, 0.58) 100%);
+}
+
+.content-page-scroll,
+.content-page-scroll > .viewport,
+.content-page-alignment {
+    -fx-background-color: transparent;
+}
+
+.content-page-scroll {
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.content-page-scroll > .viewport {
+    -fx-background-insets: 0;
+}
+
+.content-page-alignment {
+    -fx-padding: 72 74 42 74;
+}
+
+.content-page-scroll .scroll-bar:vertical {
+    -fx-background-color: transparent;
+    -fx-pref-width: 8px;
+    -fx-padding: 3 2 3 0;
+}
+
+.content-page-scroll .scroll-bar:vertical .track {
+    -fx-background-color: transparent;
+}
+
+.content-page-scroll .scroll-bar:vertical .thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.22);
+    -fx-background-radius: 4;
+}
+
+.content-page-scroll .scroll-bar:vertical .increment-button,
+.content-page-scroll .scroll-bar:vertical .decrement-button {
+    -fx-pref-height: 0;
+    -fx-opacity: 0;
+}
+
+.content-page {
+    -fx-alignment: top-left;
+}
+
+.page-eyebrow {
+    -fx-text-fill: -dfs-accent;
+    -fx-font-family: "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI";
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+}
+
+.page-title {
+    -fx-padding: 9 0 0 0;
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 35px;
+    -fx-font-weight: 800;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.48), 18, 0.16, 0, 5);
+}
+
+.page-version {
+    -fx-padding: 7 0 13 0;
+    -fx-text-fill: #fff8dc;
+    -fx-font-family: "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI";
+    -fx-font-size: 17px;
+    -fx-font-weight: 700;
+}
+
+.page-lead {
+    -fx-padding: 8 0 0 0;
+    -fx-text-fill: rgba(255, 241, 200, 0.82);
+    -fx-font-size: 15px;
+    -fx-font-weight: 600;
+}
+
+.page-divider {
+    -fx-translate-y: 0;
+    -fx-padding: 0;
+    -fx-background-color: linear-gradient(to right, -dfs-accent, rgba(255, 255, 255, 0.16), transparent);
+    -fx-max-width: 900px;
+    -fx-pref-width: 900px;
+    -fx-opacity: 0.66;
+    -fx-effect: dropshadow(gaussian, rgba(46, 232, 223, 0.28), 8, 0.12, 0, 0);
+}
+
+.page-copy {
+    -fx-padding: 15 0 0 0;
+    -fx-text-fill: rgba(255, 248, 226, 0.76);
+    -fx-font-size: 14px;
+    -fx-line-spacing: 5px;
+}
+
+.page-callout {
+    -fx-padding: 20 0 0 0;
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 15px;
+    -fx-font-weight: 700;
 }
 
 .launch-notice {
@@ -336,18 +522,340 @@
     -fx-font-weight: 700;
 }
 
-.details-text {
-    -fx-background-color: #071012;
-    -fx-background-radius: 12;
-    -fx-control-inner-background: #071012;
+.drawer-tabs {
+    -fx-padding: 2 0 4 0;
+}
+
+.drawer-tab {
+    -fx-min-height: 32px;
+    -fx-padding: 0 14px;
+    -fx-background-color: transparent;
+    -fx-background-radius: 8;
+    -fx-text-fill: rgba(255, 248, 220, 0.56);
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+    -fx-cursor: hand;
+}
+
+.drawer-tab:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.06);
+    -fx-text-fill: #fff8dc;
+}
+
+.drawer-tab:selected {
+    -fx-background-color: rgba(46, 232, 223, 0.11);
+    -fx-text-fill: -dfs-accent;
+}
+
+.drawer-scroll,
+.drawer-scroll > .viewport,
+.history-list,
+.mod-list,
+.update-detail-list,
+.update-detail-list .virtual-flow,
+.update-detail-list .clipped-container,
+.update-detail-list .sheet,
+.local-file-tree,
+.local-file-tree .virtual-flow,
+.local-file-tree .clipped-container,
+.local-file-tree .sheet,
+.log-list,
+.log-list .virtual-flow,
+.log-list .clipped-container,
+.log-list .sheet {
+    -fx-background-color: transparent;
+}
+
+.drawer-scroll {
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+}
+
+.drawer-scroll .scroll-bar:vertical,
+.log-list .scroll-bar:vertical {
+    -fx-pref-width: 8px;
+    -fx-background-color: transparent;
+}
+
+.drawer-scroll .scroll-bar:vertical .track,
+.log-list .scroll-bar:vertical .track {
+    -fx-background-color: transparent;
+}
+
+.drawer-scroll .scroll-bar:vertical .thumb,
+.log-list .scroll-bar:vertical .thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.18);
+    -fx-background-radius: 6;
+}
+
+.history-list,
+.mod-list {
+    -fx-padding: 2 10 8 0;
+}
+
+.update-detail-version {
+    -fx-padding: 8 2 0 2;
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 17px;
+    -fx-font-weight: 800;
+}
+
+.update-detail-changelog {
+    -fx-padding: 0 2 2 2;
     -fx-text-fill: rgba(255, 248, 220, 0.76);
-    -fx-highlight-fill: rgba(46, 232, 223, 0.30);
-    -fx-highlight-text-fill: white;
-    -fx-font-family: "Consolas", "Cascadia Mono", "Microsoft YaHei UI";
+    -fx-font-size: 12px;
+    -fx-line-spacing: 4px;
+}
+
+.update-detail-counts {
+    -fx-padding: 8 2 10 2;
+    -fx-border-color: transparent transparent rgba(255, 255, 255, 0.09) transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-text-fill: rgba(255, 248, 220, 0.50);
+    -fx-font-size: 10px;
+}
+
+.update-detail-list {
+    -fx-padding: 4 0 4 0;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+}
+
+.update-detail-list .list-cell {
+    -fx-padding: 8 5 8 2;
+    -fx-background-color: transparent;
+}
+
+.update-detail-list .list-cell:filled:hover,
+.update-detail-list .list-cell:filled:selected {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-background-radius: 7;
+}
+
+.update-operation {
+    -fx-min-width: 66px;
+    -fx-alignment: center;
+    -fx-padding: 4 7 4 7;
+    -fx-background-radius: 6;
+    -fx-font-size: 9px;
+    -fx-font-weight: 800;
+}
+
+.update-operation-install {
+    -fx-background-color: rgba(46, 232, 223, 0.12);
+    -fx-text-fill: -dfs-accent;
+}
+
+.update-operation-delete {
+    -fx-background-color: rgba(255, 116, 116, 0.12);
+    -fx-text-fill: #ff9e9e;
+}
+
+.update-operation-archive {
+    -fx-background-color: rgba(255, 197, 109, 0.12);
+    -fx-text-fill: #ffd08a;
+}
+
+.update-detail-path {
+    -fx-text-fill: rgba(255, 248, 220, 0.72);
     -fx-font-size: 11px;
 }
 
-.details-text .content {
-    -fx-background-color: #071012;
-    -fx-background-radius: 12;
+.history-entry {
+    -fx-padding: 16 4 17 2;
+}
+
+.history-version {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 15px;
+    -fx-font-weight: 800;
+}
+
+.history-time {
+    -fx-text-fill: rgba(255, 248, 220, 0.42);
+    -fx-font-size: 10px;
+}
+
+.history-current {
+    -fx-padding: 3 7 3 7;
+    -fx-background-color: rgba(46, 232, 223, 0.12);
+    -fx-background-radius: 6;
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 9px;
+    -fx-font-weight: 800;
+}
+
+.history-changelog {
+    -fx-text-fill: rgba(255, 248, 220, 0.72);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 12px;
+    -fx-line-spacing: 4px;
+}
+
+.drawer-divider {
+    -fx-background-color: rgba(255, 255, 255, 0.09);
+}
+
+.drawer-empty {
+    -fx-padding: 28 8 8 8;
+    -fx-text-fill: rgba(255, 248, 220, 0.44);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 12px;
+}
+
+.log-list {
+    -fx-padding: 8 4 8 0;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+}
+
+.log-list .list-cell {
+    -fx-padding: 7 10 7 5;
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(255, 248, 220, 0.72);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Cascadia Mono", "Consolas";
+    -fx-font-size: 11px;
+}
+
+.log-list .list-cell:filled:selected,
+.log-list .list-cell:filled:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.055);
+    -fx-background-radius: 6;
+    -fx-text-fill: #fff8dc;
+}
+
+.mod-search {
+    -fx-min-height: 34px;
+    -fx-background-color: rgba(255, 255, 255, 0.065);
+    -fx-background-radius: 8;
+    -fx-border-color: rgba(255, 255, 255, 0.10);
+    -fx-border-radius: 8;
+    -fx-text-fill: #fff8dc;
+    -fx-prompt-text-fill: rgba(255, 248, 220, 0.38);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+}
+
+.restore-mods-button {
+    -fx-min-height: 34px;
+    -fx-padding: 0 13px;
+    -fx-background-color: rgba(255, 255, 255, 0.065);
+    -fx-background-radius: 8;
+    -fx-border-color: rgba(255, 255, 255, 0.12);
+    -fx-border-radius: 8;
+    -fx-text-fill: #fff1c8;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-cursor: hand;
+}
+
+.restore-mods-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.11);
+}
+
+.mod-warning {
+    -fx-padding: 9 11 9 11;
+    -fx-background-color: rgba(255, 195, 111, 0.075);
+    -fx-background-radius: 8;
+    -fx-text-fill: rgba(255, 213, 159, 0.78);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 10px;
+}
+
+.mod-row {
+    -fx-padding: 12 4 12 2;
+}
+
+.mod-name {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+}
+
+.mod-detail {
+    -fx-text-fill: rgba(255, 248, 220, 0.42);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 10px;
+}
+
+.mod-toggle {
+    -fx-text-fill: rgba(255, 248, 220, 0.68);
+    -fx-font-size: 11px;
+    -fx-cursor: hand;
+}
+
+.mod-toggle .box {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+    -fx-background-radius: 5;
+    -fx-border-color: rgba(255, 255, 255, 0.22);
+    -fx-border-radius: 5;
+}
+
+.mod-toggle:selected .box {
+    -fx-background-color: -dfs-accent;
+    -fx-border-color: -dfs-accent;
+}
+
+.mod-toggle:selected .mark {
+    -fx-background-color: #041112;
+}
+
+.local-mode-bar {
+    -fx-padding: 0 0 2 0;
+}
+
+.local-mode-button {
+    -fx-min-height: 30px;
+    -fx-padding: 0 13px;
+    -fx-background-color: rgba(255, 255, 255, 0.045);
+    -fx-background-radius: 7;
+    -fx-text-fill: rgba(255, 248, 220, 0.52);
+    -fx-font-size: 11px;
+    -fx-cursor: hand;
+}
+
+.local-mode-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+    -fx-text-fill: #fff8dc;
+}
+
+.local-mode-button:selected {
+    -fx-background-color: rgba(46, 232, 223, 0.12);
+    -fx-text-fill: -dfs-accent;
+}
+
+.local-file-tree {
+    -fx-padding: 3 2 6 0;
+    -fx-background-insets: 0;
+    -fx-border-width: 0;
+}
+
+.local-file-tree .tree-cell {
+    -fx-padding: 7 5 7 2;
+    -fx-background-color: transparent;
+    -fx-text-fill: #fff8dc;
+}
+
+.local-file-tree .tree-cell:filled:hover,
+.local-file-tree .tree-cell:filled:selected {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-background-radius: 7;
+}
+
+.local-file-tree .tree-cell > .tree-disclosure-node > .arrow {
+    -fx-background-color: rgba(255, 248, 220, 0.50);
+}
+
+.local-file-row {
+    -fx-padding: 1 2 1 0;
+}
+
+.local-file-name {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+}
+
+.local-file-detail {
+    -fx-text-fill: rgba(255, 248, 220, 0.42);
+    -fx-font-size: 9px;
 }

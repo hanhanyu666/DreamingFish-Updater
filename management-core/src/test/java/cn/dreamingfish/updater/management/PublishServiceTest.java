@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -103,5 +105,34 @@ class PublishServiceTest {
         assertTrue(manifest.requiredCapabilities().contains(
                 cn.dreamingfish.updater.protocol.ProtocolConstants
                         .CAPABILITY_FORCED_DIRECTORY_SYNC));
+    }
+
+    @Test
+    void automaticallyPublishesStableModMetadataFromTheJar() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary);
+        fixture.createProject();
+        Path jar = fixture.source.resolve("mods/render-helper.jar");
+        Files.createDirectories(jar.getParent());
+        try (ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(jar))) {
+            output.putNextEntry(new ZipEntry("META-INF/mods.toml"));
+            output.write("""
+                    modLoader="javafml"
+                    loaderVersion="[47,)"
+                    license="MIT"
+                    [[mods]]
+                    modId="render_helper"
+                    displayName="渲染兼容助手"
+                    version="1.0"
+                    """.getBytes(StandardCharsets.UTF_8));
+            output.closeEntry();
+        }
+
+        fixture.scanner.createPreview("demo");
+        StoredRelease stored = fixture.publisher.publish(
+                "demo", "1.0.0", "0.1.7", "metadata");
+        var file = fixture.database.readManifest(stored).files().getFirst();
+
+        assertEquals("render_helper", file.componentId());
+        assertEquals("渲染兼容助手", file.displayName());
     }
 }

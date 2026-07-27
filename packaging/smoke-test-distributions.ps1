@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.4",
+    [string]$Version = "0.1.8",
     [string]$AdminVersion = "",
     [string]$DistDirectory = "",
     [switch]$KeepWork
@@ -195,8 +195,8 @@ try {
             "Expected test mod is missing before deletion: $target"
         Remove-Item -Force -LiteralPath $target
     }
-    $releaseThree = Publish-Release "1.3.0" `
-        "Remove eight old mods and retain all five additions"
+    $releaseThreeChangelog = "删除八个旧模组，保留五个新增模组"
+    $releaseThree = Publish-Release "1.3.0" $releaseThreeChangelog
 
     $baselineOne = Get-Content -Raw -LiteralPath (Join-Path $instanceOne `
             ".dreamingfish-bootstrap\bundled-release\manifest.json") | ConvertFrom-Json
@@ -263,6 +263,15 @@ try {
     $latestModCount = @($latest.files | Where-Object { $_.path -like "mods/*" }).Count
     Assert-True ($latestModCount -eq 7) `
         "Release 1.3 should contain two retained and five added mods"
+    $history = Invoke-RestMethod `
+        -Uri "http://127.0.0.1:$port/v1/projects/smoke-pack/history" `
+        -TimeoutSec 5
+    Assert-True (@($history.releases).Count -eq 3) `
+        "The packaged history endpoint did not return all three releases"
+    Assert-True ($history.releases[0].releaseId -eq $releaseThree) `
+        "The packaged history endpoint is not newest-first"
+    Assert-True ($history.releases[0].changelog -eq $releaseThreeChangelog) `
+        "The packaged history endpoint did not preserve the Chinese changelog"
 
     $succeeded = $true
     [pscustomobject]@{
@@ -282,6 +291,7 @@ try {
         ForcedSyncDirectories = $latest.forcedSyncDirectories -join ","
         HttpHealth = $health.status
         HttpLatestVersion = $latest.displayVersion
+        HttpHistoryReleases = @($history.releases).Count
         HttpSignaturePresent = -not [string]::IsNullOrWhiteSpace($signature)
         AdminZipSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $adminZip).Hash
         PlayerZipSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $playerZip).Hash

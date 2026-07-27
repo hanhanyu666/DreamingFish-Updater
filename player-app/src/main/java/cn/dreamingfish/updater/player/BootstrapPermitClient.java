@@ -53,11 +53,17 @@ final class BootstrapPermitClient {
         }
     }
 
-    synchronized void allow() throws IOException {
+    void allow() throws IOException {
+        allow(() -> {
+        });
+    }
+
+    synchronized void allow(Runnable beforeAcknowledgement) throws IOException {
         if (arguments.preview() || !completed.compareAndSet(false, true)) return;
         try {
             if (sessionSocket != null) {
                 write(sessionWriter, "DFS1 ALLOW " + arguments.bootstrapToken());
+                beforeAcknowledgement.run();
                 sessionSocket.setSoTimeout(10_000);
                 if (!"DFS1 LOCKED".equals(sessionReader.readLine())) {
                     throw new PermitException("Minecraft 启动许可通道未确认游戏锁");
@@ -65,6 +71,7 @@ final class BootstrapPermitClient {
             } else {
                 try (Socket socket = connect()) {
                     write(socket, "DFS1 ALLOW " + arguments.bootstrapToken());
+                    beforeAcknowledgement.run();
                     socket.setSoTimeout(10_000);
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                             socket.getInputStream(), StandardCharsets.US_ASCII))) {

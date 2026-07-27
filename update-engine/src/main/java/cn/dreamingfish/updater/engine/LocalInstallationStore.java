@@ -106,13 +106,24 @@ final class LocalInstallationStore {
     }
 
     boolean verifyFiles(EnginePaths paths, LocalInstallation local, ProgressListener listener,
-                        CancellationToken cancellationToken) {
+                        LocalFileOverrides overrides, CancellationToken cancellationToken) {
+        java.util.Map<String, ManifestFile> manifestFiles = new java.util.HashMap<>();
+        local.release().manifest().files().forEach(file ->
+                manifestFiles.put(file.path().toLowerCase(java.util.Locale.ROOT), file));
         long total = local.installation().files().stream()
                 .filter(file -> file.policy() == FilePolicy.ENFORCED)
+                .filter(file -> {
+                    ManifestFile manifestFile = manifestFiles.get(
+                            file.path().toLowerCase(java.util.Locale.ROOT));
+                    return manifestFile == null || !overrides.excludes(manifestFile);
+                })
                 .mapToLong(InstalledFileState::size).sum();
         long complete = 0;
         for (InstalledFileState file : local.installation().files()) {
             cancellationToken.throwIfCancelled();
+            ManifestFile manifestFile = manifestFiles.get(
+                    file.path().toLowerCase(java.util.Locale.ROOT));
+            if (manifestFile != null && overrides.excludes(manifestFile)) continue;
             Path target;
             try {
                 target = cn.dreamingfish.updater.protocol.PathSafety.resolveInside(paths.instanceRoot(), file.path());

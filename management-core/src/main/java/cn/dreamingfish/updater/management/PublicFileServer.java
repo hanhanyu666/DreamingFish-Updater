@@ -2,7 +2,10 @@ package cn.dreamingfish.updater.management;
 
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.Hex;
+import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
+import cn.dreamingfish.updater.protocol.ReleaseHistory;
+import cn.dreamingfish.updater.protocol.ReleaseHistoryEntry;
 import cn.dreamingfish.updater.protocol.SemanticVersion;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
@@ -28,6 +31,7 @@ public final class PublicFileServer implements AutoCloseable {
     private final ManagementDatabase database;
     private final ObjectStore objects;
     private final PlayerProgramService playerPrograms;
+    private final JsonCodec json;
     private final HttpServer server;
     private final ExecutorService executor;
 
@@ -35,8 +39,8 @@ public final class PublicFileServer implements AutoCloseable {
                             InetSocketAddress address) {
         this.database = database;
         this.objects = objects;
-        this.playerPrograms = new PlayerProgramService(objects.paths(), database,
-                new cn.dreamingfish.updater.protocol.JsonCodec());
+        this.json = new JsonCodec();
+        this.playerPrograms = new PlayerProgramService(objects.paths(), database, json);
         try {
             server = HttpServer.create(address, 128);
         } catch (IOException e) {
@@ -96,6 +100,10 @@ public final class PublicFileServer implements AutoCloseable {
                 sendManifest(exchange, latest.get(), false);
                 return;
             }
+            if (segments.length == 2 && validProjectId(segments[0]) && segments[1].equals("history")) {
+                sendReleaseHistory(exchange, segments[0]);
+                return;
+            }
             if (segments.length == 4 && validProjectId(segments[0])
                     && segments[1].equals("releases") && validReleaseId(segments[2])
                     && segments[3].equals("manifest")) {
@@ -132,6 +140,36 @@ public final class PublicFileServer implements AutoCloseable {
         } finally {
             exchange.close();
         }
+    }
+
+    private void sendReleaseHistory(HttpExchange exchange, String projectId) throws IOException {
+        if (database.findProject(projectId).isEmpty()) {
+            sendError(exchange, 404, "project_not_found");
+            return;
+        }
+        ReleaseHistory history = new ReleaseHistory(
+                ProtocolConstants.RELEASE_HISTORY_SCHEMA_VERSION,
+                projectId,
+                database.listReleases(projectId).stream()
+                        .map(release -> new ReleaseHistoryEntry(
+                                release.releaseId(),
+                                release.sequence(),
+                                release.displayVersion(),
+                                release.createdAt(),
+                                release.changelog()))
+                        .toList());
+        byte[] body = json.write(history);
+        String hash = CryptoSupport.sha256(body);
+        Headers headers = exchange.getResponseHeaders();
+        commonHeaders(headers);
+        headers.set("Content-Type", "application/json; charset=utf-8");
+        headers.set("ETag", quoted(hash));
+        headers.set("Cache-Control", "no-cache, max-age=0");
+        if (etagMatches(exchange, hash)) {
+            exchange.sendResponseHeaders(304, -1);
+            return;
+        }
+        sendBytes(exchange, 200, body);
     }
 
     private void sendPlayerProgramManifest(HttpExchange exchange, StoredPlayerProgram program,

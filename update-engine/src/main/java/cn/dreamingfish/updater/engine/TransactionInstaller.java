@@ -70,7 +70,7 @@ final class TransactionInstaller {
     }
 
     InstallResult install(EnginePaths paths, UpdatePlan plan, ProgressListener listener,
-                          CancellationToken cancellationToken) {
+                          LocalFileOverrides overrides, CancellationToken cancellationToken) {
         String id = UUID.randomUUID().toString();
         Path directory = paths.transactions().resolve(id);
         Path backupRoot = directory.resolve("backup");
@@ -111,7 +111,7 @@ final class TransactionInstaller {
                 faultInjector.afterOperation(i);
             }
 
-            verifyTarget(paths, plan.release(), listener, cancellationToken);
+            verifyTarget(paths, plan.release(), overrides, listener, cancellationToken);
             localStore.save(paths, plan.release());
             Path finalArchive = finalizeArchive(paths, plan, pendingArchiveRoot, archiveDirectory);
             faultInjector.beforeCommit();
@@ -252,14 +252,17 @@ final class TransactionInstaller {
         setExecutable(target, operation.executable());
     }
 
-    private void verifyTarget(EnginePaths paths, SignedRelease release, ProgressListener listener,
+    private void verifyTarget(EnginePaths paths, SignedRelease release,
+                              LocalFileOverrides overrides, ProgressListener listener,
                               CancellationToken cancellationToken) {
         long total = release.manifest().files().stream()
                 .filter(file -> file.policy() == FilePolicy.ENFORCED)
+                .filter(file -> !overrides.excludes(file))
                 .mapToLong(ManifestFile::size).sum();
         long complete = 0;
         for (ManifestFile file : release.manifest().files()) {
             cancellationToken.throwIfCancelled();
+            if (overrides.excludes(file)) continue;
             Path target = resolve(paths.instanceRoot(), file.path());
             if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
                 throw new UpdateException(UpdateErrorCode.TRANSACTION_FAILED,

@@ -275,7 +275,7 @@ dreamingfish-player-windows-x64\
     .dreamingfish-bootstrap\
     DreamingFishUpdater\
         app\
-            0.1.4\
+            0.1.9\
                 DreamingFishUpdater.exe
                 app\
                 runtime\
@@ -288,17 +288,17 @@ dreamingfish-player-windows-x64\
 [6] 发布玩家端程序
 ```
 
-当前 `0.1.4` 示例应填写：
+当前玩家端 `0.1.9` 示例应填写：
 
 | 终端问题 | 填写内容 |
 | --- | --- |
 | 平台 | `windows-x64` |
-| 玩家端程序版本 | `0.1.4` |
-| 玩家端完整 app-image 目录 | `...\DreamingFishUpdater\app\0.1.4` |
+| 玩家端程序版本 | `0.1.9` |
+| 玩家端完整 app-image 目录 | `...\DreamingFishUpdater\app\0.1.9` |
 | 该目录内的启动程序路径 | `DreamingFishUpdater.exe` |
 | 最低启动引导器版本 | `0.1.2` |
 
-必须选择直接包含 `DreamingFishUpdater.exe`、`app/` 和 `runtime/` 的 `0.1.4` 目录，不要选择外层的 `DreamingFishUpdater`。
+必须选择直接包含 `DreamingFishUpdater.exe`、`app/` 和 `runtime/` 的 `0.1.9` 目录，不要选择外层的 `DreamingFishUpdater`。
 
 最后输入 `Y` 确认发布。
 
@@ -317,11 +317,16 @@ dreamingfish-player-windows-x64\
 | 终端问题 | 首次发布示例 |
 | --- | --- |
 | 本次显示版本 | `1.0.0` |
-| 最低玩家端程序版本 | `0.1.4` |
+| 最低玩家端程序版本 | `0.1.9` |
 | 更新记录 | `建筑服首次发布` |
 | 确认不可变版本 | `Y` |
 
 发布成功后，管理端 `data/` 会保存签名清单和文件对象。不要手动修改其中内容。
+
+确认发布前，管理端会回显数据库实际收到的更新记录。如果中文已经变成
+`P`、`0` 或乱码，应选择 `N` 取消。可以把内容保存为 UTF-8 文本文件，
+在交互提示中输入 `@D:\更新记录.txt`；参数式命令则可使用
+`--changelog-file "D:\更新记录.txt"`。两种方式都支持多行内容。
 
 ### 7. 启动 HTTP 文件服务
 
@@ -414,7 +419,7 @@ dreamingfish-player-windows-x64-<版本号>.zip
 ```text
 <实例>\.dreamingfish-bootstrap\bootstrap-agent.jar
 <实例>\DreamingFishUpdater\state\active-player.properties
-<实例>\DreamingFishUpdater\app\0.1.4\DreamingFishUpdater.exe
+<实例>\DreamingFishUpdater\app\0.1.9\DreamingFishUpdater.exe
 ```
 
 `.dreamingfish-bootstrap` 是隐藏目录，复制时不能漏掉。
@@ -500,15 +505,9 @@ dreamingfish-player-windows-x64-<版本号>.zip
 5. 验证完成后立刻允许 Minecraft 继续启动；
 6. 更新器顶部提示 Minecraft 已开始启动；
 7. 更新器在 15 秒后自动关闭；
-8. 打开“更新记录”或“运行日志”后，窗口会保持打开。
+8. 打开“更新记录”“运行记录”或“本地文件”后，窗口会保持打开。
 
-第一次启动还会询问玩家是否修改更新器位置。推荐选择：
-
-```text
-保留推荐位置
-```
-
-这样更新器会留在当前实例的 `DreamingFishUpdater/` 中，并随整合包一起移动。玩家也可以主动选择其它位置，程序不会擅自选择系统目录。
+玩家端不会询问安装位置。它直接使用实例内 `.dreamingfish-bootstrap/project-binding.json` 的 `playerHome`；推荐值是相对路径 `DreamingFishUpdater`，因此整合包移动或交给其它玩家后仍然有效。
 
 ### 6. 分发给玩家
 
@@ -575,7 +574,29 @@ management-settings.json
 
 没有启用强制同步的目录中，玩家额外添加、且没有出现在发布清单中的模组会保留并只显示提醒。当前版本没有模组黑名单，也不会因为这些额外模组而阻止启动。
 
-管理端可在菜单 `[3] 修改项目设置` 中按一级目录配置强制同步，例如只填写 `mods`。设置变化必须发布一个新整合包版本后才会到达玩家端。启用后，玩家界面会明确显示“远程管理端已对 mods/ 启用强制同步”、移出文件数量和备份位置，并提供“打开备份目录”按钮。
+玩家可以打开“本地文件”，在“管理范围”中让普通同步不再管理某个远程文件或整个目录。被豁免文件保持玩家本机状态：已经修改的不会覆盖，已经删除的不会重新下载。选择只写入本机：
+
+```text
+<实例>\DreamingFishUpdater\state\local-file-preferences.json
+```
+
+同一页面的“模组启停”可搜索并停用某个整合包模组或玩家自选模组，选择写入：
+
+```text
+<实例>\DreamingFishUpdater\state\local-mod-preferences.json
+```
+
+停用的 JAR 会在下一次发放 Minecraft 启动许可前移到：
+
+```text
+<实例>\DreamingFishUpdater\local-mods\disabled\
+```
+
+单文件、目录和模组豁免只对普通同步生效；管理端不需要为每个文件配置“可选”属性。新版管理端会自动从 Forge、NeoForge 或 Fabric JAR 提取稳定组件 ID，所以模组升级后即使文件名变化，玩家选择仍能延续。旧发布没有元数据时退回到精确路径匹配。
+
+停用必要依赖可能导致 Forge 启动失败或无法连接服务器，界面会在操作前提示。“恢复管理默认”会清除文件与目录豁免；“恢复整合包默认”会重新启用模组。所有修改都不会上传到管理端。
+
+管理端可在菜单 `[3] 修改项目设置` 中按一级目录配置强制同步，例如只填写 `mods`。设置变化必须发布一个新整合包版本后才会到达玩家端。强制同步优先级最高：目录及其子文件的玩家开关会禁用，已有本地豁免也会被忽略，缺失或修改的托管文件会恢复为远程版本。玩家界面会明确显示“远程管理端已对 mods/ 启用强制同步”、移出文件数量和备份位置，并提供“打开备份目录”按钮。
 
 长期备份位于：
 
@@ -593,7 +614,7 @@ management-settings.json
 <实例>\DreamingFishUpdater\logs\player-updater.log
 ```
 
-玩家主动移动更新器后，日志会位于玩家选择的新目录。界面的“运行日志”和“更新记录”可以直接查看相应内容。
+界面的“运行记录”直接读取这份 UTF-8 日志。“更新记录”通过管理端只读历史接口展示全部发布，并在本地缓存；旧管理端没有历史接口或当前断网时，至少仍会显示当前签名发布和已有缓存。
 
 ## 六、管理端备份
 

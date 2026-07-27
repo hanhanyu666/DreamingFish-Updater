@@ -2,7 +2,7 @@
 
 面向 Minecraft 整合包服务器的自托管更新系统。V1 已具备可运行的管理 CLI、只读 HTTP 文件服务、事务式更新引擎、Java 8 启动 Agent、JavaFX 玩家端和玩家端自更新。
 
-玩家端只负责在 Minecraft 启动前更新整合包、展示服务器信息和日志。它不接管账号、游戏安装或第三方启动器。玩家自己添加的模组默认只提示并保留；服主也可按一级目录单独启用强制同步，多出的本地文件会进入长期备份。V1 不包含黑名单和反作弊。
+玩家端只负责在 Minecraft 启动前更新整合包、展示服务器信息和日志。它不接管账号、游戏安装或第三方启动器。普通同步下，玩家可在本机豁免不兼容或不需要的单个文件、整个目录或模组，选择不会上传；服主也可按一级目录单独启用强制同步，强制目录不接受本地豁免，多出的本地文件会进入长期备份。V1 不包含黑名单和反作弊。
 
 ## 组成
 
@@ -19,8 +19,9 @@
 
 ```powershell
 .\mvnw.cmd test
-.\packaging\build-distributions.ps1 -Version 0.1.4 -SkipLinux
-.\packaging\smoke-test-distributions.ps1 -Version 0.1.4
+.\packaging\build-distributions.ps1 -Version 0.1.8 -SkipLinux
+.\packaging\build-distributions.ps1 -Version 0.1.9 -PlayerOnly -SkipLinux
+.\packaging\smoke-test-distributions.ps1 -Version 0.1.9 -AdminVersion 0.1.8
 ```
 
 发行包冒烟测试会重新解压实际 ZIP，在 `target/` 的临时目录中模拟三个整合包版本、制作历史玩家包、校验玩家程序防篡改和启动 HTTP 服务；成功后自动删除临时数据，不会接触现有 Minecraft 实例或管理端数据。
@@ -46,6 +47,7 @@ dfs-admin project binding <项目ID> --instance <实例目录> --platform window
 - [最简使用教程](./docs/QUICKSTART.md)
 - [部署与发布](./docs/DEPLOYMENT.md)
 - [V1 完整设计](./docs/V1-DESIGN.md)
+- [中文更新日志](./CHANGELOG.md)
 - [领域术语](./CONTEXT.md)
 - [架构决策](./docs/adr/)
 

@@ -39,7 +39,7 @@ D:\DFSSource\
 
 ### 第一步：启动管理端
 
-把 `dfs-admin-windows-x64-0.1.4.zip` 解压到：
+把 `dfs-admin-windows-x64-0.1.8.zip` 解压到：
 
 ```text
 D:\DFSAdmin
@@ -72,9 +72,9 @@ D:\DFSAdmin\dfs-admin.cmd
 
 ### 第二步：导入玩家端更新器
 
-这一步在 `0.1.4` 期间只做一次。以后只更新模组或配置时，不需要再做。
+这一步在玩家端 `0.1.9` 期间只做一次。以后只更新模组或配置时，不需要再做。
 
-把 `dreamingfish-player-windows-x64-0.1.4.zip` 解压到任意临时目录，例如：
+把 `dreamingfish-player-windows-x64-0.1.9.zip` 解压到任意临时目录，例如：
 
 ```text
 D:\DFSPlayerTemplate
@@ -91,8 +91,8 @@ D:\DFSPlayerTemplate
 | 提示 | 填写 |
 | --- | --- |
 | 平台 | `windows-x64` |
-| 玩家端程序版本 | `0.1.4` |
-| 玩家端完整 app-image 目录 | `D:\DFSPlayerTemplate\DreamingFishUpdater\app\0.1.4` |
+| 玩家端程序版本 | `0.1.9` |
+| 玩家端完整 app-image 目录 | `D:\DFSPlayerTemplate\DreamingFishUpdater\app\0.1.9` |
 | 启动程序路径 | `DreamingFishUpdater.exe` |
 | 最低启动引导器版本 | `0.1.2` |
 
@@ -110,12 +110,22 @@ D:\DFSPlayerTemplate
 
 ```text
 显示版本：1.0.0
-最低玩家端程序版本：0.1.4
+最低玩家端程序版本：0.1.9
 更新记录：首次发布
 确认发布：Y
 ```
 
 发布前看一眼新增、修改和删除列表。内容不对就取消，不要勉强发布。
+
+管理端会在确认前回显“实际将保存的更新记录”。如果远程 Windows
+终端把中文显示成 `P`、`0` 或乱码，必须取消发布。先建立 UTF-8 文本文件，
+例如 `D:\更新记录.txt`，然后在更新记录提示中输入：
+
+```text
+@D:\更新记录.txt
+```
+
+管理端会按 UTF-8 读取文件并再次回显，确认中文完全正确后再输入 `Y`。
 
 ### 第四步：制作要发给玩家的完整整合包
 
@@ -125,7 +135,7 @@ D:\DFSPlayerTemplate
 D:\MyModpack
 ```
 
-把 `dreamingfish-player-windows-x64-0.1.4.zip` 里的全部内容复制进这个实例根目录。隐藏目录 `.dreamingfish-bootstrap` 也必须复制。
+把 `dreamingfish-player-windows-x64-0.1.9.zip` 里的全部内容复制进这个实例根目录。隐藏目录 `.dreamingfish-bootstrap` 也必须复制。
 
 然后在管理端选择：
 

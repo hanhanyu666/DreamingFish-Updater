@@ -207,8 +207,14 @@ final class InteractiveConsole {
         printPreview(preview);
         String version = promptRequired("本次显示版本（例如 1.0.1）");
         String minimumPlayer = prompt("最低玩家端程序版本", "0.1.0");
-        String changelog = readLine("更新记录（可留空）：").trim();
-        if (!confirm("确认发布以上不可变版本？", false)) {
+        String changelog = ChangelogInput.interactive(
+                readLine("更新记录（可留空；输入 @文件路径读取 UTF-8 文本）："),
+                root.settingsFile().getParent());
+        root.out().println();
+        root.out().println("实际将保存的更新记录：");
+        root.out().println(changelog.isBlank() ? "（未填写）" : changelog);
+        root.out().println();
+        if (!confirm("确认以上版本和更新记录无误并发布？", false)) {
             root.out().println("已取消发布；扫描预览仍保留，可使用参数式命令继续处理。");
             return;
         }
@@ -532,6 +538,12 @@ final class InteractiveConsole {
     }
 
     private String readLine(String prompt) {
+        java.io.Console console = System.console();
+        if (console != null) {
+            String value = console.readLine("%s", prompt);
+            if (value == null) throw new InputEnded();
+            return value;
+        }
         root.out().print(prompt);
         root.out().flush();
         try {
@@ -558,6 +570,7 @@ final class InteractiveConsole {
             case MODIFIED -> "修改";
             case REMOVED -> "删除";
             case POLICY_CHANGED -> "策略";
+            case METADATA_CHANGED -> "模组信息";
         };
     }
 

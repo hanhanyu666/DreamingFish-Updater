@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.4",
+    [string]$Version = "0.1.8",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
@@ -253,7 +253,14 @@ Copy-Item -LiteralPath (Join-Path $templates "dfs-admin.cmd") -Destination $admi
 Copy-Item -LiteralPath (Join-Path $templates "README-management.txt") -Destination (Join-Path $adminWindows "README.txt")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\QUICKSTART.md") -Destination (Join-Path $adminWindows "QUICKSTART.md")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") -Destination (Join-Path $adminWindows "DEPLOYMENT.md")
-Invoke-Checked (Join-Path $adminWindows "dfs-admin.cmd") @("--version")
+$adminVersionOutput = & (Join-Path $adminWindows "dfs-admin.cmd") --version 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "Packaged admin version check failed: $($adminVersionOutput -join [Environment]::NewLine)"
+}
+$expectedAdminVersion = "DreamingFish Update System $Version"
+if (($adminVersionOutput -join " ").Trim() -ne $expectedAdminVersion) {
+    throw "Packaged admin reported the wrong version; expected '$expectedAdminVersion', got '$($adminVersionOutput -join ' ')'"
+}
 New-Zip $adminWindows (Join-Path $distRoot "dfs-admin-windows-x64-$Version.zip")
 
 if (-not $SkipLinux) {

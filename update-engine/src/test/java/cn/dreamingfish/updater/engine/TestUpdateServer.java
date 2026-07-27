@@ -63,7 +63,15 @@ final class TestUpdateServer implements AutoCloseable {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         String hash = CryptoSupport.sha256(bytes);
         objects.put(hash, bytes);
-        return new TestFile(path, bytes, hash, policy);
+        return new TestFile(path, bytes, hash, policy, null, null);
+    }
+
+    TestFile mod(String path, String text, FilePolicy policy,
+                 String componentId, String displayName) {
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        String hash = CryptoSupport.sha256(bytes);
+        objects.put(hash, bytes);
+        return new TestFile(path, bytes, hash, policy, componentId, displayName);
     }
 
     ReleaseManifest release(long sequence, String id, TestFile... testFiles) {
@@ -75,7 +83,7 @@ final class TestUpdateServer implements AutoCloseable {
         List<ManifestFile> files = new ArrayList<>();
         for (TestFile file : testFiles) {
             files.add(new ManifestFile(file.path(), file.sha256(), file.bytes().length,
-                    file.policy(), false));
+                    file.policy(), false, file.componentId(), file.displayName()));
         }
         files.sort(Comparator.comparing(ManifestFile::path));
         Set<String> capabilities = forcedSyncDirectories.isEmpty()
@@ -213,7 +221,8 @@ final class TestUpdateServer implements AutoCloseable {
         executor.close();
     }
 
-    record TestFile(String path, byte[] bytes, String sha256, FilePolicy policy) {
+    record TestFile(String path, byte[] bytes, String sha256, FilePolicy policy,
+                    String componentId, String displayName) {
         TestFile {
             bytes = bytes.clone();
         }

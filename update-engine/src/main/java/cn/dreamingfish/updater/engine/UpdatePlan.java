@@ -27,4 +27,11 @@ record UpdatePlan(
     int archiveCount() {
         return (int) operations.stream().filter(operation -> operation.kind() == OperationKind.ARCHIVE).count();
     }
+
+    List<Path> paths(OperationKind kind) {
+        return operations.stream()
+                .filter(operation -> operation.kind() == kind)
+                .map(operation -> Path.of(operation.path()))
+                .toList();
+    }
 }

@@ -15,6 +15,7 @@ public final class ManifestValidator {
     private static final Pattern IDENTIFIER = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
     private static final Pattern RELEASE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
     private static final Pattern CSS_COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
+    private static final Pattern COMPONENT_ID = Pattern.compile("[A-Za-z0-9_.-]{1,128}");
 
     private ManifestValidator() {
     }
@@ -61,6 +62,10 @@ public final class ManifestValidator {
             if (file.policy() == null) {
                 throw new ProtocolException("Missing file policy for " + path);
             }
+            if (file.componentId() != null && !COMPONENT_ID.matcher(file.componentId()).matches()) {
+                throw new ProtocolException("Invalid component ID for " + path);
+            }
+            requireLength(file.displayName(), "component display name", 256);
             if (insideForcedDirectory(path, manifest.forcedSyncDirectories())
                     && file.policy() != FilePolicy.ENFORCED) {
                 throw new ProtocolException(

@@ -4,5 +4,6 @@ public enum ChangeKind {
     ADDED,
     MODIFIED,
     REMOVED,
-    POLICY_CHANGED
+    POLICY_CHANGED,
+    METADATA_CHANGED
 }

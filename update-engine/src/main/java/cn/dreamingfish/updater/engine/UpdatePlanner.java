@@ -3,6 +3,7 @@ package cn.dreamingfish.updater.engine;
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.FilePolicy;
 import cn.dreamingfish.updater.protocol.ManifestFile;
+import cn.dreamingfish.updater.protocol.ModMetadataReader;
 import cn.dreamingfish.updater.protocol.PathSafety;
 import cn.dreamingfish.updater.protocol.ProtocolException;
 
@@ -22,7 +23,8 @@ import java.util.Set;
 
 final class UpdatePlanner {
     UpdatePlan create(EnginePaths paths, SignedRelease target, LocalInstallation local,
-                      ProgressListener listener, CancellationToken cancellationToken) {
+                      LocalFileOverrides overrides, ProgressListener listener,
+                      CancellationToken cancellationToken) {
         List<FileOperation> operations = new ArrayList<>();
         Map<String, Long> requiredObjects = new LinkedHashMap<>();
         Set<String> forcedDirectories = target.manifest().forcedSyncDirectories().stream()
@@ -35,6 +37,11 @@ final class UpdatePlanner {
         for (ManifestFile file : target.manifest().files()) {
             cancellationToken.throwIfCancelled();
             ProtectedPathPolicy.validate(paths, file.path());
+            if (overrides.excludes(file)) {
+                listener.onProgress(new ProgressEvent(UpdateStage.SCANNING,
+                        "Keeping locally unmanaged file", file.path(), 0, 0));
+                continue;
+            }
             Path destination = resolve(paths, file.path());
             boolean exists = Files.exists(destination, LinkOption.NOFOLLOW_LINKS);
             if (exists && !Files.isRegularFile(destination, LinkOption.NOFOLLOW_LINKS)) {
@@ -64,9 +71,16 @@ final class UpdatePlanner {
         if (local != null) {
             Set<String> desired = new HashSet<>();
             target.manifest().files().forEach(file -> desired.add(fold(file.path())));
+            Map<String, ManifestFile> oldManifestFiles = new HashMap<>();
+            local.release().manifest().files().forEach(file ->
+                    oldManifestFiles.put(fold(file.path()), file));
             for (InstalledFileState old : local.installation().files()) {
                 cancellationToken.throwIfCancelled();
                 if (old.policy() == FilePolicy.ENFORCED && !desired.contains(fold(old.path()))) {
+                    ManifestFile oldManifestFile = oldManifestFiles.get(fold(old.path()));
+                    if (oldManifestFile != null && overrides.excludes(oldManifestFile)) {
+                        continue;
+                    }
                     if (insideForcedDirectory(old.path(), forcedDirectories)) {
                         continue;
                     }
@@ -84,7 +98,7 @@ final class UpdatePlanner {
             }
         }
 
-        addForcedDirectoryArchives(paths, target, forcedDirectories, operations,
+        addForcedDirectoryArchives(paths, target, forcedDirectories, overrides, operations,
                 cancellationToken, listener);
 
         operations.sort(Comparator.comparing(FileOperation::path));
@@ -94,6 +108,7 @@ final class UpdatePlanner {
 
     private void addForcedDirectoryArchives(EnginePaths paths, SignedRelease release,
                                             Set<String> forcedDirectories,
+                                            LocalFileOverrides overrides,
                                             List<FileOperation> operations,
                                             CancellationToken cancellationToken,
                                             ProgressListener listener) {
@@ -131,6 +146,12 @@ final class UpdatePlanner {
                                 "Forced sync directory contains an unsupported entry: " + relative);
                     }
                     String folded = fold(relative);
+                    boolean locallyDisabled = overrides.excludesPath(relative)
+                            || ModMetadataReader.read(path)
+                            .map(metadata -> overrides.excludesComponentAtPath(
+                                    metadata.componentId(), relative))
+                            .orElse(false);
+                    if (locallyDisabled) continue;
                     if (!desired.contains(folded) && operationPaths.add(folded)) {
                         operations.add(new FileOperation(OperationKind.ARCHIVE, relative,
                                 null, Files.size(path), null, false));
