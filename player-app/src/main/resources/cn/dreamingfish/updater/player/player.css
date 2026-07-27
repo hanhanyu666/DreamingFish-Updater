@@ -7,6 +7,18 @@
     -fx-font-weight: bold;
 }
 
+.app-root:maximized,
+.app-root:maximized .liquid-glass-wash,
+.app-root:maximized .title-bar {
+    -fx-background-radius: 0;
+}
+
+.app-root:maximized .liquid-glass-rim {
+    -fx-background-radius: 0;
+    -fx-border-radius: 0;
+    -fx-effect: none;
+}
+
 .image-shade {
     -fx-background-color:
         linear-gradient(to bottom, rgba(3, 7, 8, 0.07) 0%, rgba(3, 7, 8, 0.04) 37%, rgba(3, 7, 8, 0.92) 100%),
@@ -129,6 +141,17 @@
 .window-glyph-line {
     -fx-background-color: rgba(255, 248, 220, 0.86);
     -fx-background-radius: 2;
+}
+
+.window-glyph-box {
+    -fx-background-color: transparent;
+    -fx-border-color: rgba(255, 248, 220, 0.86);
+    -fx-border-width: 1.4;
+    -fx-border-radius: 1;
+}
+
+.window-button:hover .window-glyph-box {
+    -fx-border-color: white;
 }
 
 .window-button:hover .window-glyph-line {
@@ -398,6 +421,11 @@
     -fx-opacity: 0;
 }
 
+.content-page-scroll .corner,
+.content-page-scroll .scroll-bar:horizontal {
+    -fx-background-color: transparent;
+}
+
 .content-page {
     -fx-alignment: top-left;
 }
@@ -516,6 +544,13 @@
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.40), 28, 0.18, -7, 0);
 }
 
+.details-drawer:expanded {
+    -fx-background-radius: 0;
+    -fx-border-radius: 0;
+    -fx-border-width: 0;
+    -fx-effect: none;
+}
+
 .drawer-title {
     -fx-text-fill: #fff8dc;
     -fx-font-size: 18px;
@@ -571,21 +606,61 @@
     -fx-background-insets: 0;
 }
 
-.drawer-scroll .scroll-bar:vertical,
-.log-list .scroll-bar:vertical {
-    -fx-pref-width: 8px;
+.details-drawer .scroll-bar:vertical,
+.details-drawer .scroll-bar:horizontal {
     -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 1;
 }
 
-.drawer-scroll .scroll-bar:vertical .track,
-.log-list .scroll-bar:vertical .track {
-    -fx-background-color: transparent;
+.details-drawer .scroll-bar:vertical {
+    -fx-min-width: 7px;
+    -fx-pref-width: 7px;
+    -fx-max-width: 7px;
 }
 
-.drawer-scroll .scroll-bar:vertical .thumb,
-.log-list .scroll-bar:vertical .thumb {
-    -fx-background-color: rgba(255, 255, 255, 0.18);
+.details-drawer .scroll-bar:horizontal {
+    -fx-min-height: 7px;
+    -fx-pref-height: 7px;
+    -fx-max-height: 7px;
+}
+
+.details-drawer .scroll-bar .track,
+.details-drawer .scroll-bar .track-background,
+.details-drawer .corner {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+}
+
+.details-drawer .scroll-bar .thumb {
+    -fx-background-color: rgba(46, 232, 223, 0.30);
+    -fx-background-insets: 1;
     -fx-background-radius: 6;
+}
+
+.details-drawer .scroll-bar .thumb:hover,
+.details-drawer .scroll-bar .thumb:pressed {
+    -fx-background-color: rgba(46, 232, 223, 0.52);
+}
+
+.details-drawer .scroll-bar .increment-button,
+.details-drawer .scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-min-width: 0;
+    -fx-pref-width: 0;
+    -fx-max-width: 0;
+    -fx-min-height: 0;
+    -fx-pref-height: 0;
+    -fx-max-height: 0;
+    -fx-opacity: 0;
+}
+
+.details-drawer .scroll-bar .increment-arrow,
+.details-drawer .scroll-bar .decrement-arrow {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
 }
 
 .history-list,
@@ -824,9 +899,16 @@
 }
 
 .local-file-tree {
-    -fx-padding: 3 2 6 0;
+    -fx-padding: 3 10 6 0;
     -fx-background-insets: 0;
     -fx-border-width: 0;
+}
+
+.local-file-tree .scroll-bar:horizontal {
+    -fx-min-height: 0;
+    -fx-pref-height: 0;
+    -fx-max-height: 0;
+    -fx-opacity: 0;
 }
 
 .local-file-tree .tree-cell {

@@ -47,7 +47,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.9";
+    static final String VERSION = "0.1.10";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
@@ -103,6 +103,7 @@ public final class PlayerApplication extends Application {
         stage.setHeight(680);
         stage.setMinWidth(960);
         stage.setMinHeight(560);
+        stage.setResizable(true);
 
         view = new PlayerView(stage);
         Scene scene = new Scene(view.root(), 1180, 680, Color.TRANSPARENT);
@@ -340,6 +341,7 @@ public final class PlayerApplication extends Application {
                 localModManager.restoreDefaults();
             }
             refreshLocalManagementAsync();
+            view.showRestartRequired("模组启停设置已恢复");
         } catch (IOException e) {
             log.error("Unable to restore local mod defaults", e);
             showFailure("无法恢复模组设置", e);
@@ -366,6 +368,7 @@ public final class PlayerApplication extends Application {
                 localFileManager.restoreDefaults();
             }
             refreshLocalManagementAsync();
+            view.showRestartRequired("文件管理设置已恢复");
         } catch (IOException e) {
             log.error("Unable to restore local file defaults", e);
             showFailure("无法恢复文件管理设置", e);

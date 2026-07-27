@@ -8,6 +8,7 @@ import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.FilePolicy;
 import cn.dreamingfish.updater.protocol.ReleaseHistory;
 import cn.dreamingfish.updater.protocol.ReleaseHistoryEntry;
+import javafx.application.Platform;
 import javafx.animation.FadeTransition;
 import javafx.animation.Interpolator;
 import javafx.animation.ParallelTransition;
@@ -23,6 +24,7 @@ import javafx.scene.Cursor;
 import javafx.scene.input.MouseButton;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
@@ -73,6 +75,8 @@ final class PlayerView {
     private static final PseudoClass MUSIC_PLAYING = PseudoClass.getPseudoClass("playing");
     private static final PseudoClass NAV_SELECTED = PseudoClass.getPseudoClass("selected");
     private static final PseudoClass DRAWER_SELECTED = PseudoClass.getPseudoClass("selected");
+    private static final PseudoClass WINDOW_MAXIMIZED = PseudoClass.getPseudoClass("maximized");
+    private static final PseudoClass DRAWER_EXPANDED = PseudoClass.getPseudoClass("expanded");
     private static final DateTimeFormatter HISTORY_TIME = DateTimeFormatter
             .ofPattern("yyyy.MM.dd  HH:mm")
             .withZone(ZoneId.systemDefault());
@@ -172,6 +176,7 @@ final class PlayerView {
     private final Button restoreMods = new Button("恢复整合包默认");
     private final VBox modPage = new VBox(12);
     private final TreeView<LocalFileEntry> localFileTree = new TreeView<>();
+    private final Map<String, TreeItem<LocalFileEntry>> localFileItems = new LinkedHashMap<>();
     private final Label localFileEmpty = new Label();
     private final StackPane localFileTreePane = new StackPane(localFileTree, localFileEmpty);
     private final TextField localFileSearch = new TextField();
@@ -190,7 +195,9 @@ final class PlayerView {
     private final Tooltip updateFileTooltip = new Tooltip();
     private final Button close = new Button();
     private final Button minimize = new Button();
+    private final Button maximize = new Button();
     private final Button music = new Button();
+    private final Button expandDrawer = new Button();
     private HBox titleBar;
     private VBox identityPane;
     private HBox playerIdentityPane;
@@ -200,9 +207,11 @@ final class PlayerView {
     private Page currentPage = Page.HOME;
     private List<LocalModEntry> localMods = List.of();
     private List<LocalFileEntry> localFiles = List.of();
+    private String renderedLocalFileQuery;
     private int locallyDisabledMods;
     private int locallyExcludedFiles;
     private ReleaseHistory releaseHistory;
+    private boolean drawerExpanded;
     private boolean entrancePlayed;
     private boolean launchNoticeShown;
     private Runnable closeAction = () -> { };
@@ -349,10 +358,15 @@ final class PlayerView {
     }
 
     void setLocalMods(List<LocalModEntry> mods) {
+        boolean preserveScroll = !modList.getChildren().isEmpty();
+        double scrollPosition = modScroll.getVvalue();
         localMods = mods == null ? List.of() : List.copyOf(mods);
         locallyDisabledMods = (int) localMods.stream()
                 .filter(entry -> entry.disabled() && !entry.forced()).count();
         rebuildModList();
+        if (preserveScroll) {
+            Platform.runLater(() -> modScroll.setVvalue(scrollPosition));
+        }
     }
 
     void setLocalFiles(List<LocalFileEntry> files) {
@@ -429,6 +443,22 @@ final class PlayerView {
     void showLaunchKeptOpen() {
         launchNoticeText.setText("Minecraft 已开始启动 · 窗口将保持打开");
         showLaunchNotice();
+    }
+
+    void showRestartRequired(String restoredItem) {
+        ButtonType closeUpdater = new ButtonType(
+                "关闭更新器", ButtonBar.ButtonData.OK_DONE);
+        ButtonType later = new ButtonType("稍后", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert information = new Alert(Alert.AlertType.INFORMATION,
+                "请先关闭 DreamingFish Updater，再回到 MC 启动器重新启动游戏。"
+                        + "当前已经启动的游戏不会自动重新加载刚恢复的文件。",
+                closeUpdater, later);
+        information.initOwner(stageWindow);
+        information.setTitle("需要重新启动游戏");
+        information.setHeaderText(restoredItem);
+        if (information.showAndWait().orElse(later) == closeUpdater) {
+            closeAction.run();
+        }
     }
 
     void setCloseAction(Runnable action) {
@@ -631,7 +661,20 @@ final class PlayerView {
         clip.setArcHeight(58);
         root.setClip(clip);
 
+        stageWindow.maximizedProperty().addListener((observable, oldValue, maximizedValue) -> {
+            boolean maximizedState = Boolean.TRUE.equals(maximizedValue);
+            root.pseudoClassStateChanged(WINDOW_MAXIMIZED, maximizedState);
+            clip.setArcWidth(maximizedState ? 0 : 58);
+            clip.setArcHeight(maximizedState ? 0 : 58);
+            installMaximizeGlyph(maximize, maximizedState);
+            maximize.setTooltip(new Tooltip(maximizedState ? "还原窗口" : "最大化"));
+            maximize.setAccessibleText(maximizedState ? "还原窗口" : "最大化");
+        });
+        resizeGrip.visibleProperty().bind(stageWindow.maximizedProperty().not());
+        resizeGrip.managedProperty().bind(stageWindow.maximizedProperty().not());
+
         minimize.setOnAction(event -> stageWindow.setIconified(true));
+        maximize.setOnAction(event -> stageWindow.setMaximized(!stageWindow.isMaximized()));
         close.setOnAction(event -> closeAction.run());
         music.setOnAction(event -> musicToggleAction.run());
         retry.setOnAction(event -> retryAction.run());
@@ -681,17 +724,21 @@ final class PlayerView {
         music.getStyleClass().addAll("window-button", "music-button");
         installMusicGlyph(music, false);
         minimize.getStyleClass().addAll("window-button", "minimize-button");
+        maximize.getStyleClass().addAll("window-button", "maximize-button");
         close.getStyleClass().addAll("window-button", "close-button");
         music.setDisable(true);
         music.setTooltip(new Tooltip("正在载入背景音乐"));
         music.setAccessibleText("正在载入背景音乐");
         installMinimizeGlyph(minimize);
+        installMaximizeGlyph(maximize, false);
         installCloseGlyph(close);
         minimize.setTooltip(new Tooltip("最小化"));
+        maximize.setTooltip(new Tooltip("最大化"));
         close.setTooltip(new Tooltip("关闭"));
         minimize.setAccessibleText("最小化");
+        maximize.setAccessibleText("最大化");
         close.setAccessibleText("关闭");
-        bar.getChildren().addAll(brand, navigation, spacer, music, minimize, close);
+        bar.getChildren().addAll(brand, navigation, spacer, music, minimize, maximize, close);
         installWindowDrag(stageWindow, bar);
         return bar;
     }
@@ -1027,6 +1074,11 @@ final class PlayerView {
         header.setAlignment(Pos.CENTER_LEFT);
         drawerTitle.getStyleClass().add("drawer-title");
         drawerTitle.setText("更新与本地管理");
+        expandDrawer.getStyleClass().addAll("window-button", "drawer-expand-button");
+        installMaximizeGlyph(expandDrawer, false);
+        expandDrawer.setTooltip(new Tooltip("铺满内容区"));
+        expandDrawer.setAccessibleText("铺满内容区");
+        expandDrawer.setOnAction(event -> setDrawerExpanded(!drawerExpanded));
         Button hide = new Button();
         hide.getStyleClass().add("window-button");
         installCloseGlyph(hide);
@@ -1034,7 +1086,7 @@ final class PlayerView {
         hide.setAccessibleText("收起详情");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        header.getChildren().addAll(drawerTitle, spacer, hide);
+        header.getChildren().addAll(drawerTitle, spacer, expandDrawer, hide);
         hide.setOnAction(event -> hideDrawer());
 
         HBox tabs = new HBox(8);
@@ -1099,6 +1151,7 @@ final class PlayerView {
         localFileWarning.setWrapText(true);
         localFileTree.getStyleClass().add("local-file-tree");
         localFileTree.setShowRoot(false);
+        localFileTree.setFixedCellSize(52);
         localFileTree.setCellFactory(tree -> createLocalFileCell());
         localFileEmpty.getStyleClass().add("drawer-empty");
         localFileEmpty.setMouseTransparent(true);
@@ -1131,6 +1184,7 @@ final class PlayerView {
                 updateDetailsPage, historyScroll, logs, localManagementPage);
         VBox.setVgrow(drawerContent, Priority.ALWAYS);
         detailsDrawer.getChildren().addAll(header, tabs, drawerContent);
+        setDrawerExpanded(false);
         setReleaseHistory(null);
         showDrawerMode(DrawerMode.HISTORY);
     }
@@ -1204,6 +1258,24 @@ final class PlayerView {
         changelogToggle.setText("更新记录  ›");
         logToggle.setText("运行记录  ›");
         localFilesToggle.setText("本地文件  ›");
+    }
+
+    private void setDrawerExpanded(boolean expanded) {
+        drawerExpanded = expanded;
+        detailsDrawer.pseudoClassStateChanged(DRAWER_EXPANDED, expanded);
+        if (expanded) {
+            AnchorPane.setLeftAnchor(detailsDrawer, 0.0);
+            detailsDrawer.setPrefWidth(Region.USE_COMPUTED_SIZE);
+            detailsDrawer.setMaxWidth(Double.MAX_VALUE);
+        } else {
+            AnchorPane.setLeftAnchor(detailsDrawer, null);
+            detailsDrawer.setPrefWidth(620);
+            detailsDrawer.setMaxWidth(620);
+        }
+        installMaximizeGlyph(expandDrawer, expanded);
+        String action = expanded ? "恢复侧栏" : "铺满内容区";
+        expandDrawer.setTooltip(new Tooltip(action));
+        expandDrawer.setAccessibleText(action);
     }
 
     private Node createHistoryEntry(ReleaseHistoryEntry release, boolean latest) {
@@ -1329,25 +1401,49 @@ final class PlayerView {
             }
         }
 
-        TreeItem<LocalFileEntry> rootItem = new TreeItem<>();
-        rootItem.setExpanded(true);
-        Map<String, TreeItem<LocalFileEntry>> items = new LinkedHashMap<>();
-        localFiles.stream()
+        List<LocalFileEntry> displayedFiles = localFiles.stream()
                 .filter(entry -> visible.contains(foldPath(entry.path())))
                 .sorted(java.util.Comparator
                         .comparingInt((LocalFileEntry entry) -> pathDepth(entry.path()))
                         .thenComparing(LocalFileEntry::path, String.CASE_INSENSITIVE_ORDER))
-                .forEach(entry -> {
+                .toList();
+        Set<String> displayedPaths = displayedFiles.stream()
+                .map(entry -> foldPath(entry.path()))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+        if (query.equals(renderedLocalFileQuery)
+                && localFileItems.keySet().equals(displayedPaths)) {
+            displayedFiles.forEach(entry ->
+                    localFileItems.get(foldPath(entry.path())).setValue(entry));
+            updateLocalFileEmptyState(query, displayedFiles.isEmpty());
+            return;
+        }
+
+        Set<String> expandedPaths = localFileItems.entrySet().stream()
+                .filter(entry -> entry.getValue().isExpanded())
+                .map(Map.Entry::getKey)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        boolean hadTree = localFileTree.getRoot() != null;
+        TreeItem<LocalFileEntry> rootItem = new TreeItem<>();
+        rootItem.setExpanded(true);
+        localFileItems.clear();
+        displayedFiles.forEach(entry -> {
                     TreeItem<LocalFileEntry> item = new TreeItem<>(entry);
                     String parent = parentPath(entry.path());
                     TreeItem<LocalFileEntry> parentItem = parent == null
-                            ? rootItem : items.getOrDefault(foldPath(parent), rootItem);
+                            ? rootItem : localFileItems.getOrDefault(foldPath(parent), rootItem);
                     parentItem.getChildren().add(item);
-                    items.put(foldPath(entry.path()), item);
-                    item.setExpanded(!query.isEmpty() || pathDepth(entry.path()) == 0);
+                    String foldedPath = foldPath(entry.path());
+                    localFileItems.put(foldedPath, item);
+                    item.setExpanded(!query.isEmpty() || pathDepth(entry.path()) == 0
+                            || hadTree && expandedPaths.contains(foldedPath));
                 });
         localFileTree.setRoot(rootItem);
-        boolean empty = rootItem.getChildren().isEmpty();
+        renderedLocalFileQuery = query;
+        updateLocalFileEmptyState(query, displayedFiles.isEmpty());
+    }
+
+    private void updateLocalFileEmptyState(String query, boolean empty) {
         localFileEmpty.setText(query.isEmpty()
                 ? "当前版本没有受管理文件" : "没有匹配的文件或目录");
         localFileEmpty.setManaged(empty);
@@ -1366,17 +1462,23 @@ final class PlayerView {
                 }
                 Label name = new Label(entry.displayName() + (entry.directory() ? "/" : ""));
                 name.getStyleClass().add("local-file-name");
-                name.setWrapText(true);
+                name.setWrapText(false);
+                name.setMinWidth(0);
+                name.setTooltip(new Tooltip(name.getText()));
                 Label detail = new Label(localFileDetail(entry));
                 detail.getStyleClass().add("local-file-detail");
-                detail.setWrapText(true);
+                detail.setWrapText(false);
+                detail.setMinWidth(0);
+                detail.setTooltip(new Tooltip(detail.getText()));
                 VBox labels = new VBox(2, name, detail);
+                labels.setMinWidth(0);
                 labels.setMaxWidth(Double.MAX_VALUE);
                 HBox.setHgrow(labels, Priority.ALWAYS);
 
                 CheckBox managed = new CheckBox(entry.forced() ? "强制"
                         : entry.inheritedExclusion() != null ? "随目录" : "管理");
                 managed.getStyleClass().add("mod-toggle");
+                managed.setMinWidth(Region.USE_PREF_SIZE);
                 managed.setSelected(entry.managed());
                 managed.setIndeterminate(entry.partiallyExcluded() && !entry.forced());
                 managed.setDisable(entry.forced() || entry.inheritedExclusion() != null);
@@ -1393,6 +1495,11 @@ final class PlayerView {
                 HBox row = new HBox(12, labels, managed);
                 row.getStyleClass().add("local-file-row");
                 row.setAlignment(Pos.CENTER_LEFT);
+                row.setMinHeight(36);
+                row.setPrefHeight(36);
+                row.setMaxHeight(36);
+                row.setMaxWidth(Double.MAX_VALUE);
+                row.prefWidthProperty().bind(widthProperty().subtract(44));
                 setText(null);
                 setGraphic(row);
             }
@@ -1490,7 +1597,8 @@ final class PlayerView {
     private Node createModRow(LocalModEntry entry) {
         Label name = new Label(entry.displayName());
         name.getStyleClass().add("mod-name");
-        name.setWrapText(true);
+        name.setWrapText(false);
+        name.setTooltip(new Tooltip(name.getText()));
         String source = entry.forced() ? "服务器强制同步"
                 : entry.managed() ? "整合包管理" : "玩家添加";
         if (entry.disabled() && !entry.forced()) {
@@ -1498,8 +1606,10 @@ final class PlayerView {
         }
         Label detail = new Label(source + "  ·  " + entry.path());
         detail.getStyleClass().add("mod-detail");
-        detail.setWrapText(true);
+        detail.setWrapText(false);
+        detail.setTooltip(new Tooltip(detail.getText()));
         VBox labels = new VBox(3, name, detail);
+        labels.setMinWidth(0);
         labels.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(labels, Priority.ALWAYS);
 
@@ -1521,6 +1631,9 @@ final class PlayerView {
         HBox row = new HBox(14, labels, enabled);
         row.getStyleClass().add("mod-row");
         row.setAlignment(Pos.CENTER_LEFT);
+        row.setMinHeight(58);
+        row.setPrefHeight(58);
+        row.setMaxHeight(58);
         return row;
     }
 
@@ -1674,15 +1787,30 @@ final class PlayerView {
     private void installWindowDrag(Stage stageWindow, HBox bar) {
         final double[] offset = new double[2];
         bar.setOnMousePressed(event -> {
-            if (event.getTarget() instanceof Button) return;
+            if (isButtonTarget(event.getTarget())) return;
             offset[0] = event.getSceneX();
             offset[1] = event.getSceneY();
         });
         bar.setOnMouseDragged(event -> {
-            if (event.getTarget() instanceof Button) return;
+            if (isButtonTarget(event.getTarget()) || stageWindow.isMaximized()) return;
             stageWindow.setX(event.getScreenX() - offset[0]);
             stageWindow.setY(event.getScreenY() - offset[1]);
         });
+        bar.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2
+                    && !isButtonTarget(event.getTarget())) {
+                stageWindow.setMaximized(!stageWindow.isMaximized());
+            }
+        });
+    }
+
+    private static boolean isButtonTarget(Object target) {
+        Node node = target instanceof Node candidate ? candidate : null;
+        while (node != null) {
+            if (node instanceof Button) return true;
+            node = node.getParent();
+        }
+        return false;
     }
 
     private void installResize(Stage stageWindow, Region grip) {
@@ -1709,6 +1837,38 @@ final class PlayerView {
         line.setMaxSize(13, 2);
         line.setMouseTransparent(true);
         button.setGraphic(line);
+    }
+
+    private static void installMaximizeGlyph(Button button, boolean maximized) {
+        if (!maximized) {
+            Region square = new Region();
+            square.getStyleClass().add("window-glyph-box");
+            square.setMinSize(12, 10);
+            square.setPrefSize(12, 10);
+            square.setMaxSize(12, 10);
+            square.setMouseTransparent(true);
+            button.setGraphic(square);
+            return;
+        }
+        Region back = new Region();
+        Region front = new Region();
+        for (Region square : List.of(back, front)) {
+            square.getStyleClass().add("window-glyph-box");
+            square.setMinSize(10, 8);
+            square.setPrefSize(10, 8);
+            square.setMaxSize(10, 8);
+            square.setMouseTransparent(true);
+        }
+        back.setTranslateX(2);
+        back.setTranslateY(-2);
+        front.setTranslateX(-2);
+        front.setTranslateY(2);
+        StackPane glyph = new StackPane(back, front);
+        glyph.setMinSize(14, 12);
+        glyph.setPrefSize(14, 12);
+        glyph.setMaxSize(14, 12);
+        glyph.setMouseTransparent(true);
+        button.setGraphic(glyph);
     }
 
     private static void installCloseGlyph(Button button) {

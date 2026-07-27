@@ -20,8 +20,8 @@
 ```powershell
 .\mvnw.cmd test
 .\packaging\build-distributions.ps1 -Version 0.1.8 -SkipLinux
-.\packaging\build-distributions.ps1 -Version 0.1.9 -PlayerOnly -SkipLinux
-.\packaging\smoke-test-distributions.ps1 -Version 0.1.9 -AdminVersion 0.1.8
+.\packaging\build-distributions.ps1 -Version 0.1.10 -PlayerOnly -SkipLinux
+.\packaging\smoke-test-distributions.ps1 -Version 0.1.10 -AdminVersion 0.1.8
 ```
 
 发行包冒烟测试会重新解压实际 ZIP，在 `target/` 的临时目录中模拟三个整合包版本、制作历史玩家包、校验玩家程序防篡改和启动 HTTP 服务；成功后自动删除临时数据，不会接触现有 Minecraft 实例或管理端数据。
