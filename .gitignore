@@ -1,0 +1,12 @@
+/.m2/
+/.maven-user-home/
+/.tools/
+/dist/
+/deployments/
+/**/target/
+/.idea/
+/.vscode/
+*.iml
+*.log
+*.tmp
+*.part

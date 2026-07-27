@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "$SCRIPT_DIR/runtime/bin/java" -Dfile.encoding=UTF-8 -Ddfs.home="$SCRIPT_DIR" \
+  -jar "$SCRIPT_DIR/app/dfs-admin.jar" "$@"

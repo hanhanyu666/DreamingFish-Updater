@@ -1,0 +1,353 @@
+.app-root {
+    -dfs-accent: #2ee8df;
+    -dfs-secondary: #b06cff;
+    -fx-background-color: #05090b;
+    -fx-background-radius: 29;
+    -fx-font-family: "Microsoft YaHei UI", "Noto Sans SC", "Segoe UI";
+}
+
+.image-shade {
+    -fx-background-color:
+        linear-gradient(to bottom, rgba(3, 7, 8, 0.07) 0%, rgba(3, 7, 8, 0.04) 37%, rgba(3, 7, 8, 0.92) 100%),
+        linear-gradient(to right, rgba(3, 7, 8, 0.88) 0%, rgba(3, 7, 8, 0.53) 32%, rgba(3, 7, 8, 0.08) 62%, rgba(3, 7, 8, 0.45) 100%);
+}
+
+.liquid-glass-wash {
+    -fx-background-color:
+        linear-gradient(to bottom right,
+            rgba(255, 255, 255, 0.105) 0%,
+            rgba(255, 255, 255, 0.018) 24%,
+            rgba(46, 232, 223, 0.025) 62%,
+            rgba(176, 108, 255, 0.055) 100%),
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.055) 0%,
+            rgba(255, 255, 255, 0.008) 16%,
+            rgba(0, 0, 0, 0.03) 100%);
+    -fx-background-radius: 29;
+}
+
+.liquid-glass-rim {
+    -fx-background-color: transparent;
+    -fx-background-radius: 29;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
+    -fx-effect: innershadow(gaussian, rgba(255, 255, 255, 0.09), 10, 0.12, 0, 1);
+}
+
+.liquid-glass-sweep {
+    -fx-background-color: linear-gradient(to right,
+        transparent 0%,
+        rgba(255, 255, 255, 0.025) 20%,
+        rgba(255, 255, 255, 0.20) 49%,
+        rgba(120, 255, 247, 0.08) 62%,
+        transparent 100%);
+    -fx-rotate: -11;
+}
+
+.title-bar {
+    -fx-background-color:
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.025)),
+        rgba(3, 7, 8, 0.22);
+    -fx-background-radius: 29 29 0 0;
+    -fx-border-color: transparent transparent rgba(255, 255, 255, 0.09) transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.top-brand {
+    -fx-padding: 0 4 0 0;
+}
+
+.brand-chinese {
+    -fx-text-fill: rgba(255, 248, 226, 0.96);
+    -fx-font-size: 15px;
+    -fx-font-weight: 700;
+}
+
+.brand-dreaming,
+.brand-fish {
+    -fx-font-family: "Segoe UI", "Microsoft YaHei UI";
+    -fx-font-size: 14px;
+    -fx-font-weight: 700;
+}
+
+.brand-dreaming {
+    -fx-text-fill: -dfs-accent;
+}
+
+.brand-fish {
+    -fx-text-fill: -dfs-secondary;
+}
+
+.window-button {
+    -fx-min-width: 36px;
+    -fx-pref-width: 36px;
+    -fx-min-height: 34px;
+    -fx-pref-height: 34px;
+    -fx-background-color: transparent;
+    -fx-background-radius: 10;
+    -fx-text-fill: rgba(255, 248, 220, 0.86);
+    -fx-font-size: 19px;
+    -fx-cursor: hand;
+}
+
+.window-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.10);
+}
+
+.window-glyph-line {
+    -fx-background-color: rgba(255, 248, 220, 0.86);
+    -fx-background-radius: 2;
+}
+
+.window-button:hover .window-glyph-line {
+    -fx-background-color: white;
+}
+
+.music-button {
+    -fx-font-family: "Segoe UI Symbol", "Microsoft YaHei UI";
+    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+}
+
+.music-button:playing {
+    -fx-background-color: rgba(46, 232, 223, 0.12);
+    -fx-text-fill: -dfs-accent;
+}
+
+.music-note-glyph {
+    -fx-text-fill: rgba(255, 248, 220, 0.86);
+    -fx-font-family: "Segoe UI Symbol", "Microsoft YaHei UI";
+    -fx-font-size: 19px;
+    -fx-font-weight: 700;
+}
+
+.music-pause-line {
+    -fx-background-color: -dfs-accent;
+    -fx-background-radius: 2;
+}
+
+.close-button:hover {
+    -fx-background-color: #c9424d;
+    -fx-text-fill: white;
+}
+
+.welcome-title {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 34px;
+    -fx-font-weight: 700;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.62), 26, 0.22, 0, 8);
+}
+
+.product-name {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 64px;
+    -fx-font-weight: 800;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.70), 34, 0.25, 0, 12);
+}
+
+.subtitle {
+    -fx-text-fill: rgba(255, 241, 200, 0.84);
+    -fx-font-size: 15px;
+}
+
+.player-identity {
+    -fx-padding: 10 17 10 12;
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.022)),
+        rgba(3, 7, 8, 0.40);
+    -fx-background-radius: 17;
+    -fx-border-color: rgba(255, 255, 255, 0.18);
+    -fx-border-radius: 17;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.30), 18, 0.16, 0, 7);
+}
+
+.player-accent {
+    -fx-background-color: linear-gradient(to bottom, -dfs-accent, -dfs-secondary);
+    -fx-background-radius: 3;
+}
+
+.player-caption {
+    -fx-text-fill: rgba(255, 248, 220, 0.52);
+    -fx-font-size: 10px;
+}
+
+.player-name {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 15px;
+    -fx-font-weight: 700;
+}
+
+.progress-region {
+    -fx-padding: 18 18 17 18;
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(255, 255, 255, 0.115), rgba(255, 255, 255, 0.025)),
+        rgba(3, 7, 8, 0.43);
+    -fx-background-radius: 19;
+    -fx-border-color: linear-gradient(to bottom right,
+        rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.07), rgba(46, 232, 223, 0.13));
+    -fx-border-radius: 19;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.36), 24, 0.18, 0, 9);
+}
+
+.stage-label {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+}
+
+.percent-label {
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 18px;
+    -fx-font-weight: 800;
+}
+
+.current-path,
+.byte-summary {
+    -fx-text-fill: rgba(255, 248, 220, 0.64);
+    -fx-font-size: 12px;
+}
+
+.update-progress {
+    -fx-pref-height: 8px;
+    -fx-accent: -dfs-accent;
+}
+
+.update-progress > .track {
+    -fx-background-color: rgba(255, 255, 255, 0.13);
+    -fx-background-radius: 6;
+}
+
+.update-progress > .bar {
+    -fx-background-color: linear-gradient(to right, -dfs-accent, -dfs-secondary);
+    -fx-background-insets: 0;
+    -fx-background-radius: 6;
+    -fx-padding: 4px;
+}
+
+.link-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 9;
+    -fx-padding: 5 3;
+    -fx-text-fill: #fff1c8;
+    -fx-font-size: 12px;
+    -fx-cursor: hand;
+}
+
+.link-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+    -fx-text-fill: -dfs-accent;
+}
+
+.unmanaged-notice {
+    -fx-text-fill: #ffc36f;
+    -fx-font-size: 12px;
+}
+
+.archive-button {
+    -fx-max-width: Infinity;
+    -fx-min-height: 32px;
+    -fx-padding: 0 13px;
+    -fx-alignment: center-left;
+    -fx-background-color: rgba(255, 195, 111, 0.10);
+    -fx-background-radius: 9;
+    -fx-border-color: rgba(255, 195, 111, 0.28);
+    -fx-border-radius: 9;
+    -fx-text-fill: #ffd39a;
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+    -fx-cursor: hand;
+}
+
+.archive-button:hover {
+    -fx-background-color: rgba(255, 195, 111, 0.18);
+}
+
+.updater-info {
+    -fx-text-fill: rgba(255, 248, 226, 0.58);
+    -fx-font-size: 10px;
+    -fx-font-family: "Segoe UI", "Microsoft YaHei UI";
+}
+
+.launch-notice {
+    -fx-padding: 10 16 10 13;
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.035)),
+        rgba(3, 10, 11, 0.72);
+    -fx-background-radius: 16;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.34), 20, 0.16, 0, 7);
+}
+
+.launch-notice-glyph {
+    -fx-min-width: 22px;
+    -fx-pref-width: 22px;
+    -fx-min-height: 22px;
+    -fx-pref-height: 22px;
+    -fx-alignment: center;
+    -fx-background-color: rgba(46, 232, 223, 0.16);
+    -fx-background-radius: 11;
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 13px;
+    -fx-font-weight: 800;
+}
+
+.launch-notice-text {
+    -fx-text-fill: rgba(255, 248, 226, 0.92);
+    -fx-font-size: 13px;
+    -fx-font-weight: 600;
+}
+
+.primary-button,
+.secondary-button {
+    -fx-min-height: 36px;
+    -fx-padding: 0 17px;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-cursor: hand;
+    -fx-font-weight: 700;
+}
+
+.primary-button {
+    -fx-background-color: -dfs-accent;
+    -fx-text-fill: #051012;
+}
+
+.secondary-button {
+    -fx-background-color: rgba(255, 255, 255, 0.07);
+    -fx-border-color: rgba(255, 241, 200, 0.20);
+    -fx-text-fill: #fff1c8;
+}
+
+.details-drawer {
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.025)),
+        rgba(3, 7, 8, 0.94);
+    -fx-background-radius: 24 0 0 24;
+    -fx-border-color: rgba(255, 255, 255, 0.18) transparent rgba(255, 255, 255, 0.12) rgba(255, 255, 255, 0.16);
+    -fx-border-radius: 24 0 0 24;
+    -fx-border-width: 1 0 1 1;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.40), 28, 0.18, -7, 0);
+}
+
+.drawer-title {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+}
+
+.details-text {
+    -fx-background-color: #071012;
+    -fx-background-radius: 12;
+    -fx-control-inner-background: #071012;
+    -fx-text-fill: rgba(255, 248, 220, 0.76);
+    -fx-highlight-fill: rgba(46, 232, 223, 0.30);
+    -fx-highlight-text-fill: white;
+    -fx-font-family: "Consolas", "Cascadia Mono", "Microsoft YaHei UI";
+    -fx-font-size: 11px;
+}
+
+.details-text .content {
+    -fx-background-color: #071012;
+    -fx-background-radius: 12;
+}

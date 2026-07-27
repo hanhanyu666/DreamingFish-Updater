@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "projectId": "replace-with-project-id",
+  "baseUrl": "http://update.example.com:8080",
+  "publicKey": "replace-with-the-generated-project-public-key",
+  "playerHome": "DreamingFishUpdater",
+  "bundledCoverPath": null,
+  "fallbackBranding": {
+    "productName": "梦屿",
+    "subtitle": "灾变之后，仍有人在这里守望。",
+    "serverAddress": "mc.example.test",
+    "coverObject": null,
+    "accentColor": "#2ee8df",
+    "secondaryAccentColor": "#b06cff"
+  }
+}
