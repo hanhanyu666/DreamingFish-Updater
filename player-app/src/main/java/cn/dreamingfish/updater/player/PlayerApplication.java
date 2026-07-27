@@ -27,8 +27,6 @@ import javafx.animation.Timeline;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.ButtonType;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
@@ -47,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.11";
+    static final String VERSION = "0.1.12";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
@@ -153,6 +151,10 @@ public final class PlayerApplication extends Application {
                 "DreamingFishUpdater", null,
                 new Branding("梦屿", "灾变之后，仍有人在这里守望。",
                         "", null, "#2ee8df", "#b06cff"));
+        view.setLocalModToggleAction((entry, disabled) -> { });
+        view.setRestoreModsAction(() -> { });
+        view.setLocalFileToggleAction((entry, managed) -> { });
+        view.setRestoreFilesAction(() -> { });
         view.setBranding(binding.fallbackBranding());
         view.setBackground(null);
         view.showPreview();
@@ -490,13 +492,7 @@ public final class PlayerApplication extends Application {
             return;
         }
         if (working) {
-            Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
-                    "关闭更新器会取消本次更新，并停止 Minecraft 启动。",
-                    ButtonType.CANCEL, ButtonType.OK);
-            confirmation.initOwner(stage);
-            confirmation.setTitle("取消更新");
-            confirmation.setHeaderText("确定要关闭更新器吗？");
-            if (confirmation.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            if (!view.confirmCloseDuringUpdate()) return;
             cancelled.set(true);
         }
         closeAndDeny("玩家关闭了更新器");

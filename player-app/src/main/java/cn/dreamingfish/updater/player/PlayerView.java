@@ -24,8 +24,6 @@ import javafx.scene.Cursor;
 import javafx.scene.input.MouseButton;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonBar;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -40,7 +38,6 @@ import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeTableCell;
 import javafx.scene.control.TreeTableColumn;
 import javafx.scene.control.TreeTableView;
-import javafx.scene.control.Alert;
 import javafx.scene.effect.DisplacementMap;
 import javafx.scene.effect.Effect;
 import javafx.scene.effect.FloatMap;
@@ -451,19 +448,20 @@ final class PlayerView {
     }
 
     void showRestartRequired(String restoredItem) {
-        ButtonType closeUpdater = new ButtonType(
-                "关闭更新器", ButtonBar.ButtonData.OK_DONE);
-        ButtonType later = new ButtonType("稍后", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert information = new Alert(Alert.AlertType.INFORMATION,
+        if (PlayerDialog.confirm(stageWindow, PlayerDialog.Tone.INFO,
+                "需要重新启动游戏", restoredItem,
                 "请先关闭 DreamingFish Updater，再回到 MC 启动器重新启动游戏。"
                         + "当前已经启动的游戏不会自动重新加载刚恢复的文件。",
-                closeUpdater, later);
-        information.initOwner(stageWindow);
-        information.setTitle("需要重新启动游戏");
-        information.setHeaderText(restoredItem);
-        if (information.showAndWait().orElse(later) == closeUpdater) {
+                "关闭更新器", "稍后")) {
             closeAction.run();
         }
+    }
+
+    boolean confirmCloseDuringUpdate() {
+        return PlayerDialog.confirm(stageWindow, PlayerDialog.Tone.DANGER,
+                "取消更新", "确定要关闭更新器吗？",
+                "关闭更新器会取消本次更新，并停止 Minecraft 启动。",
+                "取消更新", "继续更新");
     }
 
     void setCloseAction(Runnable action) {
@@ -1576,13 +1574,10 @@ final class PlayerView {
     }
 
     private void confirmRestoreFiles() {
-        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
+        if (PlayerDialog.confirm(stageWindow, PlayerDialog.Tone.INFO,
+                "恢复文件管理", "恢复更新器管理全部文件吗？",
                 "所有文件和目录的本地豁免都会清除。下次校验时，普通 ENFORCED 文件将恢复为服务器当前版本。",
-                ButtonType.CANCEL, ButtonType.OK);
-        confirmation.initOwner(stageWindow);
-        confirmation.setTitle("恢复文件管理");
-        confirmation.setHeaderText("恢复更新器管理全部文件吗？");
-        if (confirmation.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                "恢复全部管理", "取消")) {
             restoreFilesAction.run();
         }
     }
@@ -1681,25 +1676,19 @@ final class PlayerView {
     }
 
     private boolean confirmDisableMod(LocalModEntry entry) {
-        Alert warning = new Alert(Alert.AlertType.CONFIRMATION,
+        return PlayerDialog.confirm(stageWindow, PlayerDialog.Tone.WARNING,
+                "停用本地模组", "确认停用这个模组吗？",
                 "停用 “" + entry.displayName() + "” 可能导致依赖它的模组无法加载，"
                         + "也可能使你无法进入服务器。确认后更新器将不再自动恢复它。",
-                ButtonType.CANCEL, ButtonType.OK);
-        warning.initOwner(stageWindow);
-        warning.setTitle("停用本地模组");
-        warning.setHeaderText("确认停用这个模组吗？");
-        return warning.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
+                "确认停用", "取消");
     }
 
     private void confirmRestoreMods() {
-        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
+        if (PlayerDialog.confirm(stageWindow, PlayerDialog.Tone.INFO,
+                "恢复整合包默认", "恢复全部模组吗？",
                 "所有本地停用选择都会清除。整合包模组将恢复为服务器当前版本，"
                         + "玩家自己添加的模组会放回原目录。",
-                ButtonType.CANCEL, ButtonType.OK);
-        confirmation.initOwner(stageWindow);
-        confirmation.setTitle("恢复整合包默认");
-        confirmation.setHeaderText("恢复全部模组吗？");
-        if (confirmation.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                "恢复默认", "取消")) {
             restoreModsAction.run();
         }
     }

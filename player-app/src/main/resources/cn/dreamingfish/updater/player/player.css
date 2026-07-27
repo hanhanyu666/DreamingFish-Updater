@@ -963,3 +963,131 @@
     -fx-text-fill: rgba(255, 248, 220, 0.42);
     -fx-font-size: 9px;
 }
+
+.dfs-dialog-pane {
+    -dfs-accent: #2ee8df;
+    -dfs-secondary: #b06cff;
+    -fx-padding: 30 36 26 36;
+    -fx-background-color:
+        linear-gradient(to bottom right,
+            rgba(255, 255, 255, 0.115) 0%,
+            rgba(255, 255, 255, 0.026) 38%,
+            rgba(46, 232, 223, 0.035) 72%,
+            rgba(176, 108, 255, 0.065) 100%),
+        rgba(5, 10, 12, 0.985);
+    -fx-background-radius: 23;
+    -fx-border-color: linear-gradient(to bottom right,
+        rgba(255, 255, 255, 0.30),
+        rgba(46, 232, 223, 0.34),
+        rgba(176, 108, 255, 0.28));
+    -fx-border-width: 1;
+    -fx-border-radius: 23;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.64), 38, 0.22, 0, 13);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Noto Sans SC", "Segoe UI";
+}
+
+.dfs-dialog-pane > .content {
+    -fx-padding: 0;
+}
+
+.dfs-dialog-content {
+    -fx-background-color: transparent;
+}
+
+.dfs-dialog-accent {
+    -fx-background-color: linear-gradient(to right, -dfs-accent, -dfs-secondary);
+    -fx-background-radius: 2;
+}
+
+.dfs-dialog-warning .dfs-dialog-accent {
+    -fx-background-color: #ffc36e;
+}
+
+.dfs-dialog-danger .dfs-dialog-accent {
+    -fx-background-color: #ff7d88;
+}
+
+.dfs-dialog-title,
+.dfs-dialog-heading,
+.dfs-dialog-message {
+    -fx-text-overrun: clip;
+}
+
+.dfs-dialog-title {
+    -fx-text-fill: rgba(255, 248, 220, 0.50);
+    -fx-font-size: 10px;
+    -fx-font-weight: 800;
+}
+
+.dfs-dialog-heading {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 20px;
+    -fx-font-weight: 800;
+    -fx-line-spacing: 2px;
+}
+
+.dfs-dialog-message {
+    -fx-text-fill: rgba(255, 248, 220, 0.72);
+    -fx-font-size: 12px;
+    -fx-font-weight: 600;
+    -fx-line-spacing: 5px;
+}
+
+.dfs-dialog-pane > .button-bar {
+    -fx-padding: 22 0 0 0;
+    -fx-background-color: transparent;
+}
+
+.dfs-dialog-pane > .button-bar > .container {
+    -fx-padding: 0;
+}
+
+.dfs-dialog-pane .button {
+    -fx-min-height: 38px;
+    -fx-padding: 8 17 8 17;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-font-size: 12px;
+    -fx-font-weight: 800;
+    -fx-text-overrun: clip;
+    -fx-cursor: hand;
+}
+
+.dfs-dialog-pane .dfs-dialog-secondary {
+    -fx-background-color: rgba(255, 255, 255, 0.055);
+    -fx-border-color: rgba(255, 255, 255, 0.13);
+    -fx-text-fill: rgba(255, 248, 220, 0.74);
+}
+
+.dfs-dialog-pane .dfs-dialog-secondary:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.10);
+    -fx-text-fill: #fff8dc;
+}
+
+.dfs-dialog-pane .dfs-dialog-primary {
+    -fx-background-color: -dfs-accent;
+    -fx-border-color: rgba(255, 255, 255, 0.24);
+    -fx-text-fill: #041112;
+}
+
+.dfs-dialog-pane .dfs-dialog-primary:hover {
+    -fx-background-color: derive(-dfs-accent, 12%);
+}
+
+.dfs-dialog-warning .dfs-dialog-primary {
+    -fx-background-color: #ffc36e;
+    -fx-text-fill: #211407;
+}
+
+.dfs-dialog-warning .dfs-dialog-primary:hover {
+    -fx-background-color: #ffd08b;
+}
+
+.dfs-dialog-danger .dfs-dialog-primary {
+    -fx-background-color: #e66571;
+    -fx-text-fill: white;
+}
+
+.dfs-dialog-danger .dfs-dialog-primary:hover {
+    -fx-background-color: #f27580;
+}
