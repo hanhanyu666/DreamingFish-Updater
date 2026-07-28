@@ -14,6 +14,7 @@ import cn.dreamingfish.updater.protocol.JsonCodec;
 import picocli.CommandLine;
 
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 @CommandLine.Command(
@@ -48,15 +49,16 @@ public final class ManagementCli implements Runnable {
     )
     boolean jsonOutput;
 
-    private PrintWriter out = new PrintWriter(System.out, true);
-    private PrintWriter err = new PrintWriter(System.err, true);
+    private PrintWriter out = new PrintWriter(
+            System.out, true, StandardCharsets.UTF_8);
+    private PrintWriter err = new PrintWriter(
+            System.err, true, StandardCharsets.UTF_8);
     private java.io.BufferedReader input;
     private final ManagementSettingsStore settingsStore;
     private ManagementSettings settings;
 
     public ManagementCli() {
-        this(defaultSettingsFile(), new java.io.InputStreamReader(
-                System.in, java.nio.charset.Charset.defaultCharset()));
+        this(defaultSettingsFile(), new AdaptiveConsoleReader(System.in));
     }
 
     ManagementCli(Path settingsFile, java.io.Reader input) {
@@ -68,15 +70,16 @@ public final class ManagementCli implements Runnable {
     }
 
     public static void main(String[] args) {
-        int exit = execute(args, new PrintWriter(System.out, true), new PrintWriter(System.err, true));
+        int exit = execute(args,
+                new PrintWriter(System.out, true, StandardCharsets.UTF_8),
+                new PrintWriter(System.err, true, StandardCharsets.UTF_8));
         if (exit != 0) {
             System.exit(exit);
         }
     }
 
     static int execute(String[] args, PrintWriter out, PrintWriter err) {
-        return execute(args, new java.io.InputStreamReader(
-                System.in, java.nio.charset.Charset.defaultCharset()),
+        return execute(args, new AdaptiveConsoleReader(System.in),
                 defaultSettingsFile(), out, err);
     }
 

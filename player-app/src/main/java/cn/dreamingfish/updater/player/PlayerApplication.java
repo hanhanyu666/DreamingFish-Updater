@@ -82,6 +82,8 @@ public final class PlayerApplication extends Application {
     }
 
     public static void main(String[] args) {
+        System.setProperty("prism.lcdtext", "true");
+        System.setProperty("prism.allowhidpi", "true");
         launch(args);
     }
 
@@ -95,7 +97,7 @@ public final class PlayerApplication extends Application {
     public void start(Stage primaryStage) {
         loadBundledFont();
         stage = primaryStage;
-        stage.initStyle(StageStyle.TRANSPARENT);
+        stage.initStyle(StageStyle.UNDECORATED);
         stage.setTitle("DreamingFish Updater");
         stage.setWidth(1180);
         stage.setHeight(680);
@@ -104,7 +106,7 @@ public final class PlayerApplication extends Application {
         stage.setResizable(true);
 
         view = new PlayerView(stage);
-        Scene scene = new Scene(view.root(), 1180, 680, Color.TRANSPARENT);
+        Scene scene = new Scene(view.root(), 1180, 680, Color.web("#05090b"));
         String stylesheet = PlayerApplication.class.getResource("player.css").toExternalForm();
         scene.getStylesheets().add(stylesheet);
         stage.setScene(scene);

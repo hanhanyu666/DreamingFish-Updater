@@ -2,8 +2,6 @@ package cn.dreamingfish.updater.player;
 
 import javafx.animation.FadeTransition;
 import javafx.animation.Interpolator;
-import javafx.animation.ParallelTransition;
-import javafx.animation.ScaleTransition;
 import javafx.geometry.Insets;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -51,7 +49,7 @@ final class PlayerDialog {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(owner);
         dialog.initModality(Modality.WINDOW_MODAL);
-        dialog.initStyle(StageStyle.TRANSPARENT);
+        dialog.initStyle(StageStyle.UNDECORATED);
         dialog.setTitle(title);
         dialog.setResizable(false);
 
@@ -60,7 +58,7 @@ final class PlayerDialog {
         URL stylesheet = PlayerDialog.class.getResource("player.css");
         if (stylesheet != null) pane.getStylesheets().add(stylesheet.toExternalForm());
         copyBrandingColors(owner, pane);
-        configureTransparentScene(pane);
+        configureOpaqueScene(pane);
 
         double width = preferredWidth(owner);
         double contentWidth = width - 76;
@@ -133,11 +131,11 @@ final class PlayerDialog {
         }
     }
 
-    private static void configureTransparentScene(DialogPane pane) {
+    private static void configureOpaqueScene(DialogPane pane) {
         pane.sceneProperty().addListener((observable, oldScene, newScene) -> {
-            if (newScene != null) newScene.setFill(Color.TRANSPARENT);
+            if (newScene != null) newScene.setFill(Color.web("#0b1114"));
         });
-        if (pane.getScene() != null) pane.getScene().setFill(Color.TRANSPARENT);
+        if (pane.getScene() != null) pane.getScene().setFill(Color.web("#0b1114"));
     }
 
     private static double preferredWidth(Stage owner) {
@@ -148,18 +146,12 @@ final class PlayerDialog {
 
     private static void prepareEntrance(DialogPane pane) {
         pane.setOpacity(0);
-        pane.setScaleX(0.975);
-        pane.setScaleY(0.975);
     }
 
     private static void playEntrance(DialogPane pane) {
         FadeTransition fade = new FadeTransition(Duration.millis(150), pane);
         fade.setToValue(1);
         fade.setInterpolator(Interpolator.EASE_OUT);
-        ScaleTransition scale = new ScaleTransition(Duration.millis(210), pane);
-        scale.setToX(1);
-        scale.setToY(1);
-        scale.setInterpolator(Interpolator.EASE_OUT);
-        new ParallelTransition(fade, scale).play();
+        fade.play();
     }
 }

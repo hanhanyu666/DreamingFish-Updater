@@ -530,8 +530,6 @@ final class PlayerView {
         entrancePlayed = true;
 
         root.setOpacity(0);
-        root.setScaleX(0.985);
-        root.setScaleY(0.985);
         background.setScaleX(1.045);
         background.setScaleY(1.045);
         refractedBackground.setScaleX(1.055);
@@ -540,11 +538,6 @@ final class PlayerView {
         FadeTransition rootFade = new FadeTransition(Duration.millis(460), root);
         rootFade.setFromValue(0);
         rootFade.setToValue(1);
-        ScaleTransition rootScale = new ScaleTransition(Duration.millis(720), root);
-        rootScale.setFromX(0.985);
-        rootScale.setFromY(0.985);
-        rootScale.setToX(1);
-        rootScale.setToY(1);
         ScaleTransition backgroundScale = new ScaleTransition(Duration.millis(1100), background);
         backgroundScale.setToX(1);
         backgroundScale.setToY(1);
@@ -567,7 +560,7 @@ final class PlayerView {
         SequentialTransition sweepOpacity = new SequentialTransition(
                 new PauseTransition(Duration.millis(130)), sweepIn, sweepOut);
 
-        ParallelTransition entrance = new ParallelTransition(rootFade, rootScale,
+        ParallelTransition entrance = new ParallelTransition(rootFade,
                 backgroundScale, refractionScale,
                 reveal(titleBar, 0, -10, 70),
                 reveal(identityPane, -22, 6, 130),

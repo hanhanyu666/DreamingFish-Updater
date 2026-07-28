@@ -49,6 +49,8 @@ class AdminWebServerTest {
             HttpResponse<String> page = send(base, "/", "GET", null, null);
             assertEquals(200, page.statusCode());
             assertTrue(page.body().contains("梦鱼更新管理"));
+            assertEquals("text/html; charset=utf-8", page.headers()
+                    .firstValue("Content-Type").orElseThrow());
             assertEquals("DENY", page.headers()
                     .firstValue("X-Frame-Options").orElseThrow());
             assertTrue(page.headers().firstValue("Content-Security-Policy")

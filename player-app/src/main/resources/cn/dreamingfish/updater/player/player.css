@@ -7,6 +7,10 @@
     -fx-font-weight: bold;
 }
 
+.text {
+    -fx-font-smoothing-type: lcd;
+}
+
 .app-root:maximized,
 .app-root:maximized .liquid-glass-wash,
 .app-root:maximized .title-bar {

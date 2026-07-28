@@ -24,6 +24,8 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven.compiler.encoding>UTF-8</maven.compiler.encoding>
+    <maven.resources.encoding>UTF-8</maven.resources.encoding>
     <maven.compiler.release>21</maven.compiler.release>
     <jackson.version>2.18.2</jackson.version>
     <junit.version>5.11.4</junit.version>
@@ -97,6 +99,7 @@
           <version>3.13.0</version>
           <configuration>
             <release>${maven.compiler.release}</release>
+            <encoding>${maven.compiler.encoding}</encoding>
             <parameters>true</parameters>
           </configuration>
         </plugin>

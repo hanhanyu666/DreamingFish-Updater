@@ -585,12 +585,6 @@ final class InteractiveConsole {
     }
 
     private String readLine(String prompt) {
-        java.io.Console console = System.console();
-        if (console != null) {
-            String value = console.readLine("%s", prompt);
-            if (value == null) throw new InputEnded();
-            return value;
-        }
         root.out().print(prompt);
         root.out().flush();
         try {
