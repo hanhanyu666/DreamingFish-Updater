@@ -80,18 +80,35 @@ final class TestUpdateServer implements AutoCloseable {
 
     ReleaseManifest release(long sequence, String id, List<String> forcedSyncDirectories,
                             TestFile... testFiles) {
+        return release(sequence, id, forcedSyncDirectories,
+                List.of(), List.of(), testFiles);
+    }
+
+    ReleaseManifest release(long sequence, String id,
+                            List<String> forcedSyncDirectories,
+                            List<String> forcedSyncFiles,
+                            List<String> releasedPaths,
+                            TestFile... testFiles) {
         List<ManifestFile> files = new ArrayList<>();
         for (TestFile file : testFiles) {
             files.add(new ManifestFile(file.path(), file.sha256(), file.bytes().length,
                     file.policy(), false, file.componentId(), file.displayName()));
         }
         files.sort(Comparator.comparing(ManifestFile::path));
-        Set<String> capabilities = forcedSyncDirectories.isEmpty()
-                ? Set.of()
-                : Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC);
+        Set<String> capabilities = new java.util.HashSet<>();
+        if (!forcedSyncDirectories.isEmpty()) {
+            capabilities.add(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC);
+        }
+        if (!forcedSyncFiles.isEmpty()) {
+            capabilities.add(ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC);
+        }
+        if (!releasedPaths.isEmpty()) {
+            capabilities.add(ProtocolConstants.CAPABILITY_RELEASED_PATHS);
+        }
         return new ReleaseManifest(ProtocolConstants.RELEASE_SCHEMA_VERSION, "demo", id,
                 sequence, Instant.now(), "1.0." + sequence, "0.1.0", "release " + sequence,
-                capabilities, forcedSyncDirectories, Branding.empty(), files);
+                capabilities, forcedSyncDirectories, forcedSyncFiles, releasedPaths,
+                Branding.empty(), files);
     }
 
     void serve(ReleaseManifest manifest) {

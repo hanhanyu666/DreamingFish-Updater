@@ -14,6 +14,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -134,5 +135,84 @@ class PublishServiceTest {
 
         assertEquals("render_helper", file.componentId());
         assertEquals("渲染兼容助手", file.displayName());
+    }
+
+    @Test
+    void requiresAnExplicitRemovalDecisionAndCarriesReleasedPathsForward()
+            throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary);
+        fixture.createProject();
+        Path legacy = fixture.source.resolve("mods/legacy-renderer.jar");
+        Files.createDirectories(legacy.getParent());
+        Files.writeString(legacy, "legacy");
+        fixture.scanner.createPreview("demo");
+        fixture.publisher.publish(
+                "demo", "1.0.0", "0.1.0", "initial");
+
+        Files.delete(legacy);
+        PublishPreview removed = fixture.scanner.createPreview("demo");
+        PreviewChange change = removed.changes().stream()
+                .filter(item -> item.kind() == ChangeKind.REMOVED)
+                .findFirst().orElseThrow();
+        assertEquals(null, change.removalAction());
+        assertThrows(ManagementException.class, () ->
+                fixture.publisher.publish(
+                        "demo", "2.0.0", "0.1.13", "undecided"));
+
+        fixture.scanner.decideRemovals("demo", java.util.List.of(
+                new RemovalDecision(
+                        "mods/legacy-renderer.jar", RemovalAction.RELEASE)));
+        StoredRelease second = fixture.publisher.publish(
+                "demo", "2.0.0", "0.1.13", "release ownership");
+        ReleaseManifest secondManifest = fixture.database.readManifest(second);
+        assertEquals(java.util.List.of("mods/legacy-renderer.jar"),
+                secondManifest.releasedPaths());
+        assertTrue(secondManifest.requiredCapabilities().contains(
+                cn.dreamingfish.updater.protocol.ProtocolConstants
+                        .CAPABILITY_RELEASED_PATHS));
+
+        fixture.scanner.createPreview("demo");
+        StoredRelease third = fixture.publisher.publish(
+                "demo", "3.0.0", "0.1.13", "carry release");
+        assertEquals(java.util.List.of("mods/legacy-renderer.jar"),
+                fixture.database.readManifest(third).releasedPaths());
+
+        Files.writeString(legacy, "managed-again");
+        fixture.scanner.createPreview("demo");
+        StoredRelease fourth = fixture.publisher.publish(
+                "demo", "4.0.0", "0.1.13", "manage again");
+        assertTrue(fixture.database.readManifest(fourth)
+                .releasedPaths().isEmpty());
+    }
+
+    @Test
+    void publishesAndValidatesIndividualForcedSyncFiles() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary);
+        ProjectRecord project = fixture.createProject();
+        Path required = fixture.source.resolve("mods/server-required.jar");
+        Path optional = fixture.source.resolve("mods/optional-map.jar");
+        Files.createDirectories(required.getParent());
+        Files.writeString(required, "required");
+        Files.writeString(optional, "optional");
+        fixture.projects.configure(
+                "demo", null, null, null,
+                project.rules().withForcedSyncFiles(
+                        java.util.List.of("mods/server-required.jar")));
+
+        fixture.scanner.createPreview("demo");
+        StoredRelease release = fixture.publisher.publish(
+                "demo", "1.0.0", "0.1.13", "forced file");
+        ReleaseManifest manifest = fixture.database.readManifest(release);
+        assertEquals(java.util.List.of("mods/server-required.jar"),
+                manifest.forcedSyncFiles());
+        assertTrue(manifest.requiredCapabilities().contains(
+                cn.dreamingfish.updater.protocol.ProtocolConstants
+                        .CAPABILITY_FORCED_FILE_SYNC));
+        assertFalse(manifest.forcedSyncFiles().contains(
+                "mods/optional-map.jar"));
+
+        Files.delete(required);
+        assertThrows(ManagementException.class,
+                () -> fixture.scanner.createPreview("demo"));
     }
 }

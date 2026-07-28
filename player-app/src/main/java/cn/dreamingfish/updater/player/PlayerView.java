@@ -407,7 +407,7 @@ final class PlayerView {
                 List.of(Path.of("mods/dreamingfish-core.jar"),
                         Path.of("mods/dreamingfish-world.jar"),
                         Path.of("config/dreamingfish/client.toml")),
-                List.of(Path.of("mods/legacy-renderer.jar")), List.of());
+                List.of(Path.of("mods/legacy-renderer.jar")), List.of(), List.of());
         setLocalFiles(List.of(
                 new LocalFileEntry("config", "config", true,
                         false, null, true, true, false, null, 2),
@@ -1322,6 +1322,7 @@ final class PlayerView {
                         switch (item.operation()) {
                             case "删除" -> "update-operation-delete";
                             case "移入备份" -> "update-operation-archive";
+                            case "放弃管理" -> "update-operation-release";
                             default -> "update-operation-install";
                         });
                 Label path = new Label(item.path());
@@ -1339,7 +1340,7 @@ final class PlayerView {
 
     private void setUpdateDetails(String version, String changelog,
                                   List<Path> installed, List<Path> deleted,
-                                  List<Path> archived) {
+                                  List<Path> archived, List<Path> released) {
         updateDetailsVersion.setText("版本 " + version);
         updateDetailsChangelog.setText(changelog == null || changelog.isBlank()
                 ? "本次发布没有填写更新说明。" : changelog.strip());
@@ -1347,12 +1348,14 @@ final class PlayerView {
         if (size(installed) > 0) counts.add("安装 / 更新 " + installed.size() + " 项");
         if (size(deleted) > 0) counts.add("删除 " + deleted.size() + " 项");
         if (size(archived) > 0) counts.add("移入备份 " + archived.size() + " 项");
+        if (size(released) > 0) counts.add("放弃管理 " + released.size() + " 项");
         updateDetailsCounts.setText(counts.isEmpty()
                 ? "本次没有修改本地文件" : String.join("  ·  ", counts));
         List<UpdateDetailRow> rows = new ArrayList<>();
         appendUpdateRows(rows, "安装 / 更新", installed);
         appendUpdateRows(rows, "删除", deleted);
         appendUpdateRows(rows, "移入备份", archived);
+        appendUpdateRows(rows, "放弃管理", released);
         updateDetailsList.getItems().setAll(rows);
     }
 
@@ -1698,6 +1701,7 @@ final class PlayerView {
         if (!result.installedPaths().isEmpty()) counts.add("安装 / 更新 " + result.installedPaths().size() + " 项");
         if (!result.deletedPaths().isEmpty()) counts.add("删除 " + result.deletedPaths().size() + " 项");
         if (!result.archivedFiles().isEmpty()) counts.add("备份 " + result.archivedFiles().size() + " 项");
+        if (!result.releasedPaths().isEmpty()) counts.add("保留并放弃管理 " + result.releasedPaths().size() + " 项");
         if (locallyDisabledMods > 0) counts.add("本地停用 " + locallyDisabledMods + " 项");
         if (locallyExcludedFiles > 0) counts.add("本地不管理 " + locallyExcludedFiles + " 项");
         updateSummaryCounts.setText(counts.isEmpty() ? "本次无需修改本地文件" : String.join("  ·  ", counts));
@@ -1706,22 +1710,31 @@ final class PlayerView {
                 + System.lineSeparator()
                 + System.lineSeparator()
                 + formatUpdateFileDetails(
-                        result.installedPaths(), result.deletedPaths(), result.archivedFiles()));
+                        result.installedPaths(), result.deletedPaths(),
+                        result.archivedFiles(), result.releasedPaths()));
         setUpdateDetails(result.release().displayVersion(), result.release().changelog(),
-                result.installedPaths(), result.deletedPaths(), result.archivedFiles());
+                result.installedPaths(), result.deletedPaths(),
+                result.archivedFiles(), result.releasedPaths());
         updateSummary.setManaged(true);
         updateSummary.setVisible(true);
     }
 
     static String formatUpdateFileDetails(List<Path> installed, List<Path> deleted,
                                           List<Path> archived) {
+        return formatUpdateFileDetails(installed, deleted, archived, List.of());
+    }
+
+    static String formatUpdateFileDetails(List<Path> installed, List<Path> deleted,
+                                          List<Path> archived, List<Path> released) {
         List<String> lines = new ArrayList<>();
         int remaining = 30;
         remaining = appendFileSection(lines, "安装 / 更新", installed, remaining);
         remaining = appendFileSection(lines, "删除", deleted, remaining);
-        appendFileSection(lines, "移入备份", archived, remaining);
+        remaining = appendFileSection(lines, "移入备份", archived, remaining);
+        appendFileSection(lines, "放弃管理（保留本地文件）", released, remaining);
         if (lines.isEmpty()) return "本次没有修改本地文件";
-        int total = size(installed) + size(deleted) + size(archived);
+        int total = size(installed) + size(deleted) + size(archived)
+                + size(released);
         int displayed = Math.min(total, 30);
         if (total > displayed) {
             lines.add("");
@@ -1778,26 +1791,41 @@ final class PlayerView {
 
     private void showFileNotices(UpdateResult result) {
         List<Path> archived = result.archivedFiles();
+        List<Path> released = result.releasedPaths();
         List<Path> unmanagedMods = result.unmanagedMods();
-        if (!archived.isEmpty()) {
+        if (!archived.isEmpty() || !released.isEmpty()) {
             String directories = result.release().forcedSyncDirectories().stream()
                     .map(value -> value + "/")
                     .reduce((left, right) -> left + "、" + right)
                     .orElse("所选目录");
-            String text = "远程管理端已对 " + directories + " 启用强制同步；已将 "
-                    + archived.size() + " 个本地额外文件移入备份";
+            String text = "";
+            if (!archived.isEmpty()) {
+                text = "远程管理端已对 " + directories + " 启用强制同步；已将 "
+                        + archived.size() + " 个本地额外文件移入备份";
+            }
+            if (!released.isEmpty()) {
+                if (!text.isEmpty()) text += "；";
+                text += "服主已停止管理 " + released.size()
+                        + " 个文件，本地副本已保留";
+            }
             if (!unmanagedMods.isEmpty()) {
                 text += "；另有 " + unmanagedMods.size() + " 个玩家自选模组已保留";
             }
             unmanaged.setText(text);
             unmanaged.setManaged(true);
             unmanaged.setVisible(true);
-            unmanaged.setTooltip(new Tooltip("备份位置：" + result.archiveDirectory()
-                    + System.lineSeparator()
-                    + archived.stream().map(Path::toString).limit(20)
-                    .reduce((left, right) -> left + System.lineSeparator() + right).orElse("")));
-            openArchive.setManaged(true);
-            openArchive.setVisible(true);
+            List<String> noticeLines = new ArrayList<>();
+            if (!archived.isEmpty()) {
+                noticeLines.add("备份位置：" + result.archiveDirectory());
+                archived.stream().map(Path::toString).limit(20)
+                        .forEach(path -> noticeLines.add("备份：" + path));
+            }
+            released.stream().map(Path::toString).limit(20)
+                    .forEach(path -> noticeLines.add("保留：" + path));
+            unmanaged.setTooltip(new Tooltip(String.join(
+                    System.lineSeparator(), noticeLines)));
+            openArchive.setManaged(!archived.isEmpty());
+            openArchive.setVisible(!archived.isEmpty());
             return;
         }
         openArchive.setManaged(false);

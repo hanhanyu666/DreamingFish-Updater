@@ -2,6 +2,7 @@ package cn.dreamingfish.updater.management;
 
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -13,10 +14,29 @@ final class AtomicFiles {
 
     static void moveReplace(Path source, Path target) throws IOException {
         Files.createDirectories(target.toAbsolutePath().normalize().getParent());
+        FileSystemException lastFailure = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            try {
+                Files.move(source, target, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+                return;
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+                return;
+            } catch (FileSystemException e) {
+                lastFailure = e;
+                if (attempt < 4) waitForTransientWindowsLock(attempt);
+            }
+        }
+        throw lastFailure;
+    }
+
+    private static void waitForTransientWindowsLock(int attempt) throws IOException {
         try {
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+            Thread.sleep(25L << attempt);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while retrying an atomic file move", e);
         }
     }
 

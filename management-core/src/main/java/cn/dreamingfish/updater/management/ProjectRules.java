@@ -9,14 +9,23 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public record ProjectRules(List<FileRule> rules, List<String> forcedSyncDirectories) {
+public record ProjectRules(
+        List<FileRule> rules,
+        List<String> forcedSyncDirectories,
+        List<String> forcedSyncFiles
+) {
     public ProjectRules {
         rules = rules == null ? List.of() : List.copyOf(rules);
         forcedSyncDirectories = normalizeForcedSyncDirectories(forcedSyncDirectories);
+        forcedSyncFiles = normalizeForcedSyncFiles(forcedSyncFiles);
+    }
+
+    public ProjectRules(List<FileRule> rules, List<String> forcedSyncDirectories) {
+        this(rules, forcedSyncDirectories, List.of());
     }
 
     public ProjectRules(List<FileRule> rules) {
-        this(rules, List.of());
+        this(rules, List.of(), List.of());
     }
 
     public static ProjectRules defaults() {
@@ -29,11 +38,15 @@ public record ProjectRules(List<FileRule> rules, List<String> forcedSyncDirector
                 new FileRule("screenshots/**", RuleAction.EXCLUDE),
                 new FileRule("options.txt", RuleAction.DEFAULT),
                 new FileRule("servers.dat", RuleAction.DEFAULT)
-        ), List.of());
+        ), List.of(), List.of());
     }
 
     public ProjectRules withForcedSyncDirectories(List<String> directories) {
-        return new ProjectRules(rules, directories);
+        return new ProjectRules(rules, directories, forcedSyncFiles);
+    }
+
+    public ProjectRules withForcedSyncFiles(List<String> files) {
+        return new ProjectRules(rules, forcedSyncDirectories, files);
     }
 
     private static List<String> normalizeForcedSyncDirectories(List<String> source) {
@@ -53,6 +66,26 @@ public record ProjectRules(List<FileRule> rules, List<String> forcedSyncDirector
                 normalized.add(directory);
             } catch (ProtocolException e) {
                 throw new ManagementException("Invalid forced sync directory: " + value, e);
+            }
+        }
+        normalized.sort(String::compareTo);
+        return List.copyOf(normalized);
+    }
+
+    private static List<String> normalizeForcedSyncFiles(List<String> source) {
+        if (source == null || source.isEmpty()) return List.of();
+        List<String> normalized = new ArrayList<>();
+        Set<String> folded = new HashSet<>();
+        for (String value : source) {
+            try {
+                String file = PathSafety.normalizeManifestPath(
+                        value == null ? null : value.trim());
+                if (!folded.add(file.toLowerCase(Locale.ROOT))) {
+                    throw new ManagementException("Duplicate forced sync file: " + value);
+                }
+                normalized.add(file);
+            } catch (ProtocolException e) {
+                throw new ManagementException("Invalid forced sync file: " + value, e);
             }
         }
         normalized.sort(String::compareTo);

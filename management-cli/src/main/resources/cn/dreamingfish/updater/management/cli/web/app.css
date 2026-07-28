@@ -645,6 +645,16 @@ input[readonly] {
   gap: 8px;
 }
 
+.path-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.path-picker-button {
+  min-width: 58px;
+}
+
 .color-field input[type="color"] {
   height: 36px;
   padding: 4px;
@@ -712,7 +722,57 @@ input[readonly] {
 
 .preview-table th:last-child,
 .preview-table td:last-child {
-  width: 120px;
+  width: 190px;
+}
+
+.preview-table select {
+  min-height: 30px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 10px;
+}
+
+.muted-cell {
+  color: var(--faint);
+}
+
+.forced-file-header .button-row {
+  flex: 0 1 620px;
+}
+
+.table-search {
+  min-width: 140px;
+  min-height: 34px;
+}
+
+.forced-file-table {
+  max-height: 360px;
+}
+
+.forced-file-table th:first-child,
+.forced-file-table td:first-child {
+  width: 70px;
+  text-align: center;
+}
+
+.forced-file-table th:nth-child(3),
+.forced-file-table td:nth-child(3) {
+  width: 110px;
+}
+
+.forced-file-table th:last-child,
+.forced-file-table td:last-child {
+  width: 110px;
+}
+
+.forced-file-check {
+  width: 16px;
+  min-height: 16px;
+  accent-color: var(--cyan);
+}
+
+.forced-file-notice {
+  margin-top: 12px;
 }
 
 .modal {

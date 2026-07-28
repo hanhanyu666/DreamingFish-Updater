@@ -5,6 +5,7 @@ import cn.dreamingfish.updater.management.PreviewChange;
 import cn.dreamingfish.updater.management.ProjectRecord;
 import cn.dreamingfish.updater.management.ProjectRules;
 import cn.dreamingfish.updater.management.PublishPreview;
+import cn.dreamingfish.updater.management.RemovalDecision;
 import cn.dreamingfish.updater.management.StoredPlayerProgram;
 import cn.dreamingfish.updater.management.StoredRelease;
 import cn.dreamingfish.updater.protocol.Branding;
@@ -143,6 +144,19 @@ final class AdminWebServer implements AutoCloseable {
             sendJson(exchange, 200, mutate(() -> updateSettings(request)));
             return;
         }
+        if (path.equals("/api/system/select-path")
+                && exchange.getRequestMethod().equals("POST")) {
+            PathPickerRequest request = readJson(exchange, PathPickerRequest.class);
+            sendJson(exchange, 200, mutate(() -> {
+                String selected = WindowsPathPicker.select(
+                        request.kind, request.title, request.initialPath);
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("selected", selected != null);
+                if (selected != null) result.put("path", selected);
+                return result;
+            }));
+            return;
+        }
         if (path.equals("/api/public-service/start")
                 && exchange.getRequestMethod().equals("POST")) {
             sendJson(exchange, 200, mutate(publicService::start));
@@ -193,6 +207,21 @@ final class AdminWebServer implements AutoCloseable {
                                 defaultValue(request.minimumPlayerVersion, "0.1.0"),
                                 defaultValue(request.changelog, "")
                         ))));
+            }
+            case "removals" -> {
+                RemovalDecisionsRequest request = readJson(
+                        exchange, RemovalDecisionsRequest.class);
+                sendJson(exchange, 200, mutate(() -> previewView(
+                        root.services().scanner().decideRemovals(
+                                projectId,
+                                request.decisions == null
+                                        ? List.of() : request.decisions))));
+            }
+            case "forced-files" -> {
+                ForcedFilesRequest request = readJson(
+                        exchange, ForcedFilesRequest.class);
+                sendJson(exchange, 200, mutate(() ->
+                        updateForcedFiles(projectId, request)));
             }
             case "rollback" -> {
                 RollbackRequest request = readJson(exchange, RollbackRequest.class);
@@ -267,7 +296,9 @@ final class AdminWebServer implements AutoCloseable {
         Branding branding = branding(request, displayName, null);
         ProjectRules rules = ProjectRules.defaults().withForcedSyncDirectories(
                 request.forcedSyncDirectories == null
-                        ? List.of() : request.forcedSyncDirectories);
+                        ? List.of() : request.forcedSyncDirectories)
+                .withForcedSyncFiles(request.forcedSyncFiles == null
+                        ? List.of() : request.forcedSyncFiles);
         ProjectRecord project = root.services().projects().create(
                 id,
                 displayName,
@@ -292,6 +323,9 @@ final class AdminWebServer implements AutoCloseable {
                 ? current.rules()
                 : current.rules().withForcedSyncDirectories(
                         request.forcedSyncDirectories);
+        if (request.forcedSyncFiles != null) {
+            rules = rules.withForcedSyncFiles(request.forcedSyncFiles);
+        }
         Path source = present(request.sourceDirectory)
                 ? Path.of(request.sourceDirectory.trim()) : current.sourceDirectory();
         String url = present(request.publicBaseUrl)
@@ -303,6 +337,22 @@ final class AdminWebServer implements AutoCloseable {
                     projectId, Path.of(request.coverPath.trim()));
         }
         return projectView(project);
+    }
+
+    private Map<String, Object> updateForcedFiles(
+            String projectId, ForcedFilesRequest request) {
+        ManagementCli.Services services = root.services();
+        ProjectRecord current = services.database().requireProject(projectId);
+        ProjectRules rules = current.rules().withForcedSyncFiles(
+                request.files == null ? List.of() : request.files);
+        ProjectRecord updated = services.projects().configure(
+                projectId, current.sourceDirectory(), current.publicBaseUrl(),
+                current.branding(), rules);
+        PublishPreview preview = services.scanner().createPreview(projectId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("forcedSyncFiles", updated.rules().forcedSyncFiles());
+        result.put("preview", previewView(preview));
+        return result;
     }
 
     private Map<String, Object> updateSettings(SettingsRequest request) {
@@ -397,6 +447,7 @@ final class AdminWebServer implements AutoCloseable {
         result.put("branding", project.branding());
         result.put("forcedSyncDirectories",
                 project.rules().forcedSyncDirectories());
+        result.put("forcedSyncFiles", project.rules().forcedSyncFiles());
         result.put("nextSequence", project.nextSequence());
         result.put("createdAt", project.createdAt());
         return result;
@@ -432,15 +483,22 @@ final class AdminWebServer implements AutoCloseable {
         result.put("estimatedDownloadBytes", preview.estimatedDownloadBytes());
         result.put("changes", preview.changes().stream()
                 .map(AdminWebServer::changeView).toList());
+        result.put("files", preview.files().stream().map(file -> Map.of(
+                "path", file.path(),
+                "size", file.size(),
+                "policy", file.policy().name()
+        )).toList());
         return result;
     }
 
     private static Map<String, Object> changeView(PreviewChange change) {
-        return Map.of(
-                "kind", change.kind().name(),
-                "path", change.path(),
-                "downloadSize", change.downloadSize()
-        );
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("kind", change.kind().name());
+        result.put("path", change.path());
+        result.put("downloadSize", change.downloadSize());
+        result.put("removalAction", change.removalAction() == null
+                ? null : change.removalAction().name());
+        return result;
     }
 
     private static Map<String, Object> settingsView(
@@ -641,6 +699,7 @@ final class AdminWebServer implements AutoCloseable {
             String sourceDirectory,
             String publicBaseUrl,
             List<String> forcedSyncDirectories,
+            List<String> forcedSyncFiles,
             String productName,
             String subtitle,
             String serverAddress,
@@ -648,6 +707,19 @@ final class AdminWebServer implements AutoCloseable {
             String secondaryAccentColor,
             String coverPath,
             Boolean removeCover
+    ) {
+    }
+
+    private record RemovalDecisionsRequest(List<RemovalDecision> decisions) {
+    }
+
+    private record ForcedFilesRequest(List<String> files) {
+    }
+
+    private record PathPickerRequest(
+            String kind,
+            String title,
+            String initialPath
     ) {
     }
 

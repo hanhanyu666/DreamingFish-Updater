@@ -99,4 +99,38 @@ class ManifestValidatorTest {
         assertDoesNotThrow(() -> ManifestValidator.validateRelease(decoded, Set.of()));
         org.junit.jupiter.api.Assertions.assertEquals(List.of(), decoded.forcedSyncDirectories());
     }
+
+    @Test
+    void validatesReleasedPathsAndIndividualForcedFilesWithCapabilities() {
+        ManifestFile required = new ManifestFile(
+                "mods/required.jar", "a".repeat(64), 1,
+                FilePolicy.ENFORCED, false);
+        ReleaseManifest manifest = new ReleaseManifest(
+                1, "dreamhaven", "release-2", 2, Instant.now(),
+                "2", "0.1.13", "",
+                Set.of(
+                        ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC,
+                        ProtocolConstants.CAPABILITY_RELEASED_PATHS),
+                List.of(), List.of("mods/required.jar"),
+                List.of("config/legacy.toml"), Branding.empty(),
+                List.of(required));
+        Set<String> supported = Set.of(
+                ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC,
+                ProtocolConstants.CAPABILITY_RELEASED_PATHS);
+
+        assertDoesNotThrow(() ->
+                ManifestValidator.validateRelease(manifest, supported));
+        assertThrows(ProtocolException.class, () ->
+                ManifestValidator.validateRelease(manifest, Set.of()));
+
+        ReleaseManifest collision = new ReleaseManifest(
+                1, "dreamhaven", "release-3", 3, Instant.now(),
+                "3", "0.1.13", "",
+                Set.of(ProtocolConstants.CAPABILITY_RELEASED_PATHS),
+                List.of(), List.of(), List.of("mods/required.jar"),
+                Branding.empty(), List.of(required));
+        assertThrows(ProtocolException.class, () ->
+                ManifestValidator.validateRelease(collision,
+                        Set.of(ProtocolConstants.CAPABILITY_RELEASED_PATHS)));
+    }
 }

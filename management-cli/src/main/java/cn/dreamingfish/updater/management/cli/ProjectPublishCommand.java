@@ -1,5 +1,8 @@
 package cn.dreamingfish.updater.management.cli;
 
+import cn.dreamingfish.updater.management.ChangeKind;
+import cn.dreamingfish.updater.management.RemovalAction;
+import cn.dreamingfish.updater.management.RemovalDecision;
 import picocli.CommandLine;
 
 import java.nio.file.Path;
@@ -21,12 +24,27 @@ final class ProjectPublishCommand implements Runnable {
     Path changelogFile;
     @CommandLine.Option(names = "--yes", description = "Publish without interactive confirmation")
     boolean yes;
+    @CommandLine.Option(names = "--removed-files",
+            description = "Apply one action to undecided removed files: ${COMPLETION-CANDIDATES}")
+    RemovalAction removedFiles;
 
     @Override
     public void run() {
         ManagementCli root = parent.root;
         var services = root.services();
         var preview = services.scanner().load(projectId);
+        if (removedFiles != null) {
+            var decisions = preview.changes().stream()
+                    .filter(change -> change.kind() == ChangeKind.REMOVED)
+                    .filter(change -> change.removalAction() == null)
+                    .map(change -> new RemovalDecision(
+                            change.path(), removedFiles))
+                    .toList();
+            if (!decisions.isEmpty()) {
+                preview = services.scanner().decideRemovals(
+                        projectId, decisions);
+            }
+        }
         if (!root.jsonOutput) {
             root.out().printf("About to publish preview %s with %d changes (%s download).%n",
                     preview.previewId(), preview.changes().size(), HumanSize.format(preview.estimatedDownloadBytes()));

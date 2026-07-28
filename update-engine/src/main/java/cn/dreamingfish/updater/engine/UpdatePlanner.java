@@ -26,12 +26,16 @@ final class UpdatePlanner {
                       LocalFileOverrides overrides, ProgressListener listener,
                       CancellationToken cancellationToken) {
         List<FileOperation> operations = new ArrayList<>();
+        List<Path> releasedPaths = new ArrayList<>();
         Map<String, Long> requiredObjects = new LinkedHashMap<>();
         Set<String> forcedDirectories = target.manifest().forcedSyncDirectories().stream()
                 .map(UpdatePlanner::fold)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         for (String directory : target.manifest().forcedSyncDirectories()) {
             ProtectedPathPolicy.validate(paths, directory);
+        }
+        for (String file : target.manifest().forcedSyncFiles()) {
+            ProtectedPathPolicy.validate(paths, file);
         }
 
         for (ManifestFile file : target.manifest().files()) {
@@ -71,12 +75,23 @@ final class UpdatePlanner {
         if (local != null) {
             Set<String> desired = new HashSet<>();
             target.manifest().files().forEach(file -> desired.add(fold(file.path())));
+            Set<String> released = target.manifest().releasedPaths().stream()
+                    .map(UpdatePlanner::fold)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
             Map<String, ManifestFile> oldManifestFiles = new HashMap<>();
             local.release().manifest().files().forEach(file ->
                     oldManifestFiles.put(fold(file.path()), file));
             for (InstalledFileState old : local.installation().files()) {
                 cancellationToken.throwIfCancelled();
                 if (old.policy() == FilePolicy.ENFORCED && !desired.contains(fold(old.path()))) {
+                    if (released.contains(fold(old.path()))) {
+                        releasedPaths.add(Path.of(old.path()));
+                        listener.onProgress(new ProgressEvent(
+                                UpdateStage.SCANNING,
+                                "Keeping file released by remote management",
+                                old.path(), 0, 0));
+                        continue;
+                    }
                     ManifestFile oldManifestFile = oldManifestFiles.get(fold(old.path()));
                     if (oldManifestFile != null && overrides.excludes(oldManifestFile)) {
                         continue;
@@ -103,7 +118,10 @@ final class UpdatePlanner {
 
         operations.sort(Comparator.comparing(FileOperation::path));
         return new UpdatePlan(target, operations, requiredObjects,
-                findUnmanagedMods(paths, target, forcedDirectories, operations));
+                findUnmanagedMods(paths, target, forcedDirectories, operations),
+                releasedPaths.stream().sorted(
+                        Comparator.comparing(Path::toString,
+                                String.CASE_INSENSITIVE_ORDER)).toList());
     }
 
     private void addForcedDirectoryArchives(EnginePaths paths, SignedRelease release,

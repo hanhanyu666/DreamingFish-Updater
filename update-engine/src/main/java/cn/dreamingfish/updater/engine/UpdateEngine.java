@@ -66,7 +66,9 @@ public final class UpdateEngine {
             }
 
             LocalFileOverrides effectiveOverrides = request.localFileOverrides()
-                    .withForcedDirectories(target.manifest().forcedSyncDirectories());
+                    .withForcedManagement(
+                            target.manifest().forcedSyncFiles(),
+                            target.manifest().forcedSyncDirectories());
             UpdatePlan plan = planner.create(paths, target, local, effectiveOverrides, progress,
                     request.cancellationToken());
             boolean sameRelease = local != null && local.release().sha256().equals(target.sha256());
@@ -76,7 +78,7 @@ public final class UpdateEngine {
                         "Installation is up to date", null, 1, 1));
                 return new UpdateResult(UpdateOutcome.UP_TO_DATE, target.manifest(),
                         0, 0, 0, plan.unmanagedMods(), List.of(), null,
-                        List.of(), List.of());
+                        List.of(), List.of(), plan.releasedPaths());
             }
 
             if (gameUpdateLock == null) throw gameRunning();
@@ -92,7 +94,8 @@ public final class UpdateEngine {
             return new UpdateResult(UpdateOutcome.UPDATED, target.manifest(),
                     plan.installCount(), plan.deleteCount(), downloaded, plan.unmanagedMods(),
                     installResult.archivedFiles(), installResult.archiveDirectory(),
-                    plan.paths(OperationKind.INSTALL), plan.paths(OperationKind.DELETE));
+                    plan.paths(OperationKind.INSTALL), plan.paths(OperationKind.DELETE),
+                    plan.releasedPaths());
         }
     }
 
@@ -112,7 +115,9 @@ public final class UpdateEngine {
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
                 "Update service unavailable; verifying the last installation", null, 0, 0));
         LocalFileOverrides effectiveOverrides = request.localFileOverrides()
-                .withForcedDirectories(local.release().manifest().forcedSyncDirectories());
+                .withForcedManagement(
+                        local.release().manifest().forcedSyncFiles(),
+                        local.release().manifest().forcedSyncDirectories());
         if (!localStore.verifyFiles(paths, local, progress, effectiveOverrides,
                 request.cancellationToken())) {
             throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID,
@@ -131,7 +136,7 @@ public final class UpdateEngine {
                 "Using the last verified installation", null, 1, 1));
         return new UpdateResult(UpdateOutcome.OFFLINE_ALLOWED, local.release().manifest(),
                 0, 0, 0, localPlan.unmanagedMods(), List.of(), null,
-                List.of(), List.of());
+                List.of(), List.of(), List.of());
     }
 
     private void persistBundledBaseline(EnginePaths paths, LocalInstallation local) {

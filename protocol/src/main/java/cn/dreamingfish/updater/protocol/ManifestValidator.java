@@ -6,8 +6,10 @@ import java.security.PublicKey;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -45,6 +47,7 @@ public final class ManifestValidator {
         validateBranding(manifest.branding());
 
         List<String> paths = new ArrayList<>();
+        Map<String, ManifestFile> filesByFoldedPath = new HashMap<>();
         String previous = null;
         for (ManifestFile file : manifest.files()) {
             String path = PathSafety.normalizeManifestPath(file.path());
@@ -53,6 +56,7 @@ public final class ManifestValidator {
             }
             previous = path;
             paths.add(path);
+            filesByFoldedPath.put(path.toLowerCase(Locale.ROOT), file);
             if (!Hex.isSha256(file.sha256())) {
                 throw new ProtocolException("Invalid SHA-256 for " + path);
             }
@@ -73,6 +77,8 @@ public final class ManifestValidator {
             }
         }
         PathSafety.validateDistinctPaths(paths);
+        validateForcedSyncFiles(manifest, filesByFoldedPath);
+        validateReleasedPaths(manifest, paths);
     }
 
     private static void validateForcedSyncDirectories(ReleaseManifest manifest) {
@@ -98,6 +104,66 @@ public final class ManifestValidator {
             paths.add(normalized);
         }
         PathSafety.validateDistinctPaths(paths);
+    }
+
+    private static void validateForcedSyncFiles(
+            ReleaseManifest manifest, Map<String, ManifestFile> filesByFoldedPath) {
+        if (!manifest.forcedSyncFiles().isEmpty()
+                && !manifest.requiredCapabilities().contains(
+                ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC)) {
+            throw new ProtocolException("Forced file sync is missing its required capability");
+        }
+        String previous = null;
+        List<String> paths = new ArrayList<>();
+        for (String forcedPath : manifest.forcedSyncFiles()) {
+            String normalized = PathSafety.normalizeManifestPath(forcedPath);
+            if (previous != null && previous.compareTo(normalized) >= 0) {
+                throw new ProtocolException(
+                        "Forced sync files must be sorted and unique: " + forcedPath);
+            }
+            previous = normalized;
+            paths.add(normalized);
+            ManifestFile file = filesByFoldedPath.get(normalized.toLowerCase(Locale.ROOT));
+            if (file == null || !file.path().equals(normalized)) {
+                throw new ProtocolException(
+                        "Forced sync file is not present in the manifest: " + forcedPath);
+            }
+            if (file.policy() != FilePolicy.ENFORCED) {
+                throw new ProtocolException(
+                        "Forced sync files must be enforced: " + forcedPath);
+            }
+        }
+        PathSafety.validateDistinctPaths(paths);
+    }
+
+    private static void validateReleasedPaths(
+            ReleaseManifest manifest, List<String> managedPaths) {
+        if (!manifest.releasedPaths().isEmpty()
+                && !manifest.requiredCapabilities().contains(
+                ProtocolConstants.CAPABILITY_RELEASED_PATHS)) {
+            throw new ProtocolException("Released paths are missing their required capability");
+        }
+        String previous = null;
+        List<String> released = new ArrayList<>();
+        for (String releasedPath : manifest.releasedPaths()) {
+            String normalized = PathSafety.normalizeManifestPath(releasedPath);
+            if (previous != null && previous.compareTo(normalized) >= 0) {
+                throw new ProtocolException(
+                        "Released paths must be sorted and unique: " + releasedPath);
+            }
+            previous = normalized;
+            if (insideForcedDirectory(normalized, manifest.forcedSyncDirectories())
+                    || manifest.forcedSyncFiles().stream()
+                    .anyMatch(path -> path.equalsIgnoreCase(normalized))) {
+                throw new ProtocolException(
+                        "A forced sync path cannot be released: " + releasedPath);
+            }
+            released.add(normalized);
+        }
+        PathSafety.validateDistinctPaths(released);
+        List<String> allOwnedPaths = new ArrayList<>(managedPaths);
+        allOwnedPaths.addAll(released);
+        PathSafety.validateDistinctPaths(allOwnedPaths);
     }
 
     private static boolean insideForcedDirectory(String path, List<String> directories) {

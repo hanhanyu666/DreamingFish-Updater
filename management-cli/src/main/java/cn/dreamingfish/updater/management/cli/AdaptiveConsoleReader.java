@@ -9,6 +9,8 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -20,19 +22,19 @@ import java.util.Objects;
  */
 final class AdaptiveConsoleReader extends Reader {
     private final InputStream input;
-    private final Charset nativeCharset;
+    private final List<Charset> fallbackCharsets;
     private char[] pending = new char[0];
     private int pendingOffset;
     private boolean endOfInput;
 
     AdaptiveConsoleReader(InputStream input) {
-        this(input, nativeCharset());
+        this(input, fallbackCharsets().toArray(Charset[]::new));
     }
 
-    AdaptiveConsoleReader(InputStream input, Charset nativeCharset) {
+    AdaptiveConsoleReader(InputStream input, Charset... fallbackCharsets) {
         this.input = Objects.requireNonNull(input, "input");
-        this.nativeCharset = Objects.requireNonNull(
-                nativeCharset, "nativeCharset");
+        this.fallbackCharsets = List.of(
+                Objects.requireNonNull(fallbackCharsets, "fallbackCharsets"));
     }
 
     @Override
@@ -80,20 +82,44 @@ final class AdaptiveConsoleReader extends Reader {
                     .decode(ByteBuffer.wrap(bytes))
                     .toString();
         } catch (CharacterCodingException ignored) {
-            return new String(bytes, nativeCharset);
+            for (Charset charset : fallbackCharsets) {
+                if (charset.equals(StandardCharsets.UTF_8)) continue;
+                try {
+                    return charset.newDecoder()
+                            .onMalformedInput(CodingErrorAction.REPORT)
+                            .onUnmappableCharacter(CodingErrorAction.REPORT)
+                            .decode(ByteBuffer.wrap(bytes))
+                            .toString();
+                } catch (CharacterCodingException candidateRejected) {
+                    // Try the next Windows console encoding candidate.
+                }
+            }
+            Charset fallback = fallbackCharsets.isEmpty()
+                    ? Charset.defaultCharset() : fallbackCharsets.getFirst();
+            return new String(bytes, fallback);
         }
     }
 
-    private static Charset nativeCharset() {
-        String name = System.getProperty("native.encoding");
-        if (name != null) {
-            try {
-                return Charset.forName(name);
-            } catch (RuntimeException ignored) {
-                // Fall through to the JVM default on unusual runtimes.
-            }
+    private static List<Charset> fallbackCharsets() {
+        List<Charset> result = new ArrayList<>();
+        addConfigured(result, System.getProperty("native.encoding"));
+        addConfigured(result, System.getProperty("sun.jnu.encoding"));
+        if (System.getProperty("os.name", "")
+                .toLowerCase(java.util.Locale.ROOT).startsWith("windows")) {
+            addConfigured(result, "GB18030");
         }
-        return Charset.defaultCharset();
+        if (result.isEmpty()) result.add(Charset.defaultCharset());
+        return List.copyOf(result);
+    }
+
+    private static void addConfigured(List<Charset> result, String name) {
+        if (name == null || name.isBlank()) return;
+        try {
+            Charset charset = Charset.forName(name);
+            if (!result.contains(charset)) result.add(charset);
+        } catch (RuntimeException ignored) {
+            // Ignore invalid JVM encoding properties and keep other candidates.
+        }
     }
 
     @Override

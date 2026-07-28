@@ -27,7 +27,7 @@
 
 ```text
 C:\DreamingFishAdmin\
-    dfs-admin.cmd
+    DreamingFishAdmin.exe
     app\
     runtime\
     data\                       由程序自动生成，不需要手动配置
@@ -74,10 +74,11 @@ C:\DreamingFishAdmin
 
 ```powershell
 cd C:\DreamingFishAdmin
-.\dfs-admin.cmd
+.\DreamingFishAdmin.exe
 ```
 
-也可以直接双击 `dfs-admin.cmd`。
+也可以直接双击 `DreamingFishAdmin.exe`。EXE 会将 Windows 控制台和 Java
+输入输出统一为 UTF-8，并对旧系统终端的 GB18030 输入进行兼容处理。
 
 第一次启动会显示：
 
@@ -110,7 +111,7 @@ C:\DreamingFishAdmin\management-settings.json
 
 ### 2.1 启动本机 Web 管理界面
 
-管理端 `0.1.9` 提供可选的桌面优先 Web 页面。它与完整 CLI 调用相同的
+管理端 `0.1.13` 提供可选的桌面优先 Web 页面。它与完整 CLI 调用相同的
 项目、扫描、发布和实例服务，不需要 Node、数据库服务或额外 Web 框架。
 
 进入主菜单后选择：
@@ -238,11 +239,27 @@ mods,resourcepacks
 不用交互菜单时，可以在管理端根目录执行：
 
 ```powershell
-.\dfs-admin.cmd project configure building_server --force-sync-directories mods,resourcepacks
-.\dfs-admin.cmd project configure building_server --clear-force-sync
+.\DreamingFishAdmin.exe project configure building_server --force-sync-directories mods,resourcepacks
+.\DreamingFishAdmin.exe project configure building_server --clear-force-sync
 ```
 
 第一条会完整替换强制同步目录列表，不是在现有列表后追加；第二条会关闭这个项目的全部目录级强制同步。修改设置后仍需扫描并发布一个新版本，玩家端才会收到变化。
+
+#### 强制同步单个文件
+
+只要求某个具体文件必须保持服主版本、但不想强制整个目录时，可以使用单文件
+强制同步。在 Web 的“扫描与发布”页面先扫描源目录，再在“单文件强制同步”区域
+搜索、勾选并保存文件。被选文件会忽略玩家本地豁免，但同目录其它文件不受影响。
+
+参数式命令示例：
+
+```powershell
+.\DreamingFishAdmin.exe project configure building_server --force-sync-files mods/required.jar,config/server-required.toml
+.\DreamingFishAdmin.exe project configure building_server --clear-force-sync-files
+```
+
+被配置的文件必须真实存在、没有被规则排除且大小写完全一致，否则扫描会拒绝继续。
+要从标准目录移除一个强制同步文件，应先取消该文件的强制同步设置。
 
 #### 玩家访问的公共 HTTP 地址
 
@@ -308,7 +325,8 @@ C:\DreamingFishSource\building_server\
 - `mods/` 和 `config/` 默认属于强制托管，玩家改动后会被恢复成发布版本。
 - 未启用强制同步的目录中，玩家额外添加且路径不在发布清单中的模组不会删除，只会在玩家端显示提醒。
 - 启用强制同步的一级目录会递归收敛到发布清单，多出的所有文件类型都会移入玩家备份。
-- 已经发布过的强制托管文件从标准目录移除后，下一次发布会把它列为删除项。
+- 单文件强制同步只覆盖所选文件，不会清理同目录中的其它内容。
+- 已经发布过的强制托管文件从标准目录移除后，下一次扫描会把它列为移除项，并要求服主选择“删除玩家文件”或“放弃管理并保留”。
 - 更新器、Agent、日志、存档、截图和崩溃报告默认排除。
 
 ### 5. 发布玩家端更新器程序
@@ -328,30 +346,30 @@ dreamingfish-player-windows-x64\
     .dreamingfish-bootstrap\
     DreamingFishUpdater\
         app\
-            0.1.12\
+            0.1.13\
                 DreamingFishUpdater.exe
                 app\
                 runtime\
         state\
 ```
 
-重新运行 `dfs-admin.cmd`，在主菜单选择：
+重新运行 `DreamingFishAdmin.exe`，在主菜单选择：
 
 ```text
 [6] 发布玩家端程序
 ```
 
-当前玩家端 `0.1.12` 示例应填写：
+当前玩家端 `0.1.13` 示例应填写：
 
 | 终端问题 | 填写内容 |
 | --- | --- |
 | 平台 | `windows-x64` |
-| 玩家端程序版本 | `0.1.12` |
-| 玩家端完整 app-image 目录 | `...\DreamingFishUpdater\app\0.1.12` |
+| 玩家端程序版本 | `0.1.13` |
+| 玩家端完整 app-image 目录 | `...\DreamingFishUpdater\app\0.1.13` |
 | 该目录内的启动程序路径 | `DreamingFishUpdater.exe` |
 | 最低启动引导器版本 | `0.1.2` |
 
-必须选择直接包含 `DreamingFishUpdater.exe`、`app/` 和 `runtime/` 的 `0.1.12` 目录，不要选择外层的 `DreamingFishUpdater`。
+必须选择直接包含 `DreamingFishUpdater.exe`、`app/` 和 `runtime/` 的 `0.1.13` 目录，不要选择外层的 `DreamingFishUpdater`。
 
 最后输入 `Y` 确认发布。
 
@@ -365,12 +383,22 @@ dreamingfish-player-windows-x64\
 
 管理端会显示新增、修改和删除文件。第一次发布时，应看到标准目录中的 `mods/` 和 `config/` 文件都属于新增。
 
+后续扫描出现移除文件时，必须逐项决定：
+
+- `DELETE` / 删除玩家文件：从玩家实例中删除旧托管文件；普通本地豁免仍然优先。
+- `RELEASE` / 放弃管理并保留：停止托管，但保留玩家电脑上的现有副本。
+
+Web 页面可逐项选择，也可批量设置。参数式发布可用
+`--removed-files DELETE` 或 `--removed-files RELEASE` 处理全部尚未决定的移除项。
+强制同步目录内的文件只能删除，不能放弃管理；放弃管理路径会持续写入后续发布，
+保证旧整合包直接跨版本更新时仍然保留。
+
 仔细检查预览后填写：
 
 | 终端问题 | 首次发布示例 |
 | --- | --- |
 | 本次显示版本 | `1.0.0` |
-| 最低玩家端程序版本 | `0.1.12` |
+| 最低玩家端程序版本 | `0.1.13` |
 | 更新记录 | `建筑服首次发布` |
 | 确认不可变版本 | `Y` |
 
@@ -398,7 +426,7 @@ dreamingfish-player-windows-x64\
 也可以在管理端根目录直接运行：
 
 ```powershell
-.\dfs-admin.cmd serve --host 0.0.0.0 --port 8080
+.\DreamingFishAdmin.exe serve --host 0.0.0.0 --port 8080
 ```
 
 先在管理服务器上访问：
@@ -476,7 +504,7 @@ dreamingfish-player-windows-x64-<版本号>.zip
 ```text
 <实例>\.dreamingfish-bootstrap\bootstrap-agent.jar
 <实例>\DreamingFishUpdater\state\active-player.properties
-<实例>\DreamingFishUpdater\app\0.1.12\DreamingFishUpdater.exe
+<实例>\DreamingFishUpdater\app\0.1.13\DreamingFishUpdater.exe
 ```
 
 `.dreamingfish-bootstrap` 是隐藏目录，复制时不能漏掉。
@@ -653,7 +681,12 @@ management-settings.json
 
 停用必要依赖可能导致 Forge 启动失败或无法连接服务器，界面会在操作前提示。“恢复管理默认”会清除文件与目录豁免；“恢复整合包默认”会重新启用模组。所有修改都不会上传到管理端。
 
-管理端可在菜单 `[3] 修改项目设置` 中按一级目录配置强制同步，例如只填写 `mods`。设置变化必须发布一个新整合包版本后才会到达玩家端。强制同步优先级最高：目录及其子文件的玩家开关会禁用，已有本地豁免也会被忽略，缺失或修改的托管文件会恢复为远程版本。玩家界面会明确显示“远程管理端已对 mods/ 启用强制同步”、移出文件数量和备份位置，并提供“打开备份目录”按钮。
+管理端可在菜单 `[3] 修改项目设置` 中按一级目录配置强制同步，例如只填写 `mods`，也可以在 Web 中选择单个强制同步文件。设置变化必须发布一个新整合包版本后才会到达玩家端。强制同步优先级最高：目录及其子文件、或被选中的单文件会禁用玩家开关，已有本地豁免也会被忽略，缺失或修改的托管文件会恢复为远程版本。玩家界面会明确显示强制同步、移出文件数量和备份位置，并在存在备份时提供“打开备份目录”按钮。
+
+服主选择“放弃管理并保留”的文件不会再参与同步，玩家端会显示“服主已停止管理
+文件，本地副本已保留”，并在本次更新详情中列出路径。若服主选择普通删除，玩家已
+设置的文件、目录或模组豁免仍优先，文件会保留并转为本地非托管内容；目录级或
+单文件强制同步仍然优先于玩家豁免。
 
 长期备份位于：
 
@@ -682,7 +715,7 @@ Windows PowerShell：
 ```powershell
 cd C:\DreamingFishAdmin
 $env:DFS_BACKUP_PASSWORD = "使用长且唯一的备份密码"
-.\dfs-admin.cmd backup create --output "D:\Backups\dreamingfish-backup.dfsb"
+.\DreamingFishAdmin.exe backup create --output "D:\Backups\dreamingfish-backup.dfsb"
 Remove-Item Env:DFS_BACKUP_PASSWORD
 ```
 
@@ -695,12 +728,12 @@ C:\DreamingFishAdmin\data\
 C:\DreamingFishAdmin\management-settings.json
 ```
 
-从 `0.1.8` 升级到 `0.1.9` 时：
+升级到 `0.1.13` 时：
 
 1. 先停止 HTTP/Web 服务并退出旧管理端；
 2. 备份上面的 `data/` 和 `management-settings.json`；
 3. 把新管理端 ZIP 解压到临时目录；
-4. 用新包中的 `app/`、`runtime/`、启动脚本和文档覆盖旧程序文件；
+4. 用新包中的 `DreamingFishAdmin.exe`、`app/`、`runtime/` 和文档覆盖旧程序文件，并删除不再使用的 `dfs-admin.cmd`；
 5. 保留原有 `data/` 与 `management-settings.json`，重新启动。
 
 旧 schema 1 设置会自动迁移为 schema 2，并使用默认 Web 管理端口 `18080`。

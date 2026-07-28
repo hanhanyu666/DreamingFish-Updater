@@ -6,6 +6,8 @@ import cn.dreamingfish.updater.management.ProjectRecord;
 import cn.dreamingfish.updater.management.ProjectRules;
 import cn.dreamingfish.updater.management.PublicFileServer;
 import cn.dreamingfish.updater.management.PublishPreview;
+import cn.dreamingfish.updater.management.RemovalAction;
+import cn.dreamingfish.updater.management.RemovalDecision;
 import cn.dreamingfish.updater.management.StoredRelease;
 import cn.dreamingfish.updater.protocol.Branding;
 
@@ -146,6 +148,8 @@ final class InteractiveConsole {
         Path source = promptDirectory("标准整合包目录", null, true);
         String forcedInput = readLine(
                 "强制同步一级目录（逗号分隔，留空不启用，例如 mods）：").trim();
+        String forcedFilesInput = readLine(
+                "强制同步文件（逗号分隔，留空不启用，例如 mods/required.jar）：").trim();
         String publicUrl = prompt("玩家访问的公共 HTTP 地址", defaultPublicUrl());
         String subtitle = prompt("副标题", "Minecraft 整合包更新");
         String serverAddress = prompt("Minecraft 服务器地址（可留空）", "");
@@ -157,7 +161,9 @@ final class InteractiveConsole {
         Branding branding = new Branding(name, subtitle, serverAddress, null, accent, secondaryAccent);
         var services = root.services();
         ProjectRules rules = ProjectRules.defaults().withForcedSyncDirectories(
-                ProjectCreateCommand.parseDirectories(forcedInput));
+                ProjectCreateCommand.parsePaths(forcedInput))
+                .withForcedSyncFiles(
+                        ProjectCreateCommand.parsePaths(forcedFilesInput));
         ProjectRecord project = services.projects().create(
                 id, name, source, publicUrl, branding, rules);
         if (cover != null) {
@@ -175,7 +181,13 @@ final class InteractiveConsole {
         Path source = promptDirectory("标准整合包目录", current.sourceDirectory(), false);
         String currentForced = String.join(",", current.rules().forcedSyncDirectories());
         String forcedInput = prompt("强制同步一级目录（逗号分隔，输入 - 清空）", currentForced);
-        List<String> forcedDirectories = ProjectCreateCommand.parseDirectories(forcedInput);
+        List<String> forcedDirectories = ProjectCreateCommand.parsePaths(forcedInput);
+        String currentForcedFiles = String.join(
+                ",", current.rules().forcedSyncFiles());
+        String forcedFilesInput = prompt(
+                "强制同步文件（逗号分隔，输入 - 清空）", currentForcedFiles);
+        List<String> forcedFiles = ProjectCreateCommand.parsePaths(
+                forcedFilesInput);
         String publicUrl = prompt("玩家访问的公共 HTTP 地址", current.publicBaseUrl());
         Branding old = current.branding();
         String productName = prompt("界面产品名称", old.productName());
@@ -195,7 +207,9 @@ final class InteractiveConsole {
         Branding branding = new Branding(productName, subtitle, serverAddress,
                 coverObject, accent, secondaryAccent);
         var services = root.services();
-        ProjectRules rules = current.rules().withForcedSyncDirectories(forcedDirectories);
+        ProjectRules rules = current.rules()
+                .withForcedSyncDirectories(forcedDirectories)
+                .withForcedSyncFiles(forcedFiles);
         ProjectRecord updated = services.projects().configure(
                 current.id(), source, publicUrl, branding, rules);
         if (cover != null) {
@@ -209,8 +223,9 @@ final class InteractiveConsole {
         if (project == null) return;
         PublishPreview preview = root.services().scanner().createPreview(project.id());
         printPreview(preview);
+        preview = promptRemovalDecisions(project, preview);
         String version = promptRequired("本次显示版本（例如 1.0.1）");
-        String minimumPlayer = prompt("最低玩家端程序版本", "0.1.0");
+        String minimumPlayer = prompt("最低玩家端程序版本", "0.1.13");
         String changelog = ChangelogInput.interactive(
                 readLine("更新记录（可留空；输入 @文件路径读取 UTF-8 文本）："),
                 root.settingsFile().getParent());
@@ -239,6 +254,7 @@ final class InteractiveConsole {
         root.out().println("本次内容范围：" + (roots.isEmpty() ? "（空）" : String.join("、", roots)));
         ProjectRecord project = root.services().database().requireProject(preview.projectId());
         root.out().println("强制同步目录：" + displayForcedDirectories(project.rules()));
+        root.out().println("强制同步文件：" + displayForcedFiles(project.rules()));
         if (preview.changes().isEmpty()) {
             root.out().println("没有文件变更。");
             return;
@@ -251,6 +267,45 @@ final class InteractiveConsole {
             }
             root.out().println();
         });
+    }
+
+    private PublishPreview promptRemovalDecisions(
+            ProjectRecord project, PublishPreview preview) {
+        List<RemovalDecision> decisions = new java.util.ArrayList<>();
+        for (var change : preview.changes()) {
+            if (change.kind() != ChangeKind.REMOVED) continue;
+            boolean forcedDirectory = project.rules().forcedSyncDirectories().stream()
+                    .anyMatch(directory -> change.path().toLowerCase(Locale.ROOT)
+                            .startsWith(directory.toLowerCase(Locale.ROOT) + "/"));
+            if (forcedDirectory) {
+                root.out().println("强制同步目录内的文件只能从玩家端移除："
+                        + change.path());
+                decisions.add(new RemovalDecision(
+                        change.path(), RemovalAction.DELETE));
+                continue;
+            }
+            root.out().println();
+            root.out().println("源目录中已移除：" + change.path());
+            root.out().println("[1] 从玩家端删除");
+            root.out().println("[2] 只放弃管理，保留玩家本地文件");
+            while (true) {
+                String choice = readLine("请选择 1 或 2：").trim();
+                if (choice.equals("1")) {
+                    decisions.add(new RemovalDecision(
+                            change.path(), RemovalAction.DELETE));
+                    break;
+                }
+                if (choice.equals("2")) {
+                    decisions.add(new RemovalDecision(
+                            change.path(), RemovalAction.RELEASE));
+                    break;
+                }
+                root.out().println("请输入 1 或 2。");
+            }
+        }
+        return decisions.isEmpty() ? preview
+                : root.services().scanner().decideRemovals(
+                preview.projectId(), decisions);
     }
 
     private void showReleases() {
@@ -626,6 +681,12 @@ final class InteractiveConsole {
                 .map(value -> value + "/")
                 .reduce((left, right) -> left + "、" + right)
                 .orElse("（未启用）");
+    }
+
+    private static String displayForcedFiles(ProjectRules rules) {
+        return rules.forcedSyncFiles().isEmpty()
+                ? "（未启用）"
+                : String.join("、", rules.forcedSyncFiles());
     }
 
     private static String usefulMessage(Throwable error) {

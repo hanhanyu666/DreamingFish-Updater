@@ -19,8 +19,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 public final class PublishService {
@@ -50,6 +53,7 @@ public final class PublishService {
             ProjectRecord project = database.requireProject(projectId);
             PublishPreview preview = scanner.load(projectId);
             ensurePreviewBaseIsCurrent(preview);
+            ensureRemovalDecisions(preview, project.rules());
 
             for (ScannedFile file : preview.files()) {
                 Path source = PathSafety.resolveInside(project.sourceDirectory(), file.path());
@@ -67,6 +71,8 @@ public final class PublishService {
             Instant now = Instant.now();
             long sequence = project.nextSequence();
             String releaseId = releaseId(sequence, now);
+            List<String> releasedPaths = releasedPaths(
+                    preview, finalScan, project.rules());
             ReleaseManifest manifest = new ReleaseManifest(
                     ProtocolConstants.RELEASE_SCHEMA_VERSION,
                     projectId,
@@ -76,13 +82,15 @@ public final class PublishService {
                     displayVersion,
                     minimumPlayerVersion,
                     changelog == null ? "" : changelog,
-                    requiredCapabilities(project.rules()),
+                    requiredCapabilities(project.rules(), releasedPaths),
                     project.rules().forcedSyncDirectories(),
+                    project.rules().forcedSyncFiles(),
+                    releasedPaths,
                     project.branding(),
-                    toManifestFiles(finalScan, project.rules().forcedSyncDirectories())
+                    toManifestFiles(finalScan, project.rules())
             );
             ManifestValidator.validateRelease(manifest,
-                    Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC));
+                    supportedCapabilities());
             StoredRelease release = persistSignedManifest(project, manifest);
             scanner.remove(projectId);
             return release;
@@ -119,11 +127,13 @@ public final class PublishService {
                     changelog == null ? "Rollback to " + target.displayVersion() : changelog,
                     old.requiredCapabilities(),
                     old.forcedSyncDirectories(),
+                    old.forcedSyncFiles(),
+                    old.releasedPaths(),
                     old.branding(),
                     old.files()
             );
             ManifestValidator.validateRelease(rollback,
-                    Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC));
+                    supportedCapabilities());
             return persistSignedManifest(project, rollback);
         } catch (IOException e) {
             throw new ManagementException("Unable to roll back project " + projectId, e);
@@ -176,12 +186,17 @@ public final class PublishService {
         }
     }
 
-    private static List<ManifestFile> toManifestFiles(List<ScannedFile> files,
-                                                      List<String> forcedSyncDirectories) {
+    private static List<ManifestFile> toManifestFiles(
+            List<ScannedFile> files, ProjectRules rules) {
+        Set<String> forcedFiles = rules.forcedSyncFiles().stream()
+                .map(PublishService::fold)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         List<ManifestFile> result = new ArrayList<>();
         for (ScannedFile file : files) {
-            cn.dreamingfish.updater.protocol.FilePolicy policy = forcedSyncDirectories.stream()
+            cn.dreamingfish.updater.protocol.FilePolicy policy =
+                    rules.forcedSyncDirectories().stream()
                     .anyMatch(directory -> insideDirectory(file.path(), directory))
+                    || forcedFiles.contains(fold(file.path()))
                     ? cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED
                     : file.policy();
             result.add(new ManifestFile(file.path(), file.sha256(), file.size(), policy,
@@ -196,10 +211,78 @@ public final class PublishService {
                 .startsWith(directory.toLowerCase(java.util.Locale.ROOT) + "/");
     }
 
-    private static Set<String> requiredCapabilities(ProjectRules rules) {
-        return rules.forcedSyncDirectories().isEmpty()
-                ? Set.of()
-                : Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC);
+    private List<String> releasedPaths(
+            PublishPreview preview, List<ScannedFile> finalScan, ProjectRules rules) {
+        Set<String> result = new TreeSet<>();
+        if (preview.baseReleaseId() != null) {
+            StoredRelease base = database.findRelease(
+                            preview.projectId(), preview.baseReleaseId())
+                    .orElseThrow(() -> new ManagementException(
+                            "The preview base release no longer exists"));
+            result.addAll(database.readManifest(base).releasedPaths());
+        }
+        Set<String> managed = finalScan.stream()
+                .map(ScannedFile::path)
+                .map(PublishService::fold)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        result.removeIf(path -> managed.contains(fold(path)));
+        preview.changes().stream()
+                .filter(change -> change.kind() == ChangeKind.REMOVED)
+                .filter(change -> change.removalAction() == RemovalAction.RELEASE)
+                .map(PreviewChange::path)
+                .forEach(result::add);
+
+        Set<String> forcedFiles = rules.forcedSyncFiles().stream()
+                .map(PublishService::fold)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        result.removeIf(path -> forcedFiles.contains(fold(path))
+                || rules.forcedSyncDirectories().stream()
+                .anyMatch(directory -> insideDirectory(path, directory)));
+        return List.copyOf(result);
+    }
+
+    private static void ensureRemovalDecisions(
+            PublishPreview preview, ProjectRules rules) {
+        for (PreviewChange change : preview.changes()) {
+            if (change.kind() != ChangeKind.REMOVED) continue;
+            if (change.removalAction() == null) {
+                throw new ManagementException(
+                        "Choose delete or release management for every removed file before publishing");
+            }
+            if (change.removalAction() == RemovalAction.RELEASE
+                    && rules.forcedSyncDirectories().stream()
+                    .anyMatch(directory -> insideDirectory(change.path(), directory))) {
+                throw new ManagementException(
+                        "Files inside a forced sync directory cannot be released: "
+                                + change.path());
+            }
+        }
+    }
+
+    private static Set<String> requiredCapabilities(
+            ProjectRules rules, List<String> releasedPaths) {
+        Set<String> capabilities = new HashSet<>();
+        if (!rules.forcedSyncDirectories().isEmpty()) {
+            capabilities.add(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC);
+        }
+        if (!rules.forcedSyncFiles().isEmpty()) {
+            capabilities.add(ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC);
+        }
+        if (!releasedPaths.isEmpty()) {
+            capabilities.add(ProtocolConstants.CAPABILITY_RELEASED_PATHS);
+        }
+        return Set.copyOf(capabilities);
+    }
+
+    private static Set<String> supportedCapabilities() {
+        return Set.of(
+                ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC,
+                ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC,
+                ProtocolConstants.CAPABILITY_RELEASED_PATHS);
+    }
+
+    private static String fold(String path) {
+        return path.replace('\\', '/').toLowerCase(Locale.ROOT);
     }
 
     private static String releaseId(long sequence, Instant createdAt) {

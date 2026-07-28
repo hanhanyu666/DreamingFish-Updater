@@ -96,7 +96,10 @@ public final class BundledReleasePreparer {
             }
             ReleaseManifest manifest = json.read(bytes, ReleaseManifest.class);
             ManifestValidator.validateRelease(manifest,
-                    Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC));
+                    Set.of(
+                            ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC,
+                            ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC,
+                            ProtocolConstants.CAPABILITY_RELEASED_PATHS));
             if (!manifest.projectId().equals(project.id())
                     || !manifest.releaseId().equals(stored.releaseId())
                     || manifest.sequence() != stored.sequence()) {

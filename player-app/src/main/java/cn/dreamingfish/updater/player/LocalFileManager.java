@@ -236,9 +236,11 @@ final class LocalFileManager {
     }
 
     private static boolean isForced(String path, ReleaseManifest release) {
-        return release != null && release.forcedSyncDirectories().stream()
+        return release != null && (release.forcedSyncFiles().stream()
+                .anyMatch(file -> fold(path).equals(fold(file)))
+                || release.forcedSyncDirectories().stream()
                 .anyMatch(directory -> fold(path).equals(fold(directory))
-                        || fold(path).startsWith(fold(directory) + "/"));
+                        || fold(path).startsWith(fold(directory) + "/")));
     }
 
     private static boolean inside(String path, String directory) {

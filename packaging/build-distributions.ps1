@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.8",
+    [string]$Version = "0.1.13",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
@@ -267,21 +267,33 @@ if ($PlayerOnly) {
     return
 }
 
-# Build the headless Windows management bundle.
+# Build the Windows management app image with a native console launcher.
 $adminWindows = Join-Path $distRoot "dfs-admin-windows-x64"
-New-Item -ItemType Directory -Force -Path (Join-Path $adminWindows "app") | Out-Null
-Invoke-Checked $jlink @(
-    "--module-path", (Join-Path $resolvedJdk "jmods"),
+New-Item -ItemType Directory -Force -Path $adminWindows | Out-Null
+$adminInput = Join-Path $buildRoot "admin-input"
+$adminImageRoot = Join-Path $buildRoot "admin-image"
+New-Item -ItemType Directory -Force -Path $adminInput, $adminImageRoot | Out-Null
+Copy-Item -LiteralPath $adminJar -Destination (Join-Path $adminInput "dfs-admin.jar")
+Invoke-Checked $jpackage @(
+    "--type", "app-image",
+    "--name", "DreamingFishAdmin",
+    "--dest", $adminImageRoot,
+    "--input", $adminInput,
+    "--main-jar", "dfs-admin.jar",
+    "--main-class", "cn.dreamingfish.updater.management.cli.ManagementCli",
+    "--app-version", $Version,
+    "--vendor", "DreamingFish",
+    "--description", "DreamingFish modpack update management",
+    "--win-console",
     "--add-modules", "java.se,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
-    "--output", (Join-Path $adminWindows "runtime"),
-    "--strip-debug", "--no-header-files", "--no-man-pages", "--compress=2"
+    "--java-options", "-Dfile.encoding=UTF-8",
+    "--java-options", '-Ddfs.home=$APPDIR/..'
 )
-Copy-Item -LiteralPath $adminJar -Destination (Join-Path $adminWindows "app\dfs-admin.jar")
-Copy-Item -LiteralPath (Join-Path $templates "dfs-admin.cmd") -Destination $adminWindows
+Copy-DirectoryContents (Join-Path $adminImageRoot "DreamingFishAdmin") $adminWindows
 Copy-Item -LiteralPath (Join-Path $templates "README-management.txt") -Destination (Join-Path $adminWindows "README.txt")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\QUICKSTART.md") -Destination (Join-Path $adminWindows "QUICKSTART.md")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") -Destination (Join-Path $adminWindows "DEPLOYMENT.md")
-$adminVersionOutput = & (Join-Path $adminWindows "dfs-admin.cmd") --version 2>&1
+$adminVersionOutput = & (Join-Path $adminWindows "DreamingFishAdmin.exe") --version 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "Packaged admin version check failed: $($adminVersionOutput -join [Environment]::NewLine)"
 }

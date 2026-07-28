@@ -123,7 +123,10 @@
             <div class="form-grid">
               <label class="field span-2">
                 <span>标准整合包目录</span>
-                <input name="sourceDirectory" required>
+                <div class="path-input-row">
+                  <input name="sourceDirectory" required>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择标准整合包目录">浏览</button>
+                </div>
               </label>
               <label class="field span-2">
                 <span>玩家访问公共 HTTP 地址</span>
@@ -155,7 +158,10 @@
               </label>
               <label class="field span-2">
                 <span>服务器上的新封面文件路径</span>
-                <input name="coverPath">
+                <div class="path-input-row">
+                  <input name="coverPath">
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="image" data-path-name="coverPath" data-path-title="选择封面图片">浏览</button>
+                </div>
               </label>
               <label class="check-field span-2">
                 <input name="removeCover" type="checkbox">
@@ -172,7 +178,11 @@
                 <h2>发布预览</h2>
                 <span id="preview-time">尚未扫描</span>
               </div>
-              <button class="secondary-button" id="scan-button">↻ 扫描源目录</button>
+              <div class="button-row">
+                <button class="secondary-button" id="release-all-button" type="button">全部保留</button>
+                <button class="secondary-button" id="delete-all-button" type="button">全部删除</button>
+                <button class="secondary-button" id="scan-button" type="button">↻ 扫描源目录</button>
+              </div>
             </div>
             <div class="preview-summary" id="preview-summary">
               <div><span>托管文件</span><strong>--</strong></div>
@@ -182,11 +192,33 @@
             </div>
             <div class="table-wrap preview-table">
               <table>
-                <thead><tr><th>操作</th><th>文件</th><th>下载量</th></tr></thead>
+                <thead><tr><th>变更</th><th>文件</th><th>下载量</th><th>移除后的处理</th></tr></thead>
                 <tbody id="preview-table"></tbody>
               </table>
               <div class="empty-state" id="preview-empty">扫描后显示文件变更</div>
             </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header forced-file-header">
+              <div>
+                <h2>单文件强制同步</h2>
+                <span id="forced-file-count">扫描后可视化选择；玩家不能在本地豁免已选文件</span>
+              </div>
+              <div class="button-row">
+                <input class="table-search" id="forced-file-search" placeholder="搜索文件">
+                <button class="secondary-button" id="clear-forced-files" type="button">清空选择</button>
+                <button class="primary-button" id="save-forced-files" type="button">保存设置</button>
+              </div>
+            </div>
+            <div class="table-wrap forced-file-table">
+              <table>
+                <thead><tr><th>强制</th><th>托管文件</th><th>策略</th><th>大小</th></tr></thead>
+                <tbody id="forced-file-table"></tbody>
+              </table>
+              <div class="empty-state" id="forced-file-empty">请先扫描标准整合包目录</div>
+            </div>
+            <p class="notice-line forced-file-notice">强制同步文件会覆盖玩家修改并忽略本地豁免；这里只影响选中的文件，不会强制同目录的其它内容。</p>
           </section>
 
           <form class="panel form-panel" id="publish-form">
@@ -204,7 +236,7 @@
               </label>
               <label class="field">
                 <span>最低玩家端程序版本</span>
-                <input name="minimumPlayerVersion" value="0.1.12" required>
+                <input name="minimumPlayerVersion" value="0.1.13" required>
               </label>
               <label class="field span-2">
                 <span>更新记录</span>
@@ -240,11 +272,14 @@
               </label>
               <label class="field">
                 <span>玩家端版本</span>
-                <input name="version" placeholder="0.1.12" required>
+                <input name="version" placeholder="0.1.13" required>
               </label>
               <label class="field span-2">
                 <span>完整 app-image 目录</span>
-                <input name="sourceDirectory" required>
+                <div class="path-input-row">
+                  <input name="sourceDirectory" required>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择玩家端 app-image 目录">浏览</button>
+                </div>
               </label>
               <label class="field">
                 <span>启动程序相对路径</span>
@@ -280,7 +315,10 @@
             <div class="form-grid">
               <label class="field span-2">
                 <span>Minecraft 版本隔离实例目录</span>
-                <input name="instanceDirectory" required>
+                <div class="path-input-row">
+                  <input name="instanceDirectory" required>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="instanceDirectory" data-path-title="选择 Minecraft 实例目录">浏览</button>
+                </div>
               </label>
               <label class="field">
                 <span>平台</span>
@@ -350,7 +388,13 @@
       <div class="form-grid">
         <label class="field"><span>项目 ID</span><input name="id" pattern="[a-z0-9][a-z0-9._-]{0,63}" required></label>
         <label class="field"><span>项目显示名称</span><input name="displayName" required></label>
-        <label class="field span-2"><span>标准整合包目录</span><input name="sourceDirectory" required></label>
+        <label class="field span-2">
+          <span>标准整合包目录</span>
+          <div class="path-input-row">
+            <input name="sourceDirectory" required>
+            <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择标准整合包目录">浏览</button>
+          </div>
+        </label>
         <label class="field span-2"><span>玩家访问公共 HTTP 地址</span><input name="publicBaseUrl" type="url" required></label>
         <label class="field span-2"><span>强制同步一级目录</span><input name="forcedSyncDirectories" placeholder="mods, config"></label>
         <label class="field span-2"><span>服务器地址</span><input name="serverAddress"></label>

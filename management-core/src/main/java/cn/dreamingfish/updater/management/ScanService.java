@@ -17,13 +17,17 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
 public final class ScanService {
-    public static final int PREVIEW_SCHEMA_VERSION = 1;
+    public static final int PREVIEW_SCHEMA_VERSION = 2;
 
     private final ManagementPaths paths;
     private final ManagementDatabase database;
@@ -43,6 +47,23 @@ public final class ScanService {
                 ? List.of()
                 : database.readManifest(latest).files();
         List<PreviewChange> changes = differences(previousFiles, files);
+        PublishPreview existing = loadIfCompatible(projectId,
+                latest == null ? null : latest.releaseId());
+        if (existing != null) {
+            Map<String, RemovalAction> priorActions = new HashMap<>();
+            existing.changes().stream()
+                    .filter(change -> change.kind() == ChangeKind.REMOVED)
+                    .filter(change -> change.removalAction() != null)
+                    .forEach(change -> priorActions.put(
+                            fold(change.path()), change.removalAction()));
+            changes = changes.stream()
+                    .map(change -> change.kind() == ChangeKind.REMOVED
+                            && priorActions.containsKey(fold(change.path()))
+                            ? change.withRemovalAction(
+                            priorActions.get(fold(change.path())))
+                            : change)
+                    .toList();
+        }
         long total = files.stream().mapToLong(ScannedFile::size).sum();
         long download = changes.stream().mapToLong(PreviewChange::downloadSize).sum();
         PublishPreview preview = new PublishPreview(
@@ -58,6 +79,55 @@ public final class ScanService {
         );
         save(preview);
         return preview;
+    }
+
+    public PublishPreview decideRemovals(
+            String projectId, List<RemovalDecision> decisions) {
+        PublishPreview preview = load(projectId);
+        List<RemovalDecision> values = decisions == null ? List.of() : decisions;
+        Map<String, RemovalAction> requested = new LinkedHashMap<>();
+        for (RemovalDecision decision : values) {
+            if (decision == null || decision.action() == null) {
+                throw new ManagementException("Removal decision is incomplete");
+            }
+            final String normalized;
+            try {
+                normalized = PathSafety.normalizeManifestPath(decision.path());
+            } catch (RuntimeException e) {
+                throw new ManagementException(
+                        "Invalid removal decision path: " + decision.path(), e);
+            }
+            if (requested.putIfAbsent(fold(normalized), decision.action()) != null) {
+                throw new ManagementException(
+                        "Duplicate removal decision: " + normalized);
+            }
+        }
+
+        Set<String> removed = preview.changes().stream()
+                .filter(change -> change.kind() == ChangeKind.REMOVED)
+                .map(PreviewChange::path)
+                .map(ScanService::fold)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        for (String requestedPath : requested.keySet()) {
+            if (!removed.contains(requestedPath)) {
+                throw new ManagementException(
+                        "Removal decision does not belong to this preview: "
+                                + requestedPath);
+            }
+        }
+        List<PreviewChange> changes = preview.changes().stream()
+                .map(change -> change.kind() == ChangeKind.REMOVED
+                        && requested.containsKey(fold(change.path()))
+                        ? change.withRemovalAction(requested.get(fold(change.path())))
+                        : change)
+                .toList();
+        PublishPreview updated = new PublishPreview(
+                preview.schemaVersion(), preview.previewId(), preview.projectId(),
+                preview.baseReleaseId(), preview.createdAt(), preview.files(),
+                changes, preview.totalManagedBytes(),
+                preview.estimatedDownloadBytes());
+        save(updated);
+        return updated;
     }
 
     public PublishPreview load(String projectId) {
@@ -87,6 +157,9 @@ public final class ScanService {
     List<ScannedFile> scan(ProjectRecord project) {
         validateForcedSyncDirectories(project);
         RuleSet rules = new RuleSet(project.rules());
+        Set<String> forcedFiles = project.rules().forcedSyncFiles().stream()
+                .map(ScanService::fold)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         List<ScannedFile> files = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(project.sourceDirectory())) {
             stream.filter(path -> !path.equals(project.sourceDirectory())).forEach(path -> {
@@ -98,7 +171,8 @@ public final class ScanService {
                     return;
                 }
                 if (project.rules().forcedSyncDirectories().stream()
-                        .anyMatch(directory -> insideDirectory(managedPath, directory))) {
+                        .anyMatch(directory -> insideDirectory(managedPath, directory))
+                        || forcedFiles.contains(fold(managedPath))) {
                     decision = RuleSet.Decision.managedDecision(
                             cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED);
                 }
@@ -117,6 +191,7 @@ public final class ScanService {
         }
         files.sort(Comparator.comparing(ScannedFile::path));
         PathSafety.validateDistinctPaths(files.stream().map(ScannedFile::path).toList());
+        validateForcedSyncFiles(project, files);
         return List.copyOf(files);
     }
 
@@ -137,6 +212,20 @@ public final class ScanService {
             } catch (IOException e) {
                 throw new ManagementException("Unable to validate forced sync source directory: "
                         + directory, e);
+            }
+        }
+    }
+
+    private void validateForcedSyncFiles(
+            ProjectRecord project, List<ScannedFile> files) {
+        Map<String, ScannedFile> scanned = new HashMap<>();
+        files.forEach(file -> scanned.put(fold(file.path()), file));
+        for (String forcedPath : project.rules().forcedSyncFiles()) {
+            ScannedFile file = scanned.get(fold(forcedPath));
+            if (file == null || !file.path().equals(forcedPath)) {
+                throw new ManagementException(
+                        "Forced sync file is missing, excluded, or has different casing: "
+                                + forcedPath);
             }
         }
     }
@@ -205,10 +294,24 @@ public final class ScanService {
         }
     }
 
+    private PublishPreview loadIfCompatible(String projectId, String baseReleaseId) {
+        try {
+            PublishPreview preview = load(projectId);
+            return java.util.Objects.equals(
+                    preview.baseReleaseId(), baseReleaseId) ? preview : null;
+        } catch (ManagementException ignored) {
+            return null;
+        }
+    }
+
     private Path previewPath(String projectId) {
         if (!projectId.matches("[a-z0-9][a-z0-9._-]{0,63}")) {
             throw new ManagementException("Invalid project ID");
         }
         return paths.previews().resolve(projectId + ".json");
+    }
+
+    private static String fold(String path) {
+        return path.replace('\\', '/').toLowerCase(Locale.ROOT);
     }
 }

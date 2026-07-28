@@ -675,6 +675,98 @@ class UpdateEngineTest {
     }
 
     @Test
+    void keepsAReleasedManagedFileWhenUpdatingDirectlyFromAnOldBaseline()
+            throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(
+                    temporary.resolve("released-managed-file"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            TestUpdateServer.TestFile legacy = server.file(
+                    "mods/legacy-renderer.jar", "legacy",
+                    FilePolicy.ENFORCED);
+            ReleaseManifest baseline = server.release(
+                    1, "release-1", legacy);
+            server.bundle(instance, baseline, true);
+
+            ReleaseManifest target = server.release(
+                    4, "release-4", List.of(), List.of(),
+                    List.of("mods/legacy-renderer.jar"));
+            server.serve(target);
+            UpdateResult result = new UpdateEngine().update(
+                    advancedRequest(instance, playerHome, server.binding(),
+                            LocalFileOverrides.NONE), null);
+
+            assertEquals(UpdateOutcome.UPDATED, result.outcome());
+            assertEquals("legacy", Files.readString(
+                    instance.resolve("mods/legacy-renderer.jar")));
+            assertEquals(List.of(Path.of("mods/legacy-renderer.jar")),
+                    result.releasedPaths());
+            assertTrue(result.deletedPaths().isEmpty());
+        }
+    }
+
+    @Test
+    void localExemptionKeepsAServerDeletedOrdinaryManagedFile()
+            throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(
+                    temporary.resolve("exempt-server-delete"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            TestUpdateServer.TestFile optional = server.file(
+                    "mods/optional-map.jar", "optional",
+                    FilePolicy.ENFORCED);
+            ReleaseManifest baseline = server.release(
+                    1, "release-1", optional);
+            server.bundle(instance, baseline, true);
+            ReleaseManifest target = server.release(2, "release-2");
+            server.serve(target);
+
+            LocalFileOverrides exemption = new LocalFileOverrides(
+                    Set.of(), Set.of("mods/optional-map.jar"));
+            UpdateResult result = new UpdateEngine().update(
+                    request(instance, playerHome, server.binding(), exemption),
+                    null);
+
+            assertTrue(Files.isRegularFile(
+                    instance.resolve("mods/optional-map.jar")));
+            assertTrue(result.deletedPaths().isEmpty());
+        }
+    }
+
+    @Test
+    void forcedFileSyncOverridesAPlayerLocalExemption() throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(
+                    temporary.resolve("forced-file"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            TestUpdateServer.TestFile required = server.file(
+                    "mods/server-required.jar", "required",
+                    FilePolicy.ENFORCED);
+            ReleaseManifest baseline = server.release(
+                    1, "release-1", required);
+            server.bundle(instance, baseline, true);
+            Files.writeString(instance.resolve("mods/server-required.jar"),
+                    "player-modified");
+
+            ReleaseManifest target = server.release(
+                    2, "release-2", List.of(),
+                    List.of("mods/server-required.jar"), List.of(), required);
+            server.serve(target);
+            LocalFileOverrides exemption = new LocalFileOverrides(
+                    Set.of(), Set.of("mods/server-required.jar"));
+            UpdateResult result = new UpdateEngine().update(
+                    advancedRequest(
+                            instance, playerHome, server.binding(), exemption),
+                    null);
+
+            assertEquals("required", Files.readString(
+                    instance.resolve("mods/server-required.jar")));
+            assertEquals(List.of(Path.of("mods/server-required.jar")),
+                    result.installedPaths());
+        }
+    }
+
+    @Test
     void componentIdKeepsARenamedModDisabledUntilThePlayerRestoresIt() throws Exception {
         try (TestUpdateServer server = new TestUpdateServer()) {
             Path instance = Files.createDirectories(temporary.resolve("renamed-disabled"));
@@ -730,6 +822,20 @@ class UpdateEngineTest {
         return new UpdateRequest(instance, playerHome, binding, "0.1.4",
                 Set.of(cn.dreamingfish.updater.protocol.ProtocolConstants
                         .CAPABILITY_FORCED_DIRECTORY_SYNC),
+                null, null, null, CancellationToken.NEVER, overrides);
+    }
+
+    private UpdateRequest advancedRequest(
+            Path instance, Path playerHome, ProjectBinding binding,
+            LocalFileOverrides overrides) {
+        return new UpdateRequest(instance, playerHome, binding, "0.1.13",
+                Set.of(
+                        cn.dreamingfish.updater.protocol.ProtocolConstants
+                                .CAPABILITY_FORCED_DIRECTORY_SYNC,
+                        cn.dreamingfish.updater.protocol.ProtocolConstants
+                                .CAPABILITY_FORCED_FILE_SYNC,
+                        cn.dreamingfish.updater.protocol.ProtocolConstants
+                                .CAPABILITY_RELEASED_PATHS),
                 null, null, null, CancellationToken.NEVER, overrides);
     }
 

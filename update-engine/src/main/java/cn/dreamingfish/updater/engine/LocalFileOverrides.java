@@ -14,18 +14,26 @@ public record LocalFileOverrides(
         Set<String> disabledComponentIds,
         Set<String> excludedPaths,
         Set<String> excludedDirectories,
+        Set<String> forcedPaths,
         Set<String> forcedDirectories
 ) {
     public static final LocalFileOverrides NONE = new LocalFileOverrides(
-            Set.of(), Set.of(), Set.of(), Set.of());
+            Set.of(), Set.of(), Set.of(), Set.of(), Set.of());
 
     public LocalFileOverrides(Set<String> disabledComponentIds, Set<String> excludedPaths) {
-        this(disabledComponentIds, excludedPaths, Set.of(), Set.of());
+        this(disabledComponentIds, excludedPaths, Set.of(), Set.of(), Set.of());
     }
 
     public LocalFileOverrides(Set<String> disabledComponentIds, Set<String> excludedPaths,
                               Set<String> excludedDirectories) {
-        this(disabledComponentIds, excludedPaths, excludedDirectories, Set.of());
+        this(disabledComponentIds, excludedPaths, excludedDirectories, Set.of(), Set.of());
+    }
+
+    public LocalFileOverrides(Set<String> disabledComponentIds, Set<String> excludedPaths,
+                              Set<String> excludedDirectories,
+                              Set<String> forcedDirectories) {
+        this(disabledComponentIds, excludedPaths, excludedDirectories,
+                Set.of(), forcedDirectories);
     }
 
     public LocalFileOverrides {
@@ -33,6 +41,7 @@ public record LocalFileOverrides(
         excludedPaths = normalizePaths(excludedPaths, "Invalid locally excluded path");
         excludedDirectories = normalizePaths(
                 excludedDirectories, "Invalid locally excluded directory");
+        forcedPaths = normalizePaths(forcedPaths, "Invalid forced file");
         forcedDirectories = normalizePaths(forcedDirectories, "Invalid forced directory");
     }
 
@@ -56,7 +65,8 @@ public record LocalFileOverrides(
     }
 
     public boolean isForced(String path) {
-        return path != null && matchesDirectory(path, forcedDirectories);
+        return path != null && (forcedPaths.contains(fold(path))
+                || matchesDirectory(path, forcedDirectories));
     }
 
     public LocalFileOverrides withForcedDirectories(Collection<String> directories) {
@@ -64,7 +74,20 @@ public record LocalFileOverrides(
                 ? Set.of()
                 : normalizePaths(new LinkedHashSet<>(directories), "Invalid forced directory");
         return new LocalFileOverrides(disabledComponentIds, excludedPaths,
-                excludedDirectories, normalized);
+                excludedDirectories, forcedPaths, normalized);
+    }
+
+    public LocalFileOverrides withForcedManagement(
+            Collection<String> files, Collection<String> directories) {
+        Set<String> normalizedFiles = files == null
+                ? Set.of()
+                : normalizePaths(new LinkedHashSet<>(files), "Invalid forced file");
+        Set<String> normalizedDirectories = directories == null
+                ? Set.of()
+                : normalizePaths(new LinkedHashSet<>(directories),
+                "Invalid forced directory");
+        return new LocalFileOverrides(disabledComponentIds, excludedPaths,
+                excludedDirectories, normalizedFiles, normalizedDirectories);
     }
 
     public LocalFileOverrides merge(LocalFileOverrides other) {
@@ -72,8 +95,10 @@ public record LocalFileOverrides(
         Set<String> components = union(disabledComponentIds, other.disabledComponentIds);
         Set<String> paths = union(excludedPaths, other.excludedPaths);
         Set<String> directories = union(excludedDirectories, other.excludedDirectories);
+        Set<String> forcedFiles = union(forcedPaths, other.forcedPaths);
         Set<String> forced = union(forcedDirectories, other.forcedDirectories);
-        return new LocalFileOverrides(components, paths, directories, forced);
+        return new LocalFileOverrides(
+                components, paths, directories, forcedFiles, forced);
     }
 
     public boolean isEmpty() {

@@ -33,9 +33,15 @@ final class ProjectConfigureCommand implements Runnable {
     @CommandLine.Option(names = "--force-sync-directories",
             description = "Replace the comma-separated top-level mirror directories")
     String forcedSyncDirectories;
+    @CommandLine.Option(names = "--force-sync-files",
+            description = "Replace the comma-separated forced managed files")
+    String forcedSyncFiles;
     @CommandLine.Option(names = "--clear-force-sync",
             description = "Disable forced directory sync for this project")
     boolean clearForceSync;
+    @CommandLine.Option(names = "--clear-force-sync-files",
+            description = "Disable forced file sync for this project")
+    boolean clearForceSyncFiles;
 
     @Override
     public void run() {
@@ -60,7 +66,17 @@ final class ProjectConfigureCommand implements Runnable {
             rules = rules.withForcedSyncDirectories(java.util.List.of());
         } else if (forcedSyncDirectories != null) {
             rules = rules.withForcedSyncDirectories(
-                    ProjectCreateCommand.parseDirectories(forcedSyncDirectories));
+                    ProjectCreateCommand.parsePaths(forcedSyncDirectories));
+        }
+        if (clearForceSyncFiles && forcedSyncFiles != null) {
+            throw new IllegalArgumentException(
+                    "Use either --clear-force-sync-files or --force-sync-files, not both");
+        }
+        if (clearForceSyncFiles) {
+            rules = rules.withForcedSyncFiles(java.util.List.of());
+        } else if (forcedSyncFiles != null) {
+            rules = rules.withForcedSyncFiles(
+                    ProjectCreateCommand.parsePaths(forcedSyncFiles));
         }
         CliOutput.project(root, services.projects().configure(projectId, source, publicUrl, branding, rules));
     }

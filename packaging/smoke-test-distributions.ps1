@@ -1,8 +1,9 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.8",
+    [string]$Version = "0.1.13",
     [string]$AdminVersion = "",
     [string]$DistDirectory = "",
+    [string]$JdkHome = "",
     [switch]$KeepWork
 )
 
@@ -42,6 +43,19 @@ function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
 }
 
+function Resolve-TestJava([string]$Requested) {
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($Requested)) { $candidates += $Requested }
+    if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) { $candidates += $env:JAVA_HOME }
+    $candidates += "D:\Program Files\Java\jdk-21"
+    $candidates += "C:\Program Files\Java\jdk-21"
+    foreach ($candidate in $candidates | Select-Object -Unique) {
+        $java = Join-Path $candidate "bin\java.exe"
+        if (Test-Path -LiteralPath $java -PathType Leaf) { return $java }
+    }
+    throw "A JDK is required for the standalone bootstrap verifier. Pass -JdkHome <path>."
+}
+
 function Invoke-Admin([string[]]$AdminArguments) {
     $output = & $script:adminCommand @AdminArguments 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -57,6 +71,7 @@ function Publish-Release([string]$DisplayVersion, [string]$Changelog) {
         "--version", $DisplayVersion,
         "--minimum-player-version", $Version,
         "--changelog", $Changelog,
+        "--removed-files", "DELETE",
         "--yes"
     )
     $text = $output -join [Environment]::NewLine
@@ -83,10 +98,9 @@ function Verify-PlayerProgram([string]$Instance, [bool]$ExpectSuccess) {
     $binding = Get-Content -Raw -LiteralPath (Join-Path $Instance `
             ".dreamingfish-bootstrap\project-binding.json") | ConvertFrom-Json
     $active = Read-ActivePlayer $Instance
-    $java = Join-Path $script:adminRoot "runtime\bin\java.exe"
     $agent = Join-Path $Instance ".dreamingfish-bootstrap\bootstrap-agent.jar"
     $playerHome = Join-Path $Instance "DreamingFishUpdater"
-    $output = & $java -cp $agent `
+    $output = & $script:testJava -cp $agent `
         "cn.dreamingfish.updater.bootstrap.PlayerProgramVerifierMain" `
         $playerHome $binding.projectId $binding.publicKey `
         $active.version $active.manifestSha256 2>&1
@@ -111,6 +125,7 @@ function Get-FreeTcpPort {
 }
 
 try {
+    $testJava = Resolve-TestJava $JdkHome
     $adminZip = Join-Path $distRoot "dfs-admin-windows-x64-$resolvedAdminVersion.zip"
     $playerZip = Join-Path $distRoot "dreamingfish-player-windows-x64-$Version.zip"
     Assert-True (Test-Path -LiteralPath $adminZip -PathType Leaf) "Missing admin ZIP: $adminZip"
@@ -120,7 +135,7 @@ try {
     Expand-Archive -LiteralPath $adminZip -DestinationPath $adminRoot
     Expand-Archive -LiteralPath $playerZip -DestinationPath $playerTemplate
 
-    $adminCommand = Join-Path $adminRoot "dfs-admin.cmd"
+    $adminCommand = Join-Path $adminRoot "DreamingFishAdmin.exe"
     $versionOutput = (Invoke-Admin @("--version")) -join " "
     Assert-True ($versionOutput -eq "DreamingFish Update System $resolvedAdminVersion") `
         "Packaged admin reported the wrong version: $versionOutput"
@@ -225,14 +240,9 @@ try {
     Verify-PlayerProgram $instanceOne $true
     Verify-PlayerProgram $instanceTwo $true
 
-    $java = Join-Path $adminRoot "runtime\bin\java.exe"
-    $jar = Join-Path $adminRoot "app\dfs-admin.jar"
     $serverOut = Join-Path $workRoot "server.out.log"
     $serverErr = Join-Path $workRoot "server.err.log"
-    $serverProcess = Start-Process -FilePath $java -ArgumentList @(
-        "-Dfile.encoding=UTF-8",
-        "-Ddfs.home=$adminRoot",
-        "-jar", $jar,
+    $serverProcess = Start-Process -FilePath $adminCommand -ArgumentList @(
         "serve", "--host", "127.0.0.1", "--port", $port
     ) -RedirectStandardOutput $serverOut -RedirectStandardError $serverErr `
         -WindowStyle Hidden -PassThru

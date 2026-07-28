@@ -49,6 +49,8 @@ class AdminWebServerTest {
             HttpResponse<String> page = send(base, "/", "GET", null, null);
             assertEquals(200, page.statusCode());
             assertTrue(page.body().contains("梦鱼更新管理"));
+            assertTrue(page.body().contains("单文件强制同步"));
+            assertTrue(page.body().contains("data-path-kind=\"directory\""));
             assertEquals("text/html; charset=utf-8", page.headers()
                     .firstValue("Content-Type").orElseThrow());
             assertEquals("DENY", page.headers()
@@ -82,10 +84,19 @@ class AdminWebServerTest {
                     base, "/api/projects/web-demo/scan", "POST", "{}", token);
             assertEquals(200, scanned.statusCode(), scanned.body());
             assertTrue(scanned.body().contains("\"path\":\"mods/example.jar\""));
+            assertTrue(scanned.body().contains("\"files\""));
+
+            HttpResponse<String> forcedFile = send(
+                    base, "/api/projects/web-demo/forced-files", "POST",
+                    json.writeString(Map.of(
+                            "files", new String[]{"mods/example.jar"})), token);
+            assertEquals(200, forcedFile.statusCode(), forcedFile.body());
+            assertTrue(forcedFile.body().contains(
+                    "\"forcedSyncFiles\":[\"mods/example.jar\"]"));
 
             String publishBody = json.writeString(Map.of(
                     "displayVersion", "1.0.0",
-                    "minimumPlayerVersion", "0.1.12",
+                    "minimumPlayerVersion", "0.1.13",
                     "changelog", "Web 管理端首次发布"
             ));
             HttpResponse<String> published = send(

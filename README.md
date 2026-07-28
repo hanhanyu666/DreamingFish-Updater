@@ -2,7 +2,7 @@
 
 面向 Minecraft 整合包服务器的自托管更新系统。V1 已具备完整管理 CLI、本机 Web 管理界面、只读 HTTP 文件服务、事务式更新引擎、Java 8 启动 Agent、JavaFX 玩家端和玩家端自更新。
 
-玩家端只负责在 Minecraft 启动前更新整合包、展示服务器信息和日志。它不接管账号、游戏安装或第三方启动器。普通同步下，玩家可在本机豁免不兼容或不需要的单个文件、整个目录或模组，选择不会上传；服主也可按一级目录单独启用强制同步，强制目录不接受本地豁免，多出的本地文件会进入长期备份。V1 不包含黑名单和反作弊。
+玩家端只负责在 Minecraft 启动前更新整合包、展示服务器信息和日志。它不接管账号、游戏安装或第三方启动器。普通同步下，玩家可在本机豁免不兼容或不需要的单个文件、整个目录或模组，选择不会上传；服主也可按一级目录或单文件启用强制同步，强制目标不接受本地豁免。服主移除已发布文件时，可以选择让玩家删除该文件，或仅放弃管理并保留玩家副本。V1 不包含黑名单和反作弊。
 
 ## 组成
 
@@ -19,9 +19,8 @@
 
 ```powershell
 .\mvnw.cmd test
-.\packaging\build-distributions.ps1 -Version 0.1.9 -AdminOnly -SkipLinux
-.\packaging\build-distributions.ps1 -Version 0.1.12 -PlayerOnly -SkipLinux
-.\packaging\smoke-test-distributions.ps1 -Version 0.1.12 -AdminVersion 0.1.9
+.\packaging\build-distributions.ps1 -Version 0.1.13 -SkipLinux
+.\packaging\smoke-test-distributions.ps1 -Version 0.1.13 -AdminVersion 0.1.13
 ```
 
 `-AdminOnly` 只生成管理端发行包，`-PlayerOnly` 只生成玩家端发行包，避免两个独立组件被误用同一个版本号。

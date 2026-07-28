@@ -6,6 +6,8 @@ public final class ProtocolConstants {
     public static final int PLAYER_PROGRAM_SCHEMA_VERSION = 1;
     public static final int RELEASE_HISTORY_SCHEMA_VERSION = 1;
     public static final String CAPABILITY_FORCED_DIRECTORY_SYNC = "forced-directory-sync-v1";
+    public static final String CAPABILITY_FORCED_FILE_SYNC = "forced-file-sync-v1";
+    public static final String CAPABILITY_RELEASED_PATHS = "released-paths-v1";
     public static final String SIGNATURE_HEADER = "X-Dfs-Signature";
     public static final String HASH_ALGORITHM = "SHA-256";
     public static final String SIGNATURE_ALGORITHM = "Ed25519";

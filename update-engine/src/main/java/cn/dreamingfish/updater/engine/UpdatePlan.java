@@ -8,12 +8,14 @@ record UpdatePlan(
         SignedRelease release,
         List<FileOperation> operations,
         Map<String, Long> requiredObjects,
-        List<Path> unmanagedMods
+        List<Path> unmanagedMods,
+        List<Path> releasedPaths
 ) {
     UpdatePlan {
         operations = List.copyOf(operations);
         requiredObjects = Map.copyOf(requiredObjects);
         unmanagedMods = List.copyOf(unmanagedMods);
+        releasedPaths = List.copyOf(releasedPaths);
     }
 
     int installCount() {

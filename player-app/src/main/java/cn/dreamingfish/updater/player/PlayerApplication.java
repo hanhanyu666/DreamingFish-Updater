@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.12";
+    static final String VERSION = "0.1.13";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
@@ -254,6 +254,13 @@ public final class PlayerApplication extends Application {
                             + " local files to " + result.archiveDirectory());
                     result.archivedFiles().forEach(path -> log.info("Archived local file: " + path));
                 }
+                if (!result.releasedPaths().isEmpty()) {
+                    log.info("Remote management released "
+                            + result.releasedPaths().size()
+                            + " files and kept local copies");
+                    result.releasedPaths().forEach(path ->
+                            log.info("Released managed file: " + path));
+                }
                 List<LocalModEntry> mods = localModManager.scan(result.release());
                 List<LocalFileEntry> files = localFileManager.scan(result.release());
                 UpdateResult completedResult = result;
@@ -301,7 +308,10 @@ public final class PlayerApplication extends Application {
     private UpdateRequest updateRequest(LocalSettingsSnapshot snapshot,
                                         CancellationToken cancellation) {
         return new UpdateRequest(arguments.instanceRoot(), playerHome, binding,
-                VERSION, Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC),
+                VERSION, Set.of(
+                ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC,
+                ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC,
+                ProtocolConstants.CAPABILITY_RELEASED_PATHS),
                 null, null, null, cancellation, snapshot.overrides());
     }
 
@@ -310,13 +320,14 @@ public final class PlayerApplication extends Application {
         List<Path> installed = combinePaths(previous.installedPaths(), current.installedPaths());
         List<Path> deleted = combinePaths(previous.deletedPaths(), current.deletedPaths());
         List<Path> archived = combinePaths(previous.archivedFiles(), current.archivedFiles());
+        List<Path> released = combinePaths(previous.releasedPaths(), current.releasedPaths());
         return new UpdateResult(
                 current.outcome(), current.release(), installed.size(), deleted.size(),
                 previous.downloadedBytes() + current.downloadedBytes(),
                 current.unmanagedMods(), archived,
                 current.archiveDirectory() != null
                         ? current.archiveDirectory() : previous.archiveDirectory(),
-                installed, deleted);
+                installed, deleted, released);
     }
 
     private static List<Path> combinePaths(List<Path> first, List<Path> second) {

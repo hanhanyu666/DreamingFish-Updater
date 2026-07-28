@@ -6,7 +6,8 @@ const app = {
   project: null,
   selectedProjectId: "",
   view: "dashboard",
-  busy: false
+  busy: false,
+  forcedFileSelection: new Set()
 };
 
 const titles = {
@@ -97,6 +98,7 @@ async function loadProject(projectId, platform) {
     `/api/projects/${encodeURIComponent(projectId)}`
       + `?platform=${encodeURIComponent(requestedPlatform)}`
   );
+  app.forcedFileSelection = new Set(app.project.forcedSyncFiles || []);
   renderProjectOptions();
   renderProjectDependentViews();
 }
@@ -179,6 +181,7 @@ function renderDashboard() {
 function renderProjectDependentViews() {
   renderProjectForm();
   renderPreview();
+  renderForcedFiles();
   renderReleases();
   renderPrograms();
   renderInstanceReleases();
@@ -218,28 +221,148 @@ function renderPreview() {
     });
     byId("preview-time").textContent = "尚未扫描";
     setRows("preview-table", "preview-empty", []);
+    byId("release-all-button").disabled = true;
+    byId("delete-all-button").disabled = true;
     return;
   }
   summary[0].textContent = String(preview.managedFiles);
   summary[1].textContent = String(preview.changes.length);
   summary[2].textContent = formatBytes(preview.totalManagedBytes);
   summary[3].textContent = formatBytes(preview.estimatedDownloadBytes);
+  const removals = preview.changes.filter(
+    (change) => change.kind === "REMOVED"
+  );
+  const undecided = removals.filter(
+    (change) => !change.removalAction
+  ).length;
   byId("preview-time").textContent =
-    `扫描于 ${formatDate(preview.createdAt)}`;
+    `扫描于 ${formatDate(preview.createdAt)}`
+      + (removals.length > 0
+        ? ` · ${undecided > 0 ? `待决定 ${undecided} 项` : "移除项已确认"}`
+        : "");
+  byId("release-all-button").disabled = removals.length === 0;
+  byId("delete-all-button").disabled = removals.length === 0;
   const rows = preview.changes.map((change) => {
     const badge = document.createElement("span");
     badge.className =
       `change-badge ${change.kind.toLowerCase()}`;
     badge.textContent = kindNames[change.kind] || change.kind;
+    const action = document.createElement("td");
+    if (change.kind === "REMOVED") {
+      const forced = insideForcedDirectory(change.path);
+      const select = document.createElement("select");
+      select.className = "removal-action";
+      select.dataset.path = change.path;
+      select.append(option("", "请选择"));
+      select.append(option("DELETE", "从玩家端删除"));
+      if (!forced) {
+        select.append(option("RELEASE", "放弃管理并保留"));
+      }
+      if (forced && !change.removalAction) {
+        change.removalAction = "DELETE";
+      }
+      select.value = change.removalAction || "";
+      select.title = forced
+        ? "该文件位于强制同步目录，只能从玩家端移除"
+        : "选择玩家更新到本版本时如何处理";
+      select.addEventListener("change", () => {
+        change.removalAction = select.value || null;
+        renderRemovalStatus();
+      });
+      action.append(select);
+    } else {
+      action.textContent = "--";
+      action.className = "muted-cell";
+    }
     return row([
       badge,
       pathCell(change.path),
       change.downloadSize > 0
         ? formatBytes(change.downloadSize)
-        : "--"
+        : "--",
+      action
     ]);
   });
   setRows("preview-table", "preview-empty", rows);
+}
+
+function renderRemovalStatus() {
+  const preview = app.project?.preview;
+  if (!preview) return;
+  const removals = preview.changes.filter(
+    (change) => change.kind === "REMOVED"
+  );
+  const undecided = removals.filter(
+    (change) => !change.removalAction
+  ).length;
+  byId("preview-time").textContent =
+    `扫描于 ${formatDate(preview.createdAt)}`
+      + (removals.length > 0
+        ? ` · ${undecided > 0 ? `待决定 ${undecided} 项` : "移除项已确认"}`
+        : "");
+}
+
+function renderForcedFiles() {
+  const previewFiles = app.project?.preview?.files || [];
+  const known = new Map(previewFiles.map((file) => [foldPath(file.path), file]));
+  (app.project?.forcedSyncFiles || []).forEach((path) => {
+    if (!known.has(foldPath(path))) {
+      known.set(foldPath(path), {
+        path,
+        size: null,
+        policy: "MISSING"
+      });
+    }
+  });
+  const query = byId("forced-file-search").value.trim().toLocaleLowerCase("zh-CN");
+  const files = [...known.values()]
+    .filter((file) => !query
+      || file.path.toLocaleLowerCase("zh-CN").includes(query))
+    .sort((left, right) => left.path.localeCompare(
+      right.path, "zh-CN", { sensitivity: "base" }
+    ));
+  const rows = files.map((file) => {
+    const directoryForced = insideForcedDirectory(file.path);
+    const missing = file.policy === "MISSING";
+    const control = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "forced-file-check";
+    checkbox.dataset.path = file.path;
+    checkbox.checked = directoryForced
+      || app.forcedFileSelection.has(file.path);
+    checkbox.disabled = directoryForced || missing;
+    checkbox.title = directoryForced
+      ? "该文件已由强制同步目录覆盖"
+      : missing
+        ? "源目录中已找不到该文件；取消旧选择后保存"
+        : "玩家不能豁免选中的文件";
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) app.forcedFileSelection.add(file.path);
+      else app.forcedFileSelection.delete(file.path);
+      updateForcedFileCount();
+    });
+    control.append(checkbox);
+    const policy = directoryForced
+      ? "目录强制"
+      : missing ? "源文件缺失" : file.policy === "DEFAULT" ? "默认" : "普通托管";
+    return row([
+      control,
+      pathCell(file.path),
+      policy,
+      file.size === null ? "--" : formatBytes(file.size)
+    ]);
+  });
+  setRows("forced-file-table", "forced-file-empty", rows);
+  updateForcedFileCount();
+}
+
+function updateForcedFileCount() {
+  const count = app.forcedFileSelection.size;
+  byId("forced-file-count").textContent =
+    count === 0
+      ? "未单独强制任何文件"
+      : `已选择 ${count} 个单独强制同步文件`;
 }
 
 function renderReleases() {
@@ -344,11 +467,36 @@ function bindEvents() {
 
   bindProjectCreate();
   bindProjectForm();
+  bindPathPickers();
   bindPublish();
   bindPrograms();
   bindInstance();
   bindSettings();
   bindRollback();
+}
+
+function bindPathPickers() {
+  document.querySelectorAll(".path-picker-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const form = button.closest("form");
+      const input = form?.elements.namedItem(button.dataset.pathName);
+      if (!(input instanceof HTMLInputElement)) return;
+      await runBusy("请在管理端所在电脑完成路径选择", async () => {
+        const result = await api("/api/system/select-path", {
+          method: "POST",
+          body: {
+            kind: button.dataset.pathKind,
+            title: button.dataset.pathTitle,
+            initialPath: input.value
+          }
+        });
+        if (result.selected) {
+          input.value = result.path;
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+    });
+  });
 }
 
 function bindProjectCreate() {
@@ -374,6 +522,7 @@ function bindProjectCreate() {
       forcedSyncDirectories: directoryList(
         textValue(data, "forcedSyncDirectories")
       ),
+      forcedSyncFiles: [],
       serverAddress: textValue(data, "serverAddress")
     };
     await runBusy("正在创建项目", async () => {
@@ -405,6 +554,7 @@ function bindProjectForm() {
       forcedSyncDirectories: directoryList(
         textValue(data, "forcedSyncDirectories")
       ),
+      forcedSyncFiles: [...app.forcedFileSelection],
       accentColor: textValue(data, "accentColorText"),
       secondaryAccentColor: textValue(data, "secondaryAccentColorText"),
       coverPath: textValue(data, "coverPath"),
@@ -422,6 +572,32 @@ function bindProjectForm() {
 }
 
 function bindPublish() {
+  byId("release-all-button").addEventListener("click", () => {
+    setAllRemovalActions("RELEASE");
+  });
+  byId("delete-all-button").addEventListener("click", () => {
+    setAllRemovalActions("DELETE");
+  });
+  byId("forced-file-search").addEventListener("input", renderForcedFiles);
+  byId("clear-forced-files").addEventListener("click", () => {
+    app.forcedFileSelection.clear();
+    renderForcedFiles();
+  });
+  byId("save-forced-files").addEventListener("click", async () => {
+    if (!app.project) return;
+    await runBusy("正在保存单文件强制同步设置", async () => {
+      await api(
+        `/api/projects/${encodeURIComponent(app.project.id)}/forced-files`,
+        {
+          method: "POST",
+          body: { files: [...app.forcedFileSelection] }
+        }
+      );
+      await refreshState(app.project.id);
+      showView("publish");
+      toast("单文件强制同步设置已保存");
+    });
+  });
   byId("scan-button").addEventListener("click", async () => {
     if (!app.project) return;
     await runBusy("正在扫描并计算差异", async () => {
@@ -442,6 +618,13 @@ function bindPublish() {
       toast("请先扫描源目录", true);
       return;
     }
+    const removals = app.project.preview.changes.filter(
+      (change) => change.kind === "REMOVED"
+    );
+    if (removals.some((change) => !change.removalAction)) {
+      toast("请先决定每个移除文件是删除还是放弃管理", true);
+      return;
+    }
     const data = new FormData(form);
     const payload = {
       displayVersion: textValue(data, "displayVersion"),
@@ -452,21 +635,54 @@ function bindPublish() {
       "创建不可变发布",
       `显示版本：${payload.displayVersion}\n`
         + `文件变更：${app.project.preview.changes.length} 项\n`
+        + `从玩家端删除：${removals.filter(
+          (change) => change.removalAction === "DELETE"
+        ).length} 项\n`
+        + `放弃管理并保留：${removals.filter(
+          (change) => change.removalAction === "RELEASE"
+        ).length} 项\n`
         + "发布后该版本内容不可修改。",
       "确认发布"
     );
     if (!accepted) return;
     await runBusy("正在签名并发布整合包", async () => {
+      if (removals.length > 0) {
+        await api(
+          `/api/projects/${encodeURIComponent(app.project.id)}/removals`,
+          {
+            method: "POST",
+            body: {
+              decisions: removals.map((change) => ({
+                path: change.path,
+                action: change.removalAction
+              }))
+            }
+          }
+        );
+      }
       const release = await api(
         `/api/projects/${encodeURIComponent(app.project.id)}/publish`,
         { method: "POST", body: payload }
       );
       form.reset();
-      form.elements.minimumPlayerVersion.value = "0.1.12";
+      form.elements.minimumPlayerVersion.value = "0.1.13";
       await refreshState(app.project.id);
       toast(`版本 ${release.displayVersion} 已发布`);
     });
   });
+}
+
+function setAllRemovalActions(action) {
+  const preview = app.project?.preview;
+  if (!preview) return;
+  preview.changes
+    .filter((change) => change.kind === "REMOVED")
+    .forEach((change) => {
+      change.removalAction = action === "RELEASE"
+        && insideForcedDirectory(change.path)
+        ? "DELETE" : action;
+    });
+  renderPreview();
 }
 
 function bindPrograms() {
@@ -750,6 +966,18 @@ function directoryList(value) {
     .split(/[,，\n]/)
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function foldPath(value) {
+  return String(value || "").replaceAll("\\", "/").toLocaleLowerCase("en-US");
+}
+
+function insideForcedDirectory(path) {
+  const folded = foldPath(path);
+  return (app.project?.forcedSyncDirectories || []).some((directory) => {
+    const root = foldPath(directory);
+    return folded.startsWith(`${root}/`);
+  });
 }
 
 function formatBytes(value) {

@@ -43,6 +43,10 @@ final class ProjectCreateCommand implements Runnable {
             description = "Comma-separated top-level directories to mirror exactly")
     String forcedSyncDirectories;
 
+    @CommandLine.Option(names = "--force-sync-files",
+            description = "Comma-separated managed files that players cannot exempt")
+    String forcedSyncFiles;
+
     @CommandLine.Option(names = "--cover", description = "Desktop cover image to import")
     Path cover;
 
@@ -54,7 +58,10 @@ final class ProjectCreateCommand implements Runnable {
                 ? ProjectRules.defaults()
                 : readRules(services, rulesFile);
         if (forcedSyncDirectories != null) {
-            rules = rules.withForcedSyncDirectories(parseDirectories(forcedSyncDirectories));
+            rules = rules.withForcedSyncDirectories(parsePaths(forcedSyncDirectories));
+        }
+        if (forcedSyncFiles != null) {
+            rules = rules.withForcedSyncFiles(parsePaths(forcedSyncFiles));
         }
         Branding branding = new Branding(name, subtitle, serverAddress, null, accent, secondaryAccent);
         ProjectRecord project = services.projects().create(
@@ -73,7 +80,7 @@ final class ProjectCreateCommand implements Runnable {
         }
     }
 
-    static java.util.List<String> parseDirectories(String input) {
+    static java.util.List<String> parsePaths(String input) {
         if (input == null || input.isBlank() || input.trim().equals("-")) {
             return java.util.List.of();
         }

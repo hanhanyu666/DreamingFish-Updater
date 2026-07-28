@@ -20,6 +20,19 @@ class AdaptiveConsoleReaderTest {
         assertReads("删除信雅互联残留文件", Charset.forName("GBK"));
     }
 
+    @Test
+    void usesGb18030WhenTheJvmIncorrectlyReportsUtf8() throws Exception {
+        String expected = "测试";
+        byte[] bytes = (expected + "\r\n").getBytes(Charset.forName("GBK"));
+        try (BufferedReader reader = new BufferedReader(
+                new AdaptiveConsoleReader(
+                        new ByteArrayInputStream(bytes),
+                        StandardCharsets.UTF_8,
+                        Charset.forName("GB18030")))) {
+            assertEquals(expected, reader.readLine());
+        }
+    }
+
     private static void assertReads(String expected, Charset encoding)
             throws Exception {
         byte[] bytes = (expected + "\r\n").getBytes(encoding);
