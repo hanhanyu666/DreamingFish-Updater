@@ -24,7 +24,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.1.8"));
+        assertTrue(version.out().contains("0.1.9"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -185,6 +185,7 @@ class ManagementCliTest {
         assertEquals(data.toAbsolutePath().normalize().toString(), settings.dataDirectory());
         assertEquals("interactive-pack", settings.defaultProjectId());
         assertEquals(18081, settings.httpPort());
+        assertEquals(18080, settings.webPort());
 
         ManagementPaths paths = ManagementPaths.at(data);
         ManagementDatabase database = new ManagementDatabase(paths, new JsonCodec());
@@ -200,20 +201,46 @@ class ManagementCliTest {
                 "8",
                 "127.0.0.1",
                 "18082",
+                "",
                 "0",
                 ""
         );
         Invocation secondRun = invokeWithInput(settingsFile, secondInput);
         assertEquals(0, secondRun.exitCode(), secondRun.err());
         assertTrue(!secondRun.out().contains("首次运行配置"));
-        assertTrue(secondRun.out().contains("[8] 修改 HTTP 设置"));
-        assertTrue(secondRun.out().contains("HTTP 设置已保存。"));
+        assertTrue(secondRun.out().contains("[8] 修改服务设置"));
+        assertTrue(secondRun.out().contains("服务设置已保存。"));
         assertTrue(!secondRun.out().contains("修改管理数据目录"));
 
         ManagementSettings updated = new ManagementSettingsStore(settingsFile).load();
         assertEquals(data.toString(), updated.dataDirectory());
         assertEquals("127.0.0.1", updated.httpHost());
         assertEquals(18082, updated.httpPort());
+        assertEquals(18080, updated.webPort());
+    }
+
+    @Test
+    void migratesSchemaOneSettingsToTheLoopbackWebDefault() throws Exception {
+        Path adminHome = Files.createDirectories(temporary.resolve("legacy-admin"));
+        Path settingsFile = adminHome.resolve("management-settings.json");
+        Files.writeString(settingsFile, """
+                {
+                  "schemaVersion": 1,
+                  "dataDirectory": "legacy-data",
+                  "defaultProjectId": "",
+                  "httpHost": "0.0.0.0",
+                  "httpPort": 8080
+                }
+                """);
+
+        ManagementSettings settings = new ManagementSettingsStore(settingsFile).load();
+
+        assertEquals(ManagementSettings.CURRENT_SCHEMA, settings.schemaVersion());
+        assertEquals(adminHome.resolve("legacy-data").toAbsolutePath().normalize().toString(),
+                settings.dataDirectory());
+        assertEquals("0.0.0.0", settings.httpHost());
+        assertEquals(8080, settings.httpPort());
+        assertEquals(ManagementSettings.DEFAULT_WEB_PORT, settings.webPort());
     }
 
     private Invocation invoke(String... args) {

@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DreamingFish Admin</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">DF</div>
+        <div>
+          <div class="brand-name">梦鱼更新管理</div>
+          <div class="brand-en"><span>Dreaming</span><strong>Fish</strong></div>
+        </div>
+      </div>
+
+      <nav class="navigation" aria-label="管理功能">
+        <button class="nav-button active" data-view="dashboard"><span>⌂</span>概览</button>
+        <button class="nav-button requires-project" data-view="project"><span>◫</span>项目设置</button>
+        <button class="nav-button requires-project" data-view="publish"><span>↑</span>扫描与发布</button>
+        <button class="nav-button requires-project" data-view="player"><span>▣</span>玩家端程序</button>
+        <button class="nav-button requires-project" data-view="instance"><span>◇</span>玩家实例</button>
+        <button class="nav-button" data-view="settings"><span>⚙</span>服务设置</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="connection-line">
+          <span class="status-dot" id="connection-dot"></span>
+          <span id="connection-label">正在连接</span>
+        </div>
+        <div class="version-label" id="admin-version">DreamingFish Admin</div>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <div class="page-kicker">MANAGEMENT CONSOLE</div>
+          <h1 id="page-title">运行概览</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="project-picker">
+            <span>当前项目</span>
+            <select id="project-select" aria-label="当前项目"></select>
+          </label>
+          <button class="icon-button" id="refresh-button" title="刷新数据" aria-label="刷新数据">↻</button>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="view active" id="view-dashboard">
+          <div class="service-band">
+            <div class="service-state">
+              <span class="service-indicator" id="service-indicator"></span>
+              <div>
+                <strong id="service-title">HTTP 文件服务未启动</strong>
+                <span id="service-address">--</span>
+              </div>
+            </div>
+            <div class="button-row">
+              <button class="secondary-button" id="service-stop">■ 停止</button>
+              <button class="primary-button" id="service-start">▶ 启动下载服务</button>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <span>项目</span>
+              <strong id="metric-projects">0</strong>
+            </div>
+            <div class="metric">
+              <span>不可变发布</span>
+              <strong id="metric-releases">0</strong>
+            </div>
+            <div class="metric">
+              <span>当前版本</span>
+              <strong id="metric-current">--</strong>
+            </div>
+            <div class="metric">
+              <span>下次序号</span>
+              <strong id="metric-sequence">--</strong>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>整合包项目</h2>
+                <span id="project-count-label">0 个项目</span>
+              </div>
+              <button class="secondary-button" id="open-create-project">＋ 新建项目</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>项目</th>
+                    <th>源目录</th>
+                    <th>当前发布</th>
+                    <th>发布数</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="project-table"></tbody>
+              </table>
+              <div class="empty-state" id="project-empty">尚未创建项目</div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-project">
+          <form class="panel form-panel" id="project-form">
+            <div class="panel-header">
+              <div>
+                <h2>项目与品牌</h2>
+                <span id="project-identity">--</span>
+              </div>
+              <button class="primary-button" type="submit">保存项目设置</button>
+            </div>
+            <div class="form-grid">
+              <label class="field span-2">
+                <span>标准整合包目录</span>
+                <input name="sourceDirectory" required>
+              </label>
+              <label class="field span-2">
+                <span>玩家访问公共 HTTP 地址</span>
+                <input name="publicBaseUrl" type="url" required>
+              </label>
+              <label class="field">
+                <span>界面产品名称</span>
+                <input name="productName" required>
+              </label>
+              <label class="field">
+                <span>Minecraft 服务器地址</span>
+                <input name="serverAddress">
+              </label>
+              <label class="field span-2">
+                <span>副标题</span>
+                <input name="subtitle">
+              </label>
+              <label class="field span-2">
+                <span>强制同步一级目录</span>
+                <input name="forcedSyncDirectories" placeholder="mods, config">
+              </label>
+              <label class="field color-field">
+                <span>主强调色</span>
+                <div><input name="accentColor" type="color"><input name="accentColorText"></div>
+              </label>
+              <label class="field color-field">
+                <span>次强调色</span>
+                <div><input name="secondaryAccentColor" type="color"><input name="secondaryAccentColorText"></div>
+              </label>
+              <label class="field span-2">
+                <span>服务器上的新封面文件路径</span>
+                <input name="coverPath">
+              </label>
+              <label class="check-field span-2">
+                <input name="removeCover" type="checkbox">
+                <span>移除当前封面</span>
+              </label>
+            </div>
+          </form>
+        </section>
+
+        <section class="view" id="view-publish">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>发布预览</h2>
+                <span id="preview-time">尚未扫描</span>
+              </div>
+              <button class="secondary-button" id="scan-button">↻ 扫描源目录</button>
+            </div>
+            <div class="preview-summary" id="preview-summary">
+              <div><span>托管文件</span><strong>--</strong></div>
+              <div><span>变更</span><strong>--</strong></div>
+              <div><span>整合包大小</span><strong>--</strong></div>
+              <div><span>预计下载</span><strong>--</strong></div>
+            </div>
+            <div class="table-wrap preview-table">
+              <table>
+                <thead><tr><th>操作</th><th>文件</th><th>下载量</th></tr></thead>
+                <tbody id="preview-table"></tbody>
+              </table>
+              <div class="empty-state" id="preview-empty">扫描后显示文件变更</div>
+            </div>
+          </section>
+
+          <form class="panel form-panel" id="publish-form">
+            <div class="panel-header">
+              <div>
+                <h2>创建不可变发布</h2>
+                <span>发布前必须先完成扫描</span>
+              </div>
+              <button class="primary-button" type="submit">发布整合包</button>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>本次显示版本</span>
+                <input name="displayVersion" placeholder="1.0.1" required>
+              </label>
+              <label class="field">
+                <span>最低玩家端程序版本</span>
+                <input name="minimumPlayerVersion" value="0.1.12" required>
+              </label>
+              <label class="field span-2">
+                <span>更新记录</span>
+                <textarea name="changelog" rows="5"></textarea>
+              </label>
+            </div>
+          </form>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div><h2>发布历史</h2><span id="release-count-label">0 条记录</span></div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>序号</th><th>显示版本</th><th>发布时间</th><th>更新记录</th><th></th></tr></thead>
+                <tbody id="release-table"></tbody>
+              </table>
+              <div class="empty-state" id="release-empty">尚未发布整合包</div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-player">
+          <form class="panel form-panel" id="program-form">
+            <div class="panel-header">
+              <div><h2>发布玩家端程序</h2><span>签名并生成程序更新清单</span></div>
+              <button class="primary-button" type="submit">发布玩家端</button>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>平台</span>
+                <input name="platform" value="windows-x64" required>
+              </label>
+              <label class="field">
+                <span>玩家端版本</span>
+                <input name="version" placeholder="0.1.12" required>
+              </label>
+              <label class="field span-2">
+                <span>完整 app-image 目录</span>
+                <input name="sourceDirectory" required>
+              </label>
+              <label class="field">
+                <span>启动程序相对路径</span>
+                <input name="launchPath" value="DreamingFishUpdater.exe" required>
+              </label>
+              <label class="field">
+                <span>最低 Bootstrap Agent 版本</span>
+                <input name="minimumBootstrapVersion" value="0.1.2" required>
+              </label>
+            </div>
+          </form>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div><h2>玩家端程序历史</h2><span id="program-count-label">0 个版本</span></div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>版本</th><th>平台</th><th>发布时间</th><th>清单哈希</th></tr></thead>
+                <tbody id="program-table"></tbody>
+              </table>
+              <div class="empty-state" id="program-empty">尚未发布玩家端程序</div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-instance">
+          <form class="panel form-panel" id="instance-form">
+            <div class="panel-header">
+              <div><h2>制作玩家实例</h2><span>写入绑定、程序信任状态和整合包基线</span></div>
+              <button class="primary-button" type="submit">制作实例</button>
+            </div>
+            <div class="form-grid">
+              <label class="field span-2">
+                <span>Minecraft 版本隔离实例目录</span>
+                <input name="instanceDirectory" required>
+              </label>
+              <label class="field">
+                <span>平台</span>
+                <input name="platform" value="windows-x64" required>
+              </label>
+              <label class="field">
+                <span>实例内玩家端目录</span>
+                <input name="playerHome" value="DreamingFishUpdater" required>
+              </label>
+              <label class="field span-2">
+                <span>整合包发布版本</span>
+                <select name="releaseId" required></select>
+              </label>
+              <label class="field span-2">
+                <span>实例内自定义封面相对路径</span>
+                <input name="bundledCover">
+              </label>
+            </div>
+          </form>
+        </section>
+
+        <section class="view" id="view-settings">
+          <form class="panel form-panel" id="settings-form">
+            <div class="panel-header">
+              <div><h2>服务监听设置</h2><span>Web 管理界面固定监听本机回环地址</span></div>
+              <button class="primary-button" type="submit">保存服务设置</button>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>HTTP 文件服务监听地址</span>
+                <input name="httpHost" required>
+              </label>
+              <label class="field">
+                <span>HTTP 文件服务端口</span>
+                <input name="httpPort" type="number" min="1" max="65535" required>
+              </label>
+              <label class="field">
+                <span>Web 管理监听地址</span>
+                <input name="webHost" value="127.0.0.1" readonly>
+              </label>
+              <label class="field">
+                <span>Web 管理端口</span>
+                <input name="webPort" type="number" min="1" max="65535" required>
+              </label>
+              <label class="field span-2">
+                <span>管理数据目录</span>
+                <input name="dataDirectory" readonly>
+              </label>
+              <label class="field span-2">
+                <span>设置文件</span>
+                <input name="settingsFile" readonly>
+              </label>
+            </div>
+            <div class="notice-line">Web 端口修改会在下次启动管理界面时生效。</div>
+          </form>
+        </section>
+      </main>
+    </section>
+  </div>
+
+  <dialog class="modal" id="create-project-dialog">
+    <form method="dialog" id="create-project-form">
+      <div class="modal-header">
+        <div><span>NEW PROJECT</span><h2>创建整合包项目</h2></div>
+        <button class="icon-button" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <div class="form-grid">
+        <label class="field"><span>项目 ID</span><input name="id" pattern="[a-z0-9][a-z0-9._-]{0,63}" required></label>
+        <label class="field"><span>项目显示名称</span><input name="displayName" required></label>
+        <label class="field span-2"><span>标准整合包目录</span><input name="sourceDirectory" required></label>
+        <label class="field span-2"><span>玩家访问公共 HTTP 地址</span><input name="publicBaseUrl" type="url" required></label>
+        <label class="field span-2"><span>强制同步一级目录</span><input name="forcedSyncDirectories" placeholder="mods, config"></label>
+        <label class="field span-2"><span>服务器地址</span><input name="serverAddress"></label>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-button" value="cancel">取消</button>
+        <button class="primary-button" id="create-project-submit" value="default">创建项目</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal compact-modal" id="confirm-dialog">
+    <form method="dialog">
+      <div class="modal-accent"></div>
+      <span class="modal-kicker" id="confirm-kicker">确认操作</span>
+      <h2 id="confirm-title">确认继续吗？</h2>
+      <p id="confirm-message"></p>
+      <div class="modal-actions">
+        <button class="secondary-button" value="cancel">取消</button>
+        <button class="primary-button" id="confirm-action" value="default">确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal compact-modal" id="rollback-dialog">
+    <form method="dialog" id="rollback-form">
+      <div class="modal-accent warning"></div>
+      <span class="modal-kicker">ROLLBACK</span>
+      <h2>创建回滚发布</h2>
+      <input name="targetReleaseId" type="hidden">
+      <div class="form-grid one-column">
+        <label class="field"><span>目标版本</span><input name="targetLabel" readonly></label>
+        <label class="field"><span>新的显示版本</span><input name="displayVersion" required></label>
+        <label class="field"><span>更新记录</span><textarea name="changelog" rows="4"></textarea></label>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-button" value="cancel">取消</button>
+        <button class="danger-button" id="rollback-submit" value="default">确认回滚</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="busy-layer" id="busy-layer" aria-hidden="true">
+    <div class="busy-spinner"></div>
+    <span id="busy-label">正在处理</span>
+  </div>
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

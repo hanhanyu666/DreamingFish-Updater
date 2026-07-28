@@ -1,12 +1,12 @@
 # DreamingFish Update System
 
-面向 Minecraft 整合包服务器的自托管更新系统。V1 已具备可运行的管理 CLI、只读 HTTP 文件服务、事务式更新引擎、Java 8 启动 Agent、JavaFX 玩家端和玩家端自更新。
+面向 Minecraft 整合包服务器的自托管更新系统。V1 已具备完整管理 CLI、本机 Web 管理界面、只读 HTTP 文件服务、事务式更新引擎、Java 8 启动 Agent、JavaFX 玩家端和玩家端自更新。
 
 玩家端只负责在 Minecraft 启动前更新整合包、展示服务器信息和日志。它不接管账号、游戏安装或第三方启动器。普通同步下，玩家可在本机豁免不兼容或不需要的单个文件、整个目录或模组，选择不会上传；服主也可按一级目录单独启用强制同步，强制目录不接受本地豁免，多出的本地文件会进入长期备份。V1 不包含黑名单和反作弊。
 
 ## 组成
 
-- `management-cli`：服主使用的完整命令行管理端，可在无图形环境运行。
+- `management-cli`：服主使用的管理端，包含完整 CLI、轻量 Web 管理界面和服务控制，可在无图形环境运行。
 - `management-core`：项目、扫描、签名发布、HTTP 服务和加密备份。
 - `bootstrap-agent`：Java 8 字节码的启动门，仅等待本地启动许可。
 - `player-app`：带 Java 21 运行时的 Windows JavaFX 桌面应用。
@@ -19,10 +19,12 @@
 
 ```powershell
 .\mvnw.cmd test
-.\packaging\build-distributions.ps1 -Version 0.1.8 -SkipLinux
+.\packaging\build-distributions.ps1 -Version 0.1.9 -AdminOnly -SkipLinux
 .\packaging\build-distributions.ps1 -Version 0.1.12 -PlayerOnly -SkipLinux
-.\packaging\smoke-test-distributions.ps1 -Version 0.1.12 -AdminVersion 0.1.8
+.\packaging\smoke-test-distributions.ps1 -Version 0.1.12 -AdminVersion 0.1.9
 ```
+
+`-AdminOnly` 只生成管理端发行包，`-PlayerOnly` 只生成玩家端发行包，避免两个独立组件被误用同一个版本号。
 
 发行包冒烟测试会重新解压实际 ZIP，在 `target/` 的临时目录中模拟三个整合包版本、制作历史玩家包、校验玩家程序防篡改和启动 HTTP 服务；成功后自动删除临时数据，不会接触现有 Minecraft 实例或管理端数据。
 

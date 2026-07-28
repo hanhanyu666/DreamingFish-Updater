@@ -28,7 +28,7 @@ final class ManagementSettingsStore {
     ManagementSettings load() {
         if (!Files.isRegularFile(file)) return defaults();
         try {
-            ManagementSettings settings = json.read(file, ManagementSettings.class);
+            ManagementSettings settings = migrate(json.read(file, ManagementSettings.class));
             validate(settings);
             return normalize(settings);
         } catch (IOException e) {
@@ -64,7 +64,8 @@ final class ManagementSettingsStore {
                 ? Path.of(".").toAbsolutePath().normalize()
                 : file.getParent();
         return new ManagementSettings(ManagementSettings.CURRENT_SCHEMA,
-                parent.resolve("data").toString(), "", "0.0.0.0", 8080);
+                parent.resolve("data").toString(), "", "0.0.0.0", 8080,
+                ManagementSettings.DEFAULT_WEB_PORT);
     }
 
     private ManagementSettings normalize(ManagementSettings settings) {
@@ -73,7 +74,21 @@ final class ManagementSettingsStore {
         String projectId = settings.defaultProjectId() == null ? "" : settings.defaultProjectId().trim();
         return new ManagementSettings(ManagementSettings.CURRENT_SCHEMA,
                 data.toAbsolutePath().normalize().toString(), projectId,
-                settings.httpHost().trim(), settings.httpPort());
+                settings.httpHost().trim(), settings.httpPort(), settings.webPort());
+    }
+
+    private static ManagementSettings migrate(ManagementSettings settings) {
+        if (settings != null && settings.schemaVersion() == 1) {
+            return new ManagementSettings(
+                    ManagementSettings.CURRENT_SCHEMA,
+                    settings.dataDirectory(),
+                    settings.defaultProjectId(),
+                    settings.httpHost(),
+                    settings.httpPort(),
+                    ManagementSettings.DEFAULT_WEB_PORT
+            );
+        }
+        return settings;
     }
 
     private static void validate(ManagementSettings settings) {
@@ -100,6 +115,12 @@ final class ManagementSettingsStore {
         }
         if (settings.httpPort() < 1 || settings.httpPort() > 65535) {
             throw new ManagementException("HTTP 端口必须在 1 到 65535 之间");
+        }
+        if (settings.webPort() < 1 || settings.webPort() > 65535) {
+            throw new ManagementException("Web 管理端口必须在 1 到 65535 之间");
+        }
+        if (settings.webPort() == settings.httpPort()) {
+            throw new ManagementException("Web 管理端口不能与 HTTP 文件服务端口相同");
         }
     }
 }

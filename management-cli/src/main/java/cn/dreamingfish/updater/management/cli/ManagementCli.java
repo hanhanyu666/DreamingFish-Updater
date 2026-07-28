@@ -19,18 +19,21 @@ import java.nio.file.Path;
 @CommandLine.Command(
         name = "dfs-admin",
         mixinStandardHelpOptions = true,
-        version = "DreamingFish Update System 0.1.8",
+        version = "DreamingFish Update System 0.1.9",
         description = "Self-hosted Minecraft modpack update management",
         subcommands = {
                 InitCommand.class,
                 ProjectCommand.class,
                 PlayerProgramCommand.class,
                 ServeCommand.class,
+                WebCommand.class,
                 BackupCommand.class,
                 InteractiveCommand.class
         }
 )
 public final class ManagementCli implements Runnable {
+    static final String VERSION = "0.1.9";
+
     @CommandLine.Option(
             names = "--data",
             description = "Management data directory (default: ${DEFAULT-VALUE})",
@@ -56,7 +59,7 @@ public final class ManagementCli implements Runnable {
                 System.in, java.nio.charset.Charset.defaultCharset()));
     }
 
-    private ManagementCli(Path settingsFile, java.io.Reader input) {
+    ManagementCli(Path settingsFile, java.io.Reader input) {
         settingsStore = new ManagementSettingsStore(settingsFile);
         settings = settingsStore.load();
         dataDirectory = Path.of(settings.dataDirectory());

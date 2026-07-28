@@ -18,7 +18,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
 
 final class InteractiveConsole {
     private final ManagementCli root;
@@ -63,11 +62,14 @@ final class InteractiveConsole {
                 data.toString(),
                 current.defaultProjectId(),
                 host,
-                port
+                port,
+                current.webPort()
         ));
         root.services();
         root.out().println("配置已保存到：" + root.settingsFile());
         root.out().println("管理数据目录已初始化：" + root.dataDirectory);
+        root.out().println("Web 管理界面：http://127.0.0.1:"
+                + current.webPort() + "/");
     }
 
     private void mainMenu() {
@@ -81,8 +83,9 @@ final class InteractiveConsole {
             root.out().println("[5] 查看发布历史");
             root.out().println("[6] 发布玩家端程序");
             root.out().println("[7] 制作玩家实例");
-            root.out().println("[8] 修改 HTTP 设置");
+            root.out().println("[8] 修改服务设置");
             root.out().println("[9] 启动 HTTP 文件服务");
+            root.out().println("[10] 启动 Web 管理界面");
             root.out().println("[0] 退出");
             String choice = readLine("请选择：").trim();
             if (choice.equals("0")) {
@@ -100,7 +103,8 @@ final class InteractiveConsole {
                     case "7" -> preparePlayerInstance();
                     case "8" -> configureManagement();
                     case "9" -> serve();
-                    default -> root.out().println("请输入 0 到 9 之间的菜单编号。");
+                    case "10" -> serveWeb();
+                    default -> root.out().println("请输入 0 到 10 之间的菜单编号。");
                 }
             } catch (ManagementException | IllegalArgumentException e) {
                 root.err().println("操作失败：" + usefulMessage(e));
@@ -342,15 +346,20 @@ final class InteractiveConsole {
         root.out().println("管理数据目录：" + Path.of(current.dataDirectory()));
         String host = prompt("HTTP 监听地址", current.httpHost());
         int port = promptPort("HTTP 监听端口", current.httpPort());
+        int webPort = promptPort("Web 管理端口（仅监听 127.0.0.1）", current.webPort());
+        if (webPort == port) {
+            throw new ManagementException("Web 管理端口不能与 HTTP 文件服务端口相同");
+        }
         root.saveSettings(new ManagementSettings(
                 ManagementSettings.CURRENT_SCHEMA,
                 current.dataDirectory(),
                 current.defaultProjectId(),
                 host,
-                port
+                port,
+                webPort
         ));
         root.services();
-        root.out().println("HTTP 设置已保存。");
+        root.out().println("服务设置已保存。");
     }
 
     private void serve() {
@@ -364,21 +373,59 @@ final class InteractiveConsole {
                 services.database(), services.objects(),
                 new InetSocketAddress(settings.httpHost(), settings.httpPort()));
         Thread shutdown = new Thread(server::close, "dfs-http-shutdown");
-        Runtime.getRuntime().addShutdownHook(shutdown);
-        server.start();
-        root.out().println("HTTP 文件服务已启动：" + address);
-        root.out().println("健康检查：" + address + "healthz");
-        root.out().println("按 Ctrl+C 停止服务并退出管理端。");
         try {
-            new CountDownLatch(1).await();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            Runtime.getRuntime().addShutdownHook(shutdown);
+            server.start();
+            root.out().println("HTTP 文件服务已启动：" + address);
+            root.out().println("健康检查：" + address + "healthz");
+            waitForServiceStop();
+        } finally {
             server.close();
             try {
                 Runtime.getRuntime().removeShutdownHook(shutdown);
             } catch (IllegalStateException ignored) {
                 // The JVM is already shutting down.
             }
+            root.out().println("HTTP 文件服务已停止，正在返回主菜单。");
+        }
+    }
+
+    private void serveWeb() {
+        ManagementSettings settings = root.settings();
+        String address = "http://127.0.0.1:" + settings.webPort() + "/";
+        if (!confirm("启动 Web 管理界面 " + address + "？", true)) return;
+        try (AdminWebServer server = new AdminWebServer(root)) {
+            Thread shutdown = new Thread(server::close, "dfs-admin-web-shutdown");
+            try {
+                Runtime.getRuntime().addShutdownHook(shutdown);
+                server.start();
+                root.out().println("Web 管理界面已启动：" + address);
+                root.out().println("远程服务器可使用 SSH 隧道：ssh -L "
+                        + settings.webPort() + ":127.0.0.1:" + settings.webPort()
+                        + " <用户>@<服务器>");
+                waitForServiceStop();
+            } finally {
+                server.close();
+                try {
+                    Runtime.getRuntime().removeShutdownHook(shutdown);
+                } catch (IllegalStateException ignored) {
+                    // The JVM is already shutting down.
+                }
+                root.out().println("Web 管理界面已停止，正在返回主菜单。");
+            }
+        }
+    }
+
+    private void waitForServiceStop() {
+        try (ConsoleInterrupt interrupt = ConsoleInterrupt.install()) {
+            if (!interrupt.supported()) {
+                readLine("当前终端无法捕获 Ctrl+C，按回车停止服务并返回主菜单：");
+                return;
+            }
+            root.out().println("按 Ctrl+C 停止服务并返回主菜单。");
+            interrupt.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

@@ -4,11 +4,16 @@ param(
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
-    [switch]$PlayerOnly
+    [switch]$PlayerOnly,
+    [switch]$AdminOnly
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ($PlayerOnly -and $AdminOnly) {
+    throw "-PlayerOnly and -AdminOnly cannot be used together."
+}
 
 $packagingRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $packagingRoot
@@ -167,6 +172,19 @@ if ($PlayerOnly) {
     if (Test-Path -LiteralPath $playerArchive) {
         Remove-Item -Force -LiteralPath $playerArchive
     }
+} elseif ($AdminOnly) {
+    New-Item -ItemType Directory -Force -Path $distRoot | Out-Null
+    $adminOutputs = @(
+        (Join-Path $distRoot "dfs-admin-windows-x64"),
+        (Join-Path $distRoot "dfs-admin-linux-x64"),
+        (Join-Path $distRoot "dfs-admin-windows-x64-$Version.zip"),
+        (Join-Path $distRoot "dfs-admin-linux-x64-$Version.zip")
+    )
+    foreach ($adminOutput in $adminOutputs) {
+        if (Test-Path -LiteralPath $adminOutput) {
+            Remove-Item -Recurse -Force -LiteralPath $adminOutput
+        }
+    }
 } elseif (Test-Path -LiteralPath $distRoot) {
     Remove-Item -Recurse -Force -LiteralPath $distRoot
 }
@@ -175,64 +193,74 @@ New-Item -ItemType Directory -Force -Path $distRoot, $buildRoot | Out-Null
 
 $mavenArguments = @("clean", "package")
 if ($PlayerOnly) { $mavenArguments += @("-pl", "player-app", "-am") }
+if ($AdminOnly) { $mavenArguments += @("-pl", "management-cli", "-am") }
 if ($SkipTests) { $mavenArguments += "-DskipTests" }
 Invoke-Checked (Join-Path $repoRoot "mvnw.cmd") $mavenArguments
 
 $adminJar = Join-Path $repoRoot "management-cli\target\dfs-admin.jar"
-$agentJar = Get-ChildItem -LiteralPath (Join-Path $repoRoot "bootstrap-agent\target") `
-    -Filter "bootstrap-agent-*.jar" | Where-Object { $_.Name -notlike "original-*" } | Select-Object -First 1
-$playerJar = Get-ChildItem -LiteralPath (Join-Path $repoRoot "player-app\target") `
-    -Filter "player-app-*.jar" | Select-Object -First 1
-$missingArtifacts = $null -eq $agentJar -or
-        $null -eq $playerJar -or
+$agentJar = if ($AdminOnly) { $null } else {
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot "bootstrap-agent\target") `
+        -Filter "bootstrap-agent-*.jar" |
+        Where-Object { $_.Name -notlike "original-*" } |
+        Select-Object -First 1
+}
+$playerJar = if ($AdminOnly) { $null } else {
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot "player-app\target") `
+        -Filter "player-app-*.jar" |
+        Select-Object -First 1
+}
+$missingArtifacts = (-not $AdminOnly -and
+        ($null -eq $agentJar -or $null -eq $playerJar)) -or
         (-not $PlayerOnly -and -not (Test-Path -LiteralPath $adminJar))
 if ($missingArtifacts) {
     throw "Maven did not produce all required artifacts."
 }
 
-# Build the Windows desktop app image with a private Java 21 runtime.
-$playerInput = Join-Path $buildRoot "player-input"
-New-Item -ItemType Directory -Force -Path $playerInput | Out-Null
-Copy-Item -LiteralPath $playerJar.FullName -Destination (Join-Path $playerInput "player-app.jar")
-Get-ChildItem -LiteralPath (Join-Path $repoRoot "player-app\target\runtime-dependencies") -Filter "*.jar" |
-    ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $playerInput }
-$playerImageRoot = Join-Path $buildRoot "player-image"
-New-Item -ItemType Directory -Force -Path $playerImageRoot | Out-Null
-Invoke-Checked $jpackage @(
-    "--type", "app-image",
-    "--name", "DreamingFishUpdater",
-    "--dest", $playerImageRoot,
-    "--input", $playerInput,
-    "--main-jar", "player-app.jar",
-    "--main-class", "cn.dreamingfish.updater.player.PlayerLauncher",
-    "--app-version", $Version,
-    "--vendor", "DreamingFish",
-    "--description", "Minecraft modpack player updater",
-    "--add-modules", "java.desktop,java.net.http,jdk.crypto.ec,jdk.unsupported",
-    "--java-options", "-Dfile.encoding=UTF-8"
-)
+if (-not $AdminOnly) {
+    # Build the Windows desktop app image with a private Java 21 runtime.
+    $playerInput = Join-Path $buildRoot "player-input"
+    New-Item -ItemType Directory -Force -Path $playerInput | Out-Null
+    Copy-Item -LiteralPath $playerJar.FullName -Destination (Join-Path $playerInput "player-app.jar")
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot "player-app\target\runtime-dependencies") -Filter "*.jar" |
+        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $playerInput }
+    $playerImageRoot = Join-Path $buildRoot "player-image"
+    New-Item -ItemType Directory -Force -Path $playerImageRoot | Out-Null
+    Invoke-Checked $jpackage @(
+        "--type", "app-image",
+        "--name", "DreamingFishUpdater",
+        "--dest", $playerImageRoot,
+        "--input", $playerInput,
+        "--main-jar", "player-app.jar",
+        "--main-class", "cn.dreamingfish.updater.player.PlayerLauncher",
+        "--app-version", $Version,
+        "--vendor", "DreamingFish",
+        "--description", "Minecraft modpack player updater",
+        "--add-modules", "java.desktop,java.net.http,jdk.crypto.ec,jdk.unsupported",
+        "--java-options", "-Dfile.encoding=UTF-8"
+    )
 
-# jpackage can mark the Windows launcher read-only. Normalize the app image so
-# Maven clean, updater maintenance, and later packaging runs can remove it.
-Get-ChildItem -Recurse -Force -LiteralPath (Join-Path $playerImageRoot "DreamingFishUpdater") |
-    Where-Object { -not $_.PSIsContainer -and $_.IsReadOnly } |
-    ForEach-Object { $_.IsReadOnly = $false }
+    # jpackage can mark the Windows launcher read-only. Normalize the app image so
+    # Maven clean, updater maintenance, and later packaging runs can remove it.
+    Get-ChildItem -Recurse -Force -LiteralPath (Join-Path $playerImageRoot "DreamingFishUpdater") |
+        Where-Object { -not $_.PSIsContainer -and $_.IsReadOnly } |
+        ForEach-Object { $_.IsReadOnly = $false }
 
-$playerBundle = Join-Path $distRoot "dreamingfish-player-windows-x64"
-$bootstrapDirectory = Join-Path $playerBundle ".dreamingfish-bootstrap"
-$initialProgram = Join-Path $playerBundle "DreamingFishUpdater\app\$Version"
-$playerState = Join-Path $playerBundle "DreamingFishUpdater\state"
-New-Item -ItemType Directory -Force -Path $bootstrapDirectory, $initialProgram, $playerState | Out-Null
-Copy-Item -LiteralPath $agentJar.FullName -Destination (Join-Path $bootstrapDirectory "bootstrap-agent.jar")
-Copy-Item -LiteralPath (Join-Path $templates "project-binding.example.json") -Destination $bootstrapDirectory
-Copy-DirectoryContents (Join-Path $playerImageRoot "DreamingFishUpdater") $initialProgram
-$activeTemplate = Get-Content -Raw -LiteralPath (Join-Path $templates "active-player.properties")
-$activeTemplate = $activeTemplate.Replace("@VERSION@", $Version)
-[System.IO.File]::WriteAllText((Join-Path $playerState "active-player.properties"),
-    $activeTemplate, [System.Text.UTF8Encoding]::new($false))
-Copy-Item -LiteralPath (Join-Path $templates "minecraft-jvm-argument.txt") -Destination $playerBundle
-Copy-Item -LiteralPath (Join-Path $templates "README-player.txt") -Destination (Join-Path $playerBundle "README.txt")
-New-Zip $playerBundle (Join-Path $distRoot "dreamingfish-player-windows-x64-$Version.zip")
+    $playerBundle = Join-Path $distRoot "dreamingfish-player-windows-x64"
+    $bootstrapDirectory = Join-Path $playerBundle ".dreamingfish-bootstrap"
+    $initialProgram = Join-Path $playerBundle "DreamingFishUpdater\app\$Version"
+    $playerState = Join-Path $playerBundle "DreamingFishUpdater\state"
+    New-Item -ItemType Directory -Force -Path $bootstrapDirectory, $initialProgram, $playerState | Out-Null
+    Copy-Item -LiteralPath $agentJar.FullName -Destination (Join-Path $bootstrapDirectory "bootstrap-agent.jar")
+    Copy-Item -LiteralPath (Join-Path $templates "project-binding.example.json") -Destination $bootstrapDirectory
+    Copy-DirectoryContents (Join-Path $playerImageRoot "DreamingFishUpdater") $initialProgram
+    $activeTemplate = Get-Content -Raw -LiteralPath (Join-Path $templates "active-player.properties")
+    $activeTemplate = $activeTemplate.Replace("@VERSION@", $Version)
+    [System.IO.File]::WriteAllText((Join-Path $playerState "active-player.properties"),
+        $activeTemplate, [System.Text.UTF8Encoding]::new($false))
+    Copy-Item -LiteralPath (Join-Path $templates "minecraft-jvm-argument.txt") -Destination $playerBundle
+    Copy-Item -LiteralPath (Join-Path $templates "README-player.txt") -Destination (Join-Path $playerBundle "README.txt")
+    New-Zip $playerBundle (Join-Path $distRoot "dreamingfish-player-windows-x64-$Version.zip")
+}
 
 if ($PlayerOnly) {
     Write-Host "Player distribution created in $distRoot"
