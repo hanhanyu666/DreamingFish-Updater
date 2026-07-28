@@ -14,13 +14,13 @@ import cn.dreamingfish.updater.protocol.JsonCodec;
 import picocli.CommandLine;
 
 import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.nio.file.Path;
 
 @CommandLine.Command(
         name = "dfs-admin",
         mixinStandardHelpOptions = true,
-        version = "DreamingFish Update System 0.1.13",
+        version = "DreamingFish Update System 0.1.13.1",
         description = "Self-hosted Minecraft modpack update management",
         subcommands = {
                 InitCommand.class,
@@ -33,7 +33,9 @@ import java.nio.file.Path;
         }
 )
 public final class ManagementCli implements Runnable {
-    static final String VERSION = "0.1.13";
+    static final String VERSION = "0.1.13.1";
+    private static final Charset CONSOLE_OUTPUT_CHARSET =
+            WindowsConsoleEncoding.outputCharset();
 
     @CommandLine.Option(
             names = "--data",
@@ -50,9 +52,9 @@ public final class ManagementCli implements Runnable {
     boolean jsonOutput;
 
     private PrintWriter out = new PrintWriter(
-            System.out, true, StandardCharsets.UTF_8);
+            System.out, true, CONSOLE_OUTPUT_CHARSET);
     private PrintWriter err = new PrintWriter(
-            System.err, true, StandardCharsets.UTF_8);
+            System.err, true, CONSOLE_OUTPUT_CHARSET);
     private java.io.BufferedReader input;
     private final ManagementSettingsStore settingsStore;
     private ManagementSettings settings;
@@ -70,10 +72,9 @@ public final class ManagementCli implements Runnable {
     }
 
     public static void main(String[] args) {
-        WindowsConsoleEncoding.enableUtf8();
         int exit = execute(args,
-                new PrintWriter(System.out, true, StandardCharsets.UTF_8),
-                new PrintWriter(System.err, true, StandardCharsets.UTF_8));
+                new PrintWriter(System.out, true, CONSOLE_OUTPUT_CHARSET),
+                new PrintWriter(System.err, true, CONSOLE_OUTPUT_CHARSET));
         if (exit != 0) {
             System.exit(exit);
         }

@@ -19,8 +19,9 @@
 
 ```powershell
 .\mvnw.cmd test
-.\packaging\build-distributions.ps1 -Version 0.1.13 -SkipLinux
-.\packaging\smoke-test-distributions.ps1 -Version 0.1.13 -AdminVersion 0.1.13
+.\packaging\build-distributions.ps1 -Version 0.1.13.1 -AdminOnly -SkipLinux
+.\packaging\build-distributions.ps1 -Version 0.1.13 -PlayerOnly -SkipLinux
+.\packaging\smoke-test-distributions.ps1 -Version 0.1.13 -AdminVersion 0.1.13.1
 ```
 
 `-AdminOnly` 只生成管理端发行包，`-PlayerOnly` 只生成玩家端发行包，避免两个独立组件被误用同一个版本号。

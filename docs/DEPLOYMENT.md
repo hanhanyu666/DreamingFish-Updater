@@ -77,8 +77,9 @@ cd C:\DreamingFishAdmin
 .\DreamingFishAdmin.exe
 ```
 
-也可以直接双击 `DreamingFishAdmin.exe`。EXE 会将 Windows 控制台和 Java
-输入输出统一为 UTF-8，并对旧系统终端的 GB18030 输入进行兼容处理。
+也可以直接双击 `DreamingFishAdmin.exe`。EXE 会自动识别 Windows 控制台当前
+代码页并选择匹配的中文输出编码；Web、文件和重定向输出仍统一使用 UTF-8。
+旧系统终端的 GB18030 输入也会兼容处理，不需要手动执行 `chcp`。
 
 第一次启动会显示：
 
@@ -111,7 +112,7 @@ C:\DreamingFishAdmin\management-settings.json
 
 ### 2.1 启动本机 Web 管理界面
 
-管理端 `0.1.13` 提供可选的桌面优先 Web 页面。它与完整 CLI 调用相同的
+管理端 `0.1.13.1` 提供可选的桌面优先 Web 页面。它与完整 CLI 调用相同的
 项目、扫描、发布和实例服务，不需要 Node、数据库服务或额外 Web 框架。
 
 进入主菜单后选择：
@@ -728,7 +729,7 @@ C:\DreamingFishAdmin\data\
 C:\DreamingFishAdmin\management-settings.json
 ```
 
-升级到 `0.1.13` 时：
+升级到 `0.1.13.1` 时：
 
 1. 先停止 HTTP/Web 服务并退出旧管理端；
 2. 备份上面的 `data/` 和 `management-settings.json`；

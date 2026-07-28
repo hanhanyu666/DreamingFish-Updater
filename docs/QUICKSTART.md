@@ -42,7 +42,7 @@ D:\DFSSource\
 
 ### 1. 启动管理端和 Web 页面
 
-把 `dfs-admin-windows-x64-0.1.13.zip` 解压到 `D:\DFSAdmin`，双击：
+把 `dfs-admin-windows-x64-0.1.13.1.zip` 解压到 `D:\DFSAdmin`，双击：
 
 ```text
 D:\DFSAdmin\DreamingFishAdmin.exe
