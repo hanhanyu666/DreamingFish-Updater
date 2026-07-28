@@ -30,12 +30,13 @@ public final class ProjectService {
     public ProjectRecord create(String id, String displayName, Path sourceDirectory,
                                 String publicBaseUrl, Branding branding, ProjectRules rules) {
         validateProjectId(id);
+        String name = normalizeDisplayName(displayName);
         Path source = validateSource(sourceDirectory);
         String baseUrl = normalizeBaseUrl(publicBaseUrl);
         ProjectKeyStore.KeyMaterial key = keys.create(id);
         ProjectRecord project = new ProjectRecord(
                 id,
-                displayName,
+                name,
                 source,
                 baseUrl,
                 key.publicKey(),
@@ -61,18 +62,25 @@ public final class ProjectService {
 
     public ProjectRecord configure(String id, Path sourceDirectory, String publicBaseUrl,
                                    Branding branding, ProjectRules rules) {
+        return configure(id, null, sourceDirectory, publicBaseUrl, branding, rules);
+    }
+
+    public ProjectRecord configure(String id, String displayName, Path sourceDirectory,
+                                   String publicBaseUrl, Branding branding, ProjectRules rules) {
         ProjectRecord current = database.requireProject(id);
+        String name = displayName == null
+                ? current.displayName() : normalizeDisplayName(displayName);
         Path source = sourceDirectory == null ? current.sourceDirectory() : validateSource(sourceDirectory);
         String url = publicBaseUrl == null ? current.publicBaseUrl() : normalizeBaseUrl(publicBaseUrl);
         Branding nextBranding = branding == null ? current.branding() : branding;
         ProjectRules nextRules = rules == null ? current.rules() : rules;
         ProjectRecord candidate = new ProjectRecord(
-                current.id(), current.displayName(), source, url, current.publicKey(), current.privateKeyFile(),
+                current.id(), name, source, url, current.publicKey(), current.privateKeyFile(),
                 nextBranding, nextRules, current.nextSequence(), current.createdAt()
         );
         ManifestValidator.validateBinding(bindingFor(candidate, "DreamingFishUpdater", null));
         new RuleSet(nextRules);
-        database.updateProject(id, source, url, nextBranding, nextRules);
+        database.updateProject(id, name, source, url, nextBranding, nextRules);
         return database.requireProject(id);
     }
 
@@ -103,7 +111,8 @@ public final class ProjectService {
                 old.productName(), old.subtitle(), old.serverAddress(), cover.sha256(),
                 old.accentColor(), old.secondaryAccentColor()
         );
-        database.updateProject(id, current.sourceDirectory(), current.publicBaseUrl(), branding, current.rules());
+        database.updateProject(id, current.displayName(), current.sourceDirectory(),
+                current.publicBaseUrl(), branding, current.rules());
         return database.requireProject(id);
     }
 
@@ -128,6 +137,18 @@ public final class ProjectService {
         if (id == null || !id.matches("[a-z0-9][a-z0-9._-]{0,63}")) {
             throw new ManagementException("Project ID must use lowercase letters, digits, dots, underscores, or hyphens");
         }
+    }
+
+    private static String normalizeDisplayName(String value) {
+        if (value == null || value.isBlank()) {
+            throw new ManagementException("Project display name cannot be empty");
+        }
+        String normalized = value.trim();
+        if (normalized.length() > 120
+                || normalized.chars().anyMatch(Character::isISOControl)) {
+            throw new ManagementException("Project display name is too long or contains control characters");
+        }
+        return normalized;
     }
 
     static String normalizeBaseUrl(String input) {

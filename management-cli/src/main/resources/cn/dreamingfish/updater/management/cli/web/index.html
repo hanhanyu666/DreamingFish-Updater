@@ -20,6 +20,7 @@
       <nav class="navigation" aria-label="管理功能">
         <button class="nav-button active" data-view="dashboard"><span>⌂</span>概览</button>
         <button class="nav-button requires-project" data-view="project"><span>◫</span>项目设置</button>
+        <button class="nav-button requires-project" data-view="files"><span>≡</span>源文件</button>
         <button class="nav-button requires-project" data-view="publish"><span>↑</span>扫描与发布</button>
         <button class="nav-button requires-project" data-view="player"><span>▣</span>玩家端程序</button>
         <button class="nav-button requires-project" data-view="instance"><span>◇</span>玩家实例</button>
@@ -122,6 +123,10 @@
             </div>
             <div class="form-grid">
               <label class="field span-2">
+                <span>项目显示名称</span>
+                <input name="displayName" maxlength="120" required>
+              </label>
+              <label class="field span-2">
                 <span>标准整合包目录</span>
                 <div class="path-input-row">
                   <input name="sourceDirectory" required>
@@ -169,6 +174,34 @@
               </label>
             </div>
           </form>
+        </section>
+
+        <section class="view" id="view-files">
+          <section class="panel">
+            <div class="panel-header source-file-header">
+              <div>
+                <h2>标准源文件</h2>
+                <span id="source-file-count">尚未读取</span>
+              </div>
+              <div class="button-row">
+                <input class="table-search" id="source-file-search" placeholder="搜索路径">
+                <button class="secondary-button" id="reload-source-files" type="button">↻ 刷新</button>
+                <button class="primary-button" id="open-source-add" type="button">＋ 添加文件</button>
+              </div>
+            </div>
+            <div class="source-file-summary">
+              <div><span>托管文件</span><strong id="source-managed-count">--</strong></div>
+              <div><span>总大小</span><strong id="source-total-size">--</strong></div>
+              <div><span>强制同步</span><strong id="source-forced-count">--</strong></div>
+            </div>
+            <div class="table-wrap source-file-table">
+              <table>
+                <thead><tr><th>状态</th><th>托管路径</th><th>大小</th><th>修改时间</th><th></th></tr></thead>
+                <tbody id="source-file-table"></tbody>
+              </table>
+              <div class="empty-state" id="source-file-empty">标准源目录中没有托管文件</div>
+            </div>
+          </section>
         </section>
 
         <section class="view" id="view-publish">
@@ -262,7 +295,7 @@
         <section class="view" id="view-player">
           <form class="panel form-panel" id="program-form">
             <div class="panel-header">
-              <div><h2>发布玩家端程序</h2><span>签名并生成程序更新清单</span></div>
+              <div><h2>发布玩家端程序</h2><span>自动读取版本并定位 app-image</span></div>
               <button class="primary-button" type="submit">发布玩家端</button>
             </div>
             <div class="form-grid">
@@ -271,23 +304,15 @@
                 <input name="platform" value="windows-x64" required>
               </label>
               <label class="field">
-                <span>玩家端版本</span>
-                <input name="version" placeholder="0.1.13" required>
-              </label>
-              <label class="field span-2">
-                <span>完整 app-image 目录</span>
-                <div class="path-input-row">
-                  <input name="sourceDirectory" required>
-                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择玩家端 app-image 目录">浏览</button>
-                </div>
-              </label>
-              <label class="field">
-                <span>启动程序相对路径</span>
-                <input name="launchPath" value="DreamingFishUpdater.exe" required>
-              </label>
-              <label class="field">
                 <span>最低 Bootstrap Agent 版本</span>
                 <input name="minimumBootstrapVersion" value="0.1.2" required>
+              </label>
+              <label class="field span-2">
+                <span>玩家端发行包解压根目录</span>
+                <div class="path-input-row">
+                  <input name="sourceDirectory" required>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择玩家端发行包解压根目录">浏览</button>
+                </div>
               </label>
             </div>
           </form>
@@ -307,6 +332,31 @@
         </section>
 
         <section class="view" id="view-instance">
+          <form class="panel form-panel" id="deployment-form">
+            <div class="panel-header">
+              <div><h2>生成首次部署包</h2><span>无需在管理端准备完整 Minecraft 实例</span></div>
+              <button class="primary-button" type="submit">生成部署包</button>
+            </div>
+            <div class="form-grid">
+              <label class="field span-2">
+                <span>输出父目录</span>
+                <div class="path-input-row">
+                  <input name="outputDirectory" required>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="outputDirectory" data-path-title="选择首次部署包输出目录">浏览</button>
+                </div>
+              </label>
+              <label class="field">
+                <span>平台</span>
+                <input name="platform" value="windows-x64" required>
+              </label>
+              <label class="field">
+                <span>原整合包对应版本</span>
+                <select name="releaseId" required></select>
+              </label>
+            </div>
+            <div class="notice-line">输出目录只包含更新器接入文件与签名基线；生成后把整个目录内容合并到本地 Minecraft 实例根目录。</div>
+          </form>
+
           <form class="panel form-panel" id="instance-form">
             <div class="panel-header">
               <div><h2>制作玩家实例</h2><span>写入绑定、程序信任状态和整合包基线</span></div>
@@ -433,6 +483,62 @@
       <div class="modal-actions">
         <button class="secondary-button" value="cancel">取消</button>
         <button class="danger-button" id="rollback-submit" value="default">确认回滚</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="source-add-dialog">
+    <form method="dialog" id="source-add-form">
+      <div class="modal-header">
+        <div><span>SOURCE FILE</span><h2>添加托管文件</h2></div>
+        <button class="icon-button" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <div class="form-grid one-column source-add-grid">
+        <label class="field">
+          <span>目标目录（相对于标准整合包目录）</span>
+          <input name="targetDirectory" placeholder="例如 mods；留空表示根目录">
+        </label>
+        <label class="check-field">
+          <input name="overwrite" type="checkbox">
+          <span>同名文件存在时归档并覆盖</span>
+        </label>
+        <div class="upload-dropzone" id="source-dropzone" tabindex="0" role="button">
+          <strong>拖入文件</strong>
+          <span id="source-upload-selection">或从当前电脑选择</span>
+          <button class="secondary-button" id="choose-source-upload" type="button">选择文件</button>
+          <input id="source-upload-input" type="file" multiple hidden>
+        </div>
+        <div class="upload-progress" id="source-upload-progress" hidden>
+          <div><span id="source-upload-label">准备上传</span><strong id="source-upload-percent">0%</strong></div>
+          <progress id="source-upload-meter" max="100" value="0"></progress>
+        </div>
+        <div class="source-divider"><span>或从 VPS 本机导入</span></div>
+        <label class="field">
+          <span>服务器文件路径</span>
+          <div class="path-input-row">
+            <input name="serverSourcePath">
+            <button class="secondary-button path-picker-button ellipsis-button" type="button" data-path-kind="file" data-path-name="serverSourcePath" data-path-title="选择要导入的服务器文件" aria-label="浏览服务器文件">…</button>
+          </div>
+        </label>
+      </div>
+      <div class="modal-actions source-add-actions">
+        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" id="import-server-source" type="button">导入服务器文件</button>
+        <button class="primary-button" id="upload-source-files" type="button">上传所选文件</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal compact-modal" id="source-remove-dialog">
+    <form method="dialog">
+      <div class="modal-accent warning"></div>
+      <span class="modal-kicker">REMOVE SOURCE</span>
+      <h2>移除托管文件</h2>
+      <p id="source-remove-message"></p>
+      <div class="modal-actions source-remove-actions">
+        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" id="source-release-action" value="RELEASE">放弃管理并保留</button>
+        <button class="danger-button" value="DELETE">从玩家端删除</button>
       </div>
     </form>
   </dialog>

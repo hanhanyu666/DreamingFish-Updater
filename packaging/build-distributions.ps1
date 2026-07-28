@@ -198,19 +198,17 @@ if ($SkipTests) { $mavenArguments += "-DskipTests" }
 Invoke-Checked (Join-Path $repoRoot "mvnw.cmd") $mavenArguments
 
 $adminJar = Join-Path $repoRoot "management-cli\target\dfs-admin.jar"
-$agentJar = if ($AdminOnly) { $null } else {
-    Get-ChildItem -LiteralPath (Join-Path $repoRoot "bootstrap-agent\target") `
-        -Filter "bootstrap-agent-*.jar" |
-        Where-Object { $_.Name -notlike "original-*" } |
-        Select-Object -First 1
-}
+$agentJar = Get-ChildItem -LiteralPath (Join-Path $repoRoot "bootstrap-agent\target") `
+    -Filter "bootstrap-agent-*.jar" |
+    Where-Object { $_.Name -notlike "original-*" } |
+    Select-Object -First 1
 $playerJar = if ($AdminOnly) { $null } else {
     Get-ChildItem -LiteralPath (Join-Path $repoRoot "player-app\target") `
         -Filter "player-app-*.jar" |
         Select-Object -First 1
 }
-$missingArtifacts = (-not $AdminOnly -and
-        ($null -eq $agentJar -or $null -eq $playerJar)) -or
+$missingArtifacts = ($null -eq $agentJar) -or
+        (-not $AdminOnly -and $null -eq $playerJar) -or
         (-not $PlayerOnly -and -not (Test-Path -LiteralPath $adminJar))
 if ($missingArtifacts) {
     throw "Maven did not produce all required artifacts."
@@ -290,6 +288,9 @@ Invoke-Checked $jpackage @(
     "--java-options", '-Ddfs.home=$APPDIR/..'
 )
 Copy-DirectoryContents (Join-Path $adminImageRoot "DreamingFishAdmin") $adminWindows
+New-Item -ItemType Directory -Force -Path (Join-Path $adminWindows "support") | Out-Null
+Copy-Item -LiteralPath $agentJar.FullName -Destination `
+    (Join-Path $adminWindows "support\bootstrap-agent.jar")
 Copy-Item -LiteralPath (Join-Path $templates "README-management.txt") -Destination (Join-Path $adminWindows "README.txt")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\QUICKSTART.md") -Destination (Join-Path $adminWindows "QUICKSTART.md")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") -Destination (Join-Path $adminWindows "DEPLOYMENT.md")
@@ -316,6 +317,9 @@ if (-not $SkipLinux) {
     if ($null -eq $linuxRuntimeSource) { throw "The Linux runtime archive has an unexpected layout." }
     Copy-DirectoryContents $linuxRuntimeSource.FullName (Join-Path $adminLinux "runtime")
     Copy-Item -LiteralPath $adminJar -Destination (Join-Path $adminLinux "app\dfs-admin.jar")
+    New-Item -ItemType Directory -Force -Path (Join-Path $adminLinux "support") | Out-Null
+    Copy-Item -LiteralPath $agentJar.FullName -Destination `
+        (Join-Path $adminLinux "support\bootstrap-agent.jar")
     Copy-Item -LiteralPath (Join-Path $templates "dfs-admin") -Destination $adminLinux
     Copy-Item -LiteralPath (Join-Path $templates "README-management-linux.txt") `
         -Destination (Join-Path $adminLinux "README.txt")

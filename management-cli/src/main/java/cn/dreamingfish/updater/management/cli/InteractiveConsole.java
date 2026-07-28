@@ -88,6 +88,7 @@ final class InteractiveConsole {
             root.out().println("[8] 修改服务设置");
             root.out().println("[9] 启动 HTTP 文件服务");
             root.out().println("[10] 启动 Web 管理界面");
+            root.out().println("[11] 生成玩家端首次部署包");
             root.out().println("[0] 退出");
             String choice = readLine("请选择：").trim();
             if (choice.equals("0")) {
@@ -106,7 +107,8 @@ final class InteractiveConsole {
                     case "8" -> configureManagement();
                     case "9" -> serve();
                     case "10" -> serveWeb();
-                    default -> root.out().println("请输入 0 到 10 之间的菜单编号。");
+                    case "11" -> createPlayerDeployment();
+                    default -> root.out().println("请输入 0 到 11 之间的菜单编号。");
                 }
             } catch (ManagementException | IllegalArgumentException e) {
                 root.err().println("操作失败：" + usefulMessage(e));
@@ -178,6 +180,7 @@ final class InteractiveConsole {
         ProjectRecord current = selectProject();
         if (current == null) return;
         root.out().println("直接按回车保留当前值。");
+        String displayName = prompt("项目显示名称", current.displayName());
         Path source = promptDirectory("标准整合包目录", current.sourceDirectory(), false);
         String currentForced = String.join(",", current.rules().forcedSyncDirectories());
         String forcedInput = prompt("强制同步一级目录（逗号分隔，输入 - 清空）", currentForced);
@@ -211,7 +214,7 @@ final class InteractiveConsole {
                 .withForcedSyncDirectories(forcedDirectories)
                 .withForcedSyncFiles(forcedFiles);
         ProjectRecord updated = services.projects().configure(
-                current.id(), source, publicUrl, branding, rules);
+                current.id(), displayName, source, publicUrl, branding, rules);
         if (cover != null) {
             updated = services.projects().setCover(current.id(), cover);
         }
@@ -331,16 +334,14 @@ final class InteractiveConsole {
         if (project == null) return;
         root.out().println("此处发布的是玩家端更新器程序，不是 mods/config 整合包内容。");
         String platform = prompt("平台", "windows-x64");
-        String version = promptRequired("玩家端程序版本（语义版本，例如 0.1.1）");
-        Path source = promptDirectory("玩家端完整 app-image 目录", null, false);
-        String launcher = prompt("该目录内的启动程序路径", "DreamingFishUpdater.exe");
+        Path source = promptDirectory("玩家端发行包解压根目录", null, false);
         String minimumBootstrap = prompt("最低启动引导器版本", "0.1.2");
-        if (!confirm("确认发布玩家端程序 " + version + "？", false)) {
+        if (!confirm("自动读取版本并发布这个玩家端程序？", false)) {
             root.out().println("已取消发布。");
             return;
         }
         var stored = root.services().playerPrograms().publish(
-                project.id(), platform, version, source, launcher, minimumBootstrap);
+                project.id(), platform, "", source, "", minimumBootstrap);
         root.out().println("玩家端程序已发布：" + stored.version() + " / " + stored.platform());
     }
 
@@ -366,6 +367,24 @@ final class InteractiveConsole {
         binding.platform = platform;
         binding.releaseId = release.releaseId();
         binding.run();
+    }
+
+    private void createPlayerDeployment() {
+        ProjectRecord project = selectProject();
+        if (project == null) return;
+        root.out().println("此功能不需要完整 Minecraft 实例，输出内容用于合并到本地实例根目录。");
+        Path output = promptDirectory("首次部署包输出父目录", null, false);
+        String platform = prompt("平台", "windows-x64");
+        StoredRelease release = selectReleaseForBundle(project);
+        if (!confirm("按整合包基线 " + release.displayVersion()
+                + " 生成首次部署包？", false)) {
+            root.out().println("已取消生成。");
+            return;
+        }
+        var prepared = root.services().deployments().create(
+                project.id(), platform, release.releaseId(), output,
+                root.bootstrapAgentPath());
+        root.out().println("首次部署包已生成：" + prepared.outputDirectory());
     }
 
     private StoredRelease selectReleaseForBundle(ProjectRecord project) {

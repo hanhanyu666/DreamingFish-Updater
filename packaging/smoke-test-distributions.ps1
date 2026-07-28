@@ -142,6 +142,9 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $playerTemplate `
             ".dreamingfish-bootstrap\bootstrap-agent.jar") -PathType Leaf) `
         "Player ZIP is missing bootstrap-agent.jar"
+    Assert-True (Test-Path -LiteralPath (Join-Path $adminRoot `
+            "support\bootstrap-agent.jar") -PathType Leaf) `
+        "Admin ZIP is missing support/bootstrap-agent.jar"
     Assert-True (Test-Path -LiteralPath (Join-Path $playerTemplate `
             "DreamingFishUpdater\app\$Version\DreamingFishUpdater.exe") -PathType Leaf) `
         "Player ZIP is missing DreamingFishUpdater.exe"
@@ -173,14 +176,32 @@ try {
     Invoke-Admin @(
         "player", "publish", "smoke-pack",
         "--platform", "windows-x64",
-        "--version", $Version,
-        "--source", (Join-Path $playerTemplate "DreamingFishUpdater\app\$Version"),
-        "--launcher", "DreamingFishUpdater.exe",
+        "--source", $playerTemplate,
         "--minimum-bootstrap-version", "0.1.2",
         "--yes"
     ) | Out-Null
 
     $releaseOne = Publish-Release "1.1.0" "Initial ten mods"
+    $deploymentParent = Join-Path $workRoot "thin-deployment"
+    New-Item -ItemType Directory -Force -Path $deploymentParent | Out-Null
+    Invoke-Admin @(
+        "project", "deployment", "smoke-pack",
+        "--output", $deploymentParent,
+        "--release", $releaseOne,
+        "--platform", "windows-x64",
+        "--yes"
+    ) | Out-Null
+    $thinDeployment = Join-Path $deploymentParent `
+        "smoke-pack-player-deployment-1.1.0-$Version"
+    Assert-True (Test-Path -LiteralPath (Join-Path $thinDeployment `
+            ".dreamingfish-bootstrap\bundled-release\manifest.sig") -PathType Leaf) `
+        "Thin deployment is missing its signed release baseline"
+    Assert-True (Test-Path -LiteralPath (Join-Path $thinDeployment `
+            "DreamingFishUpdater\app\$Version\DreamingFishUpdater.exe") -PathType Leaf) `
+        "Thin deployment is missing its player program"
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $thinDeployment "mods"))) `
+        "Thin deployment unexpectedly contains managed modpack files"
+    Verify-PlayerProgram $thinDeployment $true
     $instanceOne = Join-Path $workRoot "instance-from-1.1"
     Copy-PlayerTemplate $instanceOne
     Invoke-Admin @(
@@ -297,6 +318,7 @@ try {
             (Test-Path -LiteralPath (Join-Path $instanceTwo `
                 ".dreamingfish-bootstrap\bundled-release\manifest.sig"))
         )
+        ThinDeploymentVerified = $true
         PlayerProgramVerification = "valid accepted; modified rejected; restored accepted"
         ForcedSyncDirectories = $latest.forcedSyncDirectories -join ","
         HttpHealth = $health.status

@@ -19,14 +19,16 @@
 
 ```powershell
 .\mvnw.cmd test
-.\packaging\build-distributions.ps1 -Version 0.1.13.1 -AdminOnly -SkipLinux
+.\packaging\build-distributions.ps1 -Version 0.1.14 -AdminOnly -SkipLinux
 .\packaging\build-distributions.ps1 -Version 0.1.13 -PlayerOnly -SkipLinux
-.\packaging\smoke-test-distributions.ps1 -Version 0.1.13 -AdminVersion 0.1.13.1
+.\packaging\smoke-test-distributions.ps1 -Version 0.1.13 -AdminVersion 0.1.14
 ```
 
 `-AdminOnly` 只生成管理端发行包，`-PlayerOnly` 只生成玩家端发行包，避免两个独立组件被误用同一个版本号。
 
 发行包冒烟测试会重新解压实际 ZIP，在 `target/` 的临时目录中模拟三个整合包版本、制作历史玩家包、校验玩家程序防篡改和启动 HTTP 服务；成功后自动删除临时数据，不会接触现有 Minecraft 实例或管理端数据。
+
+管理端新增或修改日常功能时，CLI 与 Web 必须调用同一应用服务并同步提供入口；确实不适合 Web 的高风险运维能力必须在文档中明确说明。涉及 Web 的版本发布前还必须完成 API 自动化测试和真实桌面浏览器测试，至少覆盖 `1366×768`、`1440×900`、`1920×1080`，检查主要流程、上传进度、错误反馈、滚动与按钮可见性、布局稳定性、横向溢出和浏览器控制台错误。
 
 打包脚本生成以下文件，其中 `<版本号>` 由 `build-distributions.ps1 -Version` 决定：
 
@@ -36,13 +38,23 @@
 
 Windows 玩家端和两个管理端包都带 Java 21 运行时。首次生成 Linux 包时，脚本会下载固定版本、校验 SHA-256 后再打包 Temurin Linux x64 JRE。
 
-制作可分发玩家实例时，先发布玩家端程序，再让管理端准备实例：
+制作可分发玩家实例时，先发布玩家端程序，再让管理端准备实例。管理端能直接
+访问完整实例时可以执行：
 
 ```text
 dfs-admin project binding <项目ID> --instance <实例目录> --platform windows-x64 --release <发布ID>
 ```
 
 这个命令会写入真实项目绑定、保存首个玩家程序的签名清单、补齐所选不可变发布的托管文件、写入签名分发基线，并自动带入项目封面。只导出一个绑定 JSON 不足以通过 Agent 的启动前校验；从管理端初始化到 PCL 相对路径配置的完整顺序见部署文档。
+
+完整实例只在服主电脑上时，可在 Web“玩家实例”页生成薄首次部署包，或执行：
+
+```text
+dfs-admin project deployment <项目ID> --output <输出父目录> --platform windows-x64 --release <发布ID> --yes
+```
+
+生成目录只包含签名玩家端、Agent、项目绑定、封面和所选发布的签名基线，不会
+重复打包 `mods/`、`config/` 或 Minecraft 本体。将它下载并合并到本地实例即可。
 
 ## 文档
 

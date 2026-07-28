@@ -30,7 +30,10 @@ final class ManagementSettingsStore {
         try {
             ManagementSettings settings = migrate(json.read(file, ManagementSettings.class));
             validate(settings);
-            return normalize(settings);
+            ManagementSettings normalized = normalize(settings);
+            ManagementSettings relocated = relocateToLocalData(normalized);
+            if (!relocated.equals(normalized)) save(relocated);
+            return relocated;
         } catch (IOException e) {
             throw new ManagementException("无法读取管理端设置文件: " + file, e);
         }
@@ -75,6 +78,21 @@ final class ManagementSettingsStore {
         return new ManagementSettings(ManagementSettings.CURRENT_SCHEMA,
                 data.toAbsolutePath().normalize().toString(), projectId,
                 settings.httpHost().trim(), settings.httpPort(), settings.webPort());
+    }
+
+    private ManagementSettings relocateToLocalData(ManagementSettings settings) {
+        Path parent = file.getParent();
+        if (parent == null) return settings;
+        Path localData = parent.resolve("data").toAbsolutePath().normalize();
+        Path configured = Path.of(settings.dataDirectory())
+                .toAbsolutePath().normalize();
+        if (localData.equals(configured)
+                || !Files.isRegularFile(localData.resolve("management.db"),
+                java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(localData)) {
+            return settings;
+        }
+        return settings.withDataDirectory(localData.toString());
     }
 
     private static ManagementSettings migrate(ManagementSettings settings) {

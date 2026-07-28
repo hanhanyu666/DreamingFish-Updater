@@ -24,7 +24,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.1.13.1"));
+        assertTrue(version.out().contains("0.1.14"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -242,6 +242,33 @@ class ManagementCliTest {
         assertEquals("0.0.0.0", settings.httpHost());
         assertEquals(8080, settings.httpPort());
         assertEquals(ManagementSettings.DEFAULT_WEB_PORT, settings.webPort());
+    }
+
+    @Test
+    void relocatedAdminPrefersAndPersistsItsLocalExistingDataDirectory() throws Exception {
+        Path newHome = Files.createDirectories(temporary.resolve("new-admin"));
+        Path settingsFile = newHome.resolve("management-settings.json");
+        Path oldData = temporary.resolve("old-version/data").toAbsolutePath().normalize();
+        Files.writeString(settingsFile, """
+                {
+                  "schemaVersion": 2,
+                  "dataDirectory": "%s",
+                  "defaultProjectId": "",
+                  "httpHost": "0.0.0.0",
+                  "httpPort": 8080,
+                  "webPort": 18080
+                }
+                """.formatted(oldData.toString().replace("\\", "\\\\")));
+        Path localData = Files.createDirectories(newHome.resolve("data"));
+        Files.writeString(localData.resolve("management.db"), "moved-database");
+
+        ManagementSettings settings = new ManagementSettingsStore(settingsFile).load();
+
+        assertEquals(localData.toAbsolutePath().normalize().toString(),
+                settings.dataDirectory());
+        assertTrue(Files.readString(settingsFile)
+                .contains(localData.toAbsolutePath().normalize().toString()
+                        .replace("\\", "\\\\")));
     }
 
     private Invocation invoke(String... args) {

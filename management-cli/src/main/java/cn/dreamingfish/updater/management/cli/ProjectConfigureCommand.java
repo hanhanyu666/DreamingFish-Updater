@@ -16,6 +16,8 @@ final class ProjectConfigureCommand implements Runnable {
 
     @CommandLine.Option(names = "--source")
     Path source;
+    @CommandLine.Option(names = "--name", description = "Replace the project display name")
+    String displayName;
     @CommandLine.Option(names = "--public-url")
     String publicUrl;
     @CommandLine.Option(names = "--product-name")
@@ -78,6 +80,7 @@ final class ProjectConfigureCommand implements Runnable {
             rules = rules.withForcedSyncFiles(
                     ProjectCreateCommand.parsePaths(forcedSyncFiles));
         }
-        CliOutput.project(root, services.projects().configure(projectId, source, publicUrl, branding, rules));
+        CliOutput.project(root, services.projects().configure(
+                projectId, displayName, source, publicUrl, branding, rules));
     }
 }

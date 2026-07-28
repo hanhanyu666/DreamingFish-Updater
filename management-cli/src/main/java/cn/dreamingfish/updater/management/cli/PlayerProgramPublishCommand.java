@@ -12,11 +12,11 @@ final class PlayerProgramPublishCommand implements Runnable {
     String projectId;
     @CommandLine.Option(names = "--platform", required = true, description = "Platform ID, for example windows-x64")
     String platform;
-    @CommandLine.Option(names = "--version", required = true, description = "Semantic program version")
+    @CommandLine.Option(names = "--version", description = "Semantic program version (auto-detected by default)")
     String version;
     @CommandLine.Option(names = "--source", required = true, description = "Complete player program image directory")
     Path source;
-    @CommandLine.Option(names = "--launcher", required = true, description = "Launcher path relative to the source directory")
+    @CommandLine.Option(names = "--launcher", description = "Launcher path relative to the source directory (auto-detected by default)")
     String launcher;
     @CommandLine.Option(names = "--minimum-bootstrap-version", defaultValue = "0.1.2")
     String minimumBootstrapVersion;
@@ -27,7 +27,7 @@ final class PlayerProgramPublishCommand implements Runnable {
     public void run() {
         ManagementCli root = parent.root;
         Confirmations.require(root, yes,
-                "Publish immutable player program " + version + " for " + platform + "?");
+                "Publish the detected immutable player program for " + platform + "?");
         var stored = root.services().playerPrograms().publish(projectId, platform, version,
                 source, launcher, minimumBootstrapVersion);
         if (root.jsonOutput) root.printJson(stored);

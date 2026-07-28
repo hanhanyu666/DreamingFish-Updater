@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -136,6 +137,107 @@ class AdminWebServerTest {
                 root, new InetSocketAddress("0.0.0.0", 0)));
     }
 
+    @Test
+    void renamesProjectsAndManagesSourceFilesThroughTheWebApi() throws Exception {
+        ManagementCli root = new ManagementCli(
+                temporary.resolve("file-admin/management-settings.json"),
+                new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("file-pack/mods"));
+        Files.writeString(source.resolve("example.jar"), "initial");
+
+        try (AdminWebServer server = new AdminWebServer(
+                root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
+            server.start();
+            URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            Map<?, ?> session = json.read(send(
+                    base, "/api/session", "GET", null, null)
+                    .body().getBytes(StandardCharsets.UTF_8), Map.class);
+            String token = session.get("token").toString();
+
+            String create = json.writeString(Map.of(
+                    "id", "files-demo",
+                    "displayName", "����",
+                    "sourceDirectory", source.getParent().toString(),
+                    "publicBaseUrl", "http://127.0.0.1:8080"
+            ));
+            assertEquals(201, send(base, "/api/projects", "POST", create, token)
+                    .statusCode());
+
+            String rename = json.writeString(Map.of(
+                    "displayName", "修复后的项目名"));
+            HttpResponse<String> renamed = send(
+                    base, "/api/projects/files-demo", "PUT", rename, token);
+            assertEquals(200, renamed.statusCode(), renamed.body());
+            assertTrue(renamed.body().contains("修复后的项目名"));
+
+            assertEquals(200, send(base,
+                    "/api/projects/files-demo/scan", "POST", "{}", token)
+                    .statusCode());
+            HttpResponse<String> forced = send(base,
+                    "/api/projects/files-demo/forced-files", "POST",
+                    json.writeString(Map.of(
+                            "files", new String[]{"mods/example.jar"})), token);
+            assertEquals(200, forced.statusCode(), forced.body());
+            assertTrue(forced.body().contains("mods/example.jar"));
+
+            HttpResponse<String> fileList = send(
+                    base, "/api/projects/files-demo/files", "GET", null, null);
+            assertEquals(200, fileList.statusCode(), fileList.body());
+            assertTrue(fileList.body().contains("\"forcedByFile\":true"));
+
+            HttpResponse<String> uploaded = sendBytes(base,
+                    "/api/projects/files-demo/files/upload?path=config%2Fnew.toml"
+                            + "&refreshPreview=false",
+                    "browser-upload".getBytes(StandardCharsets.UTF_8), token);
+            assertEquals(201, uploaded.statusCode(), uploaded.body());
+            Map<?, ?> uploadResult = json.read(
+                    uploaded.body().getBytes(StandardCharsets.UTF_8), Map.class);
+            assertNull(uploadResult.get("preview"));
+            assertEquals("browser-upload", Files.readString(
+                    source.getParent().resolve("config/new.toml")));
+
+            HttpResponse<String> rescanned = send(base,
+                    "/api/projects/files-demo/scan", "POST", "{}", token);
+            assertEquals(200, rescanned.statusCode(), rescanned.body());
+            assertTrue(rescanned.body().contains("config/new.toml"));
+
+            HttpResponse<String> published = send(base,
+                    "/api/projects/files-demo/publish", "POST",
+                    json.writeString(Map.of(
+                            "displayVersion", "1.0",
+                            "minimumPlayerVersion", "0.1.13",
+                            "changelog", "Web files")), token);
+            assertEquals(201, published.statusCode(), published.body());
+
+            HttpResponse<String> removed = send(base,
+                    "/api/projects/files-demo/files/remove", "POST",
+                    json.writeString(Map.of(
+                            "path", "mods/example.jar",
+                            "action", "RELEASE")), token);
+            assertEquals(200, removed.statusCode(), removed.body());
+            assertTrue(removed.body().contains("archivedPreviousFile"));
+            assertTrue(removed.body().contains("\"removalAction\":\"RELEASE\""));
+            assertTrue(!Files.exists(source.resolve("example.jar")));
+
+            Path serverFile = temporary.resolve("server-added.jar");
+            Files.writeString(serverFile, "server-import");
+            HttpResponse<String> imported = send(base,
+                    "/api/projects/files-demo/files/import", "POST",
+                    json.writeString(Map.of(
+                            "sourcePath", serverFile.toString(),
+                            "targetDirectory", "mods",
+                            "overwrite", false)), token);
+            assertEquals(201, imported.statusCode(), imported.body());
+            assertEquals("server-import", Files.readString(
+                    source.resolve("server-added.jar")));
+
+            HttpResponse<String> script = send(base, "/app.js", "GET", null, null);
+            assertTrue(script.body().contains("单文件强制"));
+            assertTrue(script.body().contains("bindSourceFiles"));
+            assertTrue(script.body().contains("app.sourceFiles?.files"));
+        }
+    }
+
     private HttpResponse<String> send(
             URI base, String path, String method, String body, String token)
             throws Exception {
@@ -150,6 +252,19 @@ class AdminWebServerTest {
             builder.method(method, HttpRequest.BodyPublishers.ofString(body));
         }
         return client.send(builder.build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private HttpResponse<String> sendBytes(
+            URI base, String path, byte[] body, String token) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(base.resolve(path))
+                .timeout(Duration.ofSeconds(10))
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/octet-stream")
+                .header("X-DFS-Token", token)
+                .PUT(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build();
+        return client.send(request,
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     }
 

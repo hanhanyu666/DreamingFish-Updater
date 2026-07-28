@@ -30,6 +30,7 @@ C:\DreamingFishAdmin\
     DreamingFishAdmin.exe
     app\
     runtime\
+    support\bootstrap-agent.jar  生成首次部署包时使用
     data\                       由程序自动生成，不需要手动配置
     management-settings.json   由程序自动生成
 
@@ -112,7 +113,7 @@ C:\DreamingFishAdmin\management-settings.json
 
 ### 2.1 启动本机 Web 管理界面
 
-管理端 `0.1.13.1` 提供可选的桌面优先 Web 页面。它与完整 CLI 调用相同的
+管理端 `0.1.14` 提供可选的桌面优先 Web 页面。它与完整 CLI 调用相同的
 项目、扫描、发布和实例服务，不需要 Node、数据库服务或额外 Web 框架。
 
 进入主菜单后选择：
@@ -127,9 +128,9 @@ C:\DreamingFishAdmin\management-settings.json
 http://127.0.0.1:18080/
 ```
 
-页面可完成项目创建与设置、扫描和发布、历史与回滚、玩家端程序发布、玩家实例
-制作，以及公共 HTTP 服务启停。加密备份和恢复属于高风险运维操作，仍只在
-CLI 中提供。
+页面可完成项目创建与设置、源文件上传/导入/移除、目录与单文件强制同步、扫描和
+发布、历史与回滚、玩家端程序发布、薄首次部署包生成、完整玩家实例制作，以及
+公共 HTTP 服务启停。加密备份和恢复属于高风险运维操作，仍只在 CLI 中提供。
 
 Web 管理端有以下安全边界：
 
@@ -162,6 +163,7 @@ Web 页面没有定时轮询；不操作时不会持续查询数据库。固定�
 在管理端终端按 `Ctrl+C` 会停止 Web 管理服务并返回主菜单，不会退出整个
 管理端。如果公共 HTTP 文件服务是从该 Web 页面启动的，它也会随 Web 服务一起
 停止；准备长期只运行玩家下载服务时，可返回主菜单后单独选择 `[9]`。
+Windows 版使用原生控制台控制处理器，不需要先执行 `chcp` 或修改快捷方式。
 
 ### 3. 创建第一个项目
 
@@ -189,7 +191,8 @@ Web 页面没有定时轮询；不操作时不会持续查询数据库。固定�
 项目显示名称：梦鱼建筑服
 ```
 
-这是玩家界面显示的名称，可以使用中文。
+这是玩家界面显示的名称，可以使用中文。旧项目名称曾因终端编码保存为乱码时，
+可在 Web“项目设置”的“项目显示名称”中直接改正，不需要重新创建项目。
 
 如果中文输入法还处于选字状态，先确认文字已经输入到终端，再按回车；否则程序可能收到空行并提示“此项不能为空”。
 
@@ -320,6 +323,21 @@ C:\DreamingFishSource\building_server\
 
 不需要上传完整 `.minecraft`，也不需要上传 `assets/`、`libraries/`、存档、日志或 PCL。
 
+也可以在 Web“源文件”页完成这些操作：
+
+- 从当前浏览器拖入或多选文件上传到指定相对目录；整批文件上传完只扫描一次；
+- 输入路径或用 `…` 打开管理服务器本机文件选择器，从 VPS 文件系统导入；
+- 查看全部实际托管文件、大小、修改时间和当前强制同步策略；
+- 移除已发布文件时，选择“从玩家端删除”或“放弃管理并保留”。
+
+覆盖和移除前，旧文件会先经过哈希校验并归档到：
+
+```text
+C:\DreamingFishAdmin\data\source-archive\<项目ID>\<时间批次>\<原相对路径>
+```
+
+这个归档只保护管理端源文件误操作，不代替完整的 `data/` 和标准源目录备份。
+
 文件规则如下：
 
 - 标准目录里存在的普通文件会进入发布清单。
@@ -365,12 +383,12 @@ dreamingfish-player-windows-x64\
 | 终端问题 | 填写内容 |
 | --- | --- |
 | 平台 | `windows-x64` |
-| 玩家端程序版本 | `0.1.13` |
-| 玩家端完整 app-image 目录 | `...\DreamingFishUpdater\app\0.1.13` |
-| 该目录内的启动程序路径 | `DreamingFishUpdater.exe` |
+| 玩家端发行包解压根目录 | `...\dreamingfish-player-windows-x64` |
 | 最低启动引导器版本 | `0.1.2` |
 
-必须选择直接包含 `DreamingFishUpdater.exe`、`app/` 和 `runtime/` 的 `0.1.13` 目录，不要选择外层的 `DreamingFishUpdater`。
+管理端会从 `DreamingFishUpdater/state/active-player.properties`、语义版本目录或
+jpackage 元数据读取版本，并自动定位 app-image 与唯一启动 EXE。可以选择 ZIP
+解压后的最外层目录，不再要求手填版本号和启动路径。
 
 最后输入 `Y` 确认发布。
 
@@ -547,17 +565,27 @@ dreamingfish-player-windows-x64-<版本号>.zip
 
 #### 管理端在远程服务器，完整整合包在本地
 
-远程管理服务器不需要存放完整 Minecraft。按下面操作：
+使用 Web“玩家实例”页上方的“生成首次部署包”，或主菜单：
 
-1. 在远程服务器创建临时目录，例如 `C:\DreamingFishPlayerStaging`。
-2. 只把玩家端压缩包完整解压到该目录；不需要预先上传完整 Minecraft。
-3. 在管理端菜单 `[7]` 中把 `C:\DreamingFishPlayerStaging` 作为实例目录。
-4. 管理端会从对象库把所选发布的 `mods/`、`config/` 等托管文件补入临时目录。
-5. 制作成功后，下载整个临时目录，并合并到本地完整整合包实例。
+```text
+[11] 生成玩家端首次部署包
+```
 
-不能只下载 `project-binding.json`。至少必须包含完整的 `.dreamingfish-bootstrap/`、`DreamingFishUpdater/`，以及管理端补入的全部托管目录；最不容易遗漏的做法是下载整个临时目录。
+选择服务器上的输出父目录、`windows-x64`，以及本地完整整合包实际对应的历史
+发布。管理端会从 `data/` 中的已发布对象重建：
 
-远程 Linux 管理端同样可以准备 Windows 玩家包。它只校验文件，不会运行 `DreamingFishUpdater.exe`。
+1. 完整签名玩家端程序和活动版本状态；
+2. `bootstrap-agent.jar`；
+3. 真实项目绑定与项目封面；
+4. 所选历史发布的签名分发基线；
+5. PCL 所需 JVM 参数文本和中文说明。
+
+输出是薄部署目录，不包含 `mods/`、`config/` 或 Minecraft 本体。下载整个生成
+目录并合并到本地完整实例根目录，不能只取 `project-binding.json`。基线必须选择
+本地整合包内容实际对应的版本；选最新版本不代表一定正确。
+
+远程 Linux 管理端同样可以生成 Windows 玩家部署包。它只校验和重建文件，不会
+运行 `DreamingFishUpdater.exe`。
 
 ### 4. 配置 PCL
 
@@ -640,7 +668,10 @@ management-settings.json
 
 玩家下次从 PCL 启动时会自动更新，不需要重新下载整个整合包。
 
-每个正式下载包都应重新执行一次菜单 `[7]`，并选择该下载包实际对应的发布版本。玩家无论拿到 1.1、1.2 还是其它旧正式包，首次启动都会用签名基线识别旧托管文件，并直接与当前最新完整清单比较，不需要逐版本更新。
+每个正式下载包都应重新生成一次首次部署包，或直接执行菜单 `[7]` 制作实例，
+并选择该下载包实际对应的发布版本。玩家无论拿到 1.1、1.2 还是其它旧正式包，
+首次启动都会用签名基线识别旧托管文件，并直接与当前最新完整清单比较，不需要
+逐版本更新。
 
 ### 更新玩家端程序
 
@@ -648,8 +679,8 @@ management-settings.json
 
 1. 准备新版本玩家端发行包。
 2. 选择管理端菜单 `[6] 发布玩家端程序`。
-3. 发布新包中的 `DreamingFishUpdater\app\<新版本>`。
-4. 填写正确的语义版本和最低 Bootstrap 版本。
+3. 选择新 ZIP 解压后的根目录；版本和启动程序由管理端自动读取。
+4. 确认最低 Bootstrap 版本。
 5. 先发布玩家端程序，再发布任何要求该版本的整合包内容。
 
 玩家端会在下一次启动时自动下载、验证并切换到更高版本。
@@ -729,16 +760,20 @@ C:\DreamingFishAdmin\data\
 C:\DreamingFishAdmin\management-settings.json
 ```
 
-升级到 `0.1.13.1` 时：
+升级到 `0.1.14` 时：
 
 1. 先停止 HTTP/Web 服务并退出旧管理端；
 2. 备份上面的 `data/` 和 `management-settings.json`；
 3. 把新管理端 ZIP 解压到临时目录；
-4. 用新包中的 `DreamingFishAdmin.exe`、`app/`、`runtime/` 和文档覆盖旧程序文件，并删除不再使用的 `dfs-admin.cmd`；
+4. 用新包中的 `DreamingFishAdmin.exe`、`app/`、`runtime/`、`support/` 和文档覆盖旧程序文件，并删除不再使用的 `dfs-admin.cmd`；
 5. 保留原有 `data/` 与 `management-settings.json`，重新启动。
 
 旧 schema 1 设置会自动迁移为 schema 2，并使用默认 Web 管理端口 `18080`。
 不需要重新创建项目、重新发布整合包或重新发布玩家端程序。
+
+如果已经把旧 `data/` 和设置文件拖到新的管理端根目录，但设置仍保存旧版本目录
+的绝对路径，只要新目录中的 `data/management.db` 有效，`0.1.14` 会优先使用这个
+本地 `data/` 并自动改写设置。只有空 `data/` 时不会抢占原配置，避免误用空库。
 
 ## 七、常见错误
 
@@ -769,8 +804,8 @@ http://你的公网IP:8080/healthz
 检查：
 
 - 是否先执行了菜单 `[6] 发布玩家端程序`；
-- 发布的版本是否与 `DreamingFishUpdater\state\active-player.properties` 一致；
-- 发布源是否选择了直接包含 EXE、`app/` 和 `runtime/` 的版本目录；
+- 所选根目录是否包含 `DreamingFishUpdater\state\active-player.properties`，或可识别的语义版本 app-image；
+- app-image 中是否存在 `DreamingFishUpdater.exe`、`app/` 和 `runtime/`；
 - 玩家端模板是否被手动修改过。
 
 必要时重新解压一份干净的玩家端模板。
@@ -795,8 +830,8 @@ http://你的公网IP:8080/healthz
 - 从另一台电脑访问 `/healthz` 成功。
 - 已发布与模板版本一致的玩家端程序。
 - 已发布至少一个整合包版本。
-- 已通过菜单 `[7]` 制作真实玩家实例。
-- 菜单 `[7]` 选择的发布版本与这个下载包的实际内容一致。
+- 已生成薄首次部署包并合并到本地实例，或通过菜单 `[7]` 制作真实玩家实例。
+- 生成部署包或制作实例时选择的发布版本与这个下载包的实际内容一致。
 - 玩家实例中同时存在 `.dreamingfish-bootstrap/` 和 `DreamingFishUpdater/`。
 - 玩家实例中存在 `.dreamingfish-bootstrap/bundled-release/manifest.json` 和 `manifest.sig`。
 - PCL 使用 `{verpath}` JVM 参数，而不是绝对路径。

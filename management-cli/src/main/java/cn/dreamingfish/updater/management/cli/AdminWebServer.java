@@ -6,6 +6,8 @@ import cn.dreamingfish.updater.management.ProjectRecord;
 import cn.dreamingfish.updater.management.ProjectRules;
 import cn.dreamingfish.updater.management.PublishPreview;
 import cn.dreamingfish.updater.management.RemovalDecision;
+import cn.dreamingfish.updater.management.RemovalAction;
+import cn.dreamingfish.updater.management.SourceFileService;
 import cn.dreamingfish.updater.management.StoredPlayerProgram;
 import cn.dreamingfish.updater.management.StoredRelease;
 import cn.dreamingfish.updater.protocol.Branding;
@@ -190,6 +192,53 @@ final class AdminWebServer implements AutoCloseable {
             sendJson(exchange, 200, mutate(() -> configureProject(projectId, request)));
             return;
         }
+        if (segments.size() == 4 && segments.get(3).equals("files")
+                && exchange.getRequestMethod().equals("GET")) {
+            sendJson(exchange, 200, sourceFilesView(projectId));
+            return;
+        }
+        if (segments.size() == 5 && segments.get(3).equals("files")) {
+            switch (segments.get(4)) {
+                case "upload" -> {
+                    if (!exchange.getRequestMethod().equals("PUT")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "文件上传只允许 PUT");
+                    }
+                    sendJson(exchange, 201, mutate(() ->
+                            uploadSourceFile(exchange, projectId)));
+                }
+                case "import" -> {
+                    if (!exchange.getRequestMethod().equals("POST")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "服务器文件导入只允许 POST");
+                    }
+                    SourceImportRequest request = readJson(
+                            exchange, SourceImportRequest.class);
+                    sendJson(exchange, 201, mutate(() -> sourceMutationView(
+                            root.services().sourceFiles().importFile(
+                                    projectId,
+                                    Path.of(required(request.sourcePath, "服务器文件路径")),
+                                    defaultValue(request.targetDirectory, ""),
+                                    Boolean.TRUE.equals(request.overwrite)))));
+                }
+                case "remove" -> {
+                    if (!exchange.getRequestMethod().equals("POST")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "源文件移除只允许 POST");
+                    }
+                    SourceRemoveRequest request = readJson(
+                            exchange, SourceRemoveRequest.class);
+                    sendJson(exchange, 200, mutate(() -> sourceMutationView(
+                            root.services().sourceFiles().remove(
+                                    projectId,
+                                    required(request.path, "托管文件路径"),
+                                    request.action))));
+                }
+                default -> throw new WebApiException(
+                        404, "not_found", "文件管理 API 不存在");
+            }
+            return;
+        }
         if (segments.size() != 4 || !exchange.getRequestMethod().equals("POST")) {
             throw new WebApiException(404, "not_found", "API 不存在");
         }
@@ -239,9 +288,9 @@ final class AdminWebServer implements AutoCloseable {
                         root.services().playerPrograms().publish(
                                 projectId,
                                 defaultValue(request.platform, "windows-x64"),
-                                required(request.version, "玩家端版本"),
+                                defaultValue(request.version, ""),
                                 Path.of(required(request.sourceDirectory, "玩家端程序目录")),
-                                defaultValue(request.launchPath, "DreamingFishUpdater.exe"),
+                                defaultValue(request.launchPath, ""),
                                 defaultValue(request.minimumBootstrapVersion, "0.1.2")
                         ))));
             }
@@ -249,6 +298,26 @@ final class AdminWebServer implements AutoCloseable {
                 InstanceRequest request = readJson(exchange, InstanceRequest.class);
                 sendJson(exchange, 200,
                         mutate(() -> prepareInstance(projectId, request)));
+            }
+            case "deployment" -> {
+                DeploymentRequest request = readJson(
+                        exchange, DeploymentRequest.class);
+                sendJson(exchange, 201, mutate(() -> {
+                    var prepared = root.services().deployments().create(
+                            projectId,
+                            defaultValue(request.platform, "windows-x64"),
+                            required(request.releaseId, "整合包发布版本"),
+                            Path.of(required(request.outputDirectory, "输出父目录")),
+                            root.bootstrapAgentPath());
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("outputDirectory",
+                            prepared.outputDirectory().toString());
+                    result.put("releaseId", prepared.releaseId());
+                    result.put("releaseDisplayVersion",
+                            prepared.releaseDisplayVersion());
+                    result.put("playerVersion", prepared.playerVersion());
+                    return result;
+                }));
             }
             default -> throw new WebApiException(404, "not_found", "API 不存在");
         }
@@ -330,8 +399,10 @@ final class AdminWebServer implements AutoCloseable {
                 ? Path.of(request.sourceDirectory.trim()) : current.sourceDirectory();
         String url = present(request.publicBaseUrl)
                 ? request.publicBaseUrl.trim() : current.publicBaseUrl();
+        String displayName = present(request.displayName)
+                ? request.displayName.trim() : current.displayName();
         ProjectRecord project = services.projects().configure(
-                projectId, source, url, branding, rules);
+                projectId, displayName, source, url, branding, rules);
         if (present(request.coverPath)) {
             project = services.projects().setCover(
                     projectId, Path.of(request.coverPath.trim()));
@@ -375,6 +446,59 @@ final class AdminWebServer implements AutoCloseable {
                 webPort
         ));
         return settingsView(root.settings());
+    }
+
+    private Map<String, Object> sourceFilesView(String projectId) {
+        List<Map<String, Object>> files = root.services().sourceFiles()
+                .list(projectId).stream()
+                .map(AdminWebServer::sourceFileView)
+                .toList();
+        long totalBytes = files.stream()
+                .mapToLong(file -> ((Number) file.get("size")).longValue())
+                .sum();
+        return Map.of(
+                "files", files,
+                "count", files.size(),
+                "totalBytes", totalBytes
+        );
+    }
+
+    private Map<String, Object> uploadSourceFile(
+            HttpExchange exchange, String projectId) {
+        String contentType = defaultValue(
+                exchange.getRequestHeaders().getFirst("Content-Type"), "");
+        if (!contentType.toLowerCase(java.util.Locale.ROOT)
+                .startsWith("application/octet-stream")) {
+            throw new WebApiException(415, "unsupported_media_type",
+                    "文件上传必须使用 application/octet-stream");
+        }
+        String targetPath = required(
+                query(exchange.getRequestURI(), "path"), "目标托管路径");
+        boolean overwrite = Boolean.parseBoolean(
+                defaultValue(query(exchange.getRequestURI(), "overwrite"), "false"));
+        boolean refreshPreview = Boolean.parseBoolean(
+                defaultValue(query(exchange.getRequestURI(), "refreshPreview"), "true"));
+        long expectedBytes = contentLength(exchange);
+        if (expectedBytes > SourceFileService.MAX_UPLOAD_BYTES) {
+            throw new WebApiException(413, "payload_too_large",
+                    "单个上传文件不能超过 4 GiB");
+        }
+        return sourceMutationView(root.services().sourceFiles().upload(
+                projectId, targetPath, exchange.getRequestBody(),
+                expectedBytes, overwrite, refreshPreview));
+    }
+
+    private static long contentLength(HttpExchange exchange) {
+        String value = exchange.getRequestHeaders().getFirst("Content-Length");
+        if (value == null || value.isBlank()) return -1;
+        try {
+            long length = Long.parseLong(value);
+            if (length < 0) throw new NumberFormatException();
+            return length;
+        } catch (NumberFormatException e) {
+            throw new WebApiException(400, "invalid_content_length",
+                    "文件长度无效");
+        }
     }
 
     private Map<String, Object> prepareInstance(
@@ -470,6 +594,30 @@ final class AdminWebServer implements AutoCloseable {
         result.put("version", program.version());
         result.put("createdAt", program.createdAt());
         result.put("manifestSha256", program.manifestSha256());
+        return result;
+    }
+
+    private static Map<String, Object> sourceFileView(
+            SourceFileService.SourceFileEntry file) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("path", file.path());
+        result.put("size", file.size());
+        result.put("lastModifiedMillis", file.lastModifiedMillis());
+        result.put("policy", file.policy().name());
+        result.put("forcedByDirectory", file.forcedByDirectory());
+        result.put("forcedByFile", file.forcedByFile());
+        result.put("published", file.published());
+        return result;
+    }
+
+    private static Map<String, Object> sourceMutationView(
+            SourceFileService.SourceMutation mutation) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("path", mutation.path());
+        result.put("archivedPreviousFile", mutation.archivedPreviousFile() == null
+                ? null : mutation.archivedPreviousFile().toString());
+        result.put("preview", mutation.preview() == null
+                ? null : previewView(mutation.preview()));
         return result;
     }
 
@@ -723,6 +871,19 @@ final class AdminWebServer implements AutoCloseable {
     ) {
     }
 
+    private record SourceImportRequest(
+            String sourcePath,
+            String targetDirectory,
+            Boolean overwrite
+    ) {
+    }
+
+    private record SourceRemoveRequest(
+            String path,
+            RemovalAction action
+    ) {
+    }
+
     private record PublishRequest(
             String displayVersion,
             String minimumPlayerVersion,
@@ -752,6 +913,13 @@ final class AdminWebServer implements AutoCloseable {
             String playerHome,
             String releaseId,
             String bundledCover
+    ) {
+    }
+
+    private record DeploymentRequest(
+            String outputDirectory,
+            String platform,
+            String releaseId
     ) {
     }
 

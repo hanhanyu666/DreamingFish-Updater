@@ -11,6 +11,7 @@ final class WindowsPathPicker {
     private static final String SCRIPT = """
             [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
             Add-Type -AssemblyName System.Windows.Forms
+            [System.Windows.Forms.Application]::EnableVisualStyles()
             function Decode-Value([string] $value) {
               if ([string]::IsNullOrEmpty($value)) { return "" }
               return [System.Text.Encoding]::UTF8.GetString(
@@ -20,37 +21,53 @@ final class WindowsPathPicker {
             $title = Decode-Value $env:DFS_PICKER_TITLE
             $initial = Decode-Value $env:DFS_PICKER_INITIAL
             $selected = ""
-            if ($kind -eq "directory") {
-              $dialog = [System.Windows.Forms.FolderBrowserDialog]::new()
-              $dialog.Description = $title
-              $dialog.ShowNewFolderButton = $true
-              if ([System.IO.Directory]::Exists($initial)) {
-                $dialog.SelectedPath = $initial
-              }
-              if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-                $selected = $dialog.SelectedPath
-              }
-              $dialog.Dispose()
-            } else {
-              $dialog = [System.Windows.Forms.OpenFileDialog]::new()
-              $dialog.Title = $title
-              $dialog.CheckFileExists = $true
-              $dialog.Multiselect = $false
-              $dialog.Filter = if ($kind -eq "image") {
-                "图片文件|*.png;*.jpg;*.jpeg;*.webp;*.bmp|所有文件|*.*"
+            $owner = [System.Windows.Forms.Form]::new()
+            $owner.ShowInTaskbar = $false
+            $owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+            $owner.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+            $owner.Location = [System.Drawing.Point]::new(-32000, -32000)
+            $owner.Size = [System.Drawing.Size]::new(1, 1)
+            $owner.Opacity = 0
+            $owner.TopMost = $true
+            $dialog = $null
+            try {
+              $owner.Show()
+              $owner.Activate()
+              [System.Windows.Forms.Application]::DoEvents()
+              if ($kind -eq "directory") {
+                $dialog = [System.Windows.Forms.FolderBrowserDialog]::new()
+                $dialog.Description = $title
+                $dialog.ShowNewFolderButton = $true
+                if ([System.IO.Directory]::Exists($initial)) {
+                  $dialog.SelectedPath = $initial
+                }
+                if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
+                  $selected = $dialog.SelectedPath
+                }
               } else {
-                "所有文件|*.*"
+                $dialog = [System.Windows.Forms.OpenFileDialog]::new()
+                $dialog.Title = $title
+                $dialog.CheckFileExists = $true
+                $dialog.Multiselect = $false
+                $dialog.Filter = if ($kind -eq "image") {
+                  "图片文件|*.png;*.jpg;*.jpeg;*.webp;*.bmp|所有文件|*.*"
+                } else {
+                  "所有文件|*.*"
+                }
+                if ([System.IO.Directory]::Exists($initial)) {
+                  $dialog.InitialDirectory = $initial
+                } elseif ([System.IO.File]::Exists($initial)) {
+                  $dialog.InitialDirectory = [System.IO.Path]::GetDirectoryName($initial)
+                  $dialog.FileName = [System.IO.Path]::GetFileName($initial)
+                }
+                if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
+                  $selected = $dialog.FileName
+                }
               }
-              if ([System.IO.Directory]::Exists($initial)) {
-                $dialog.InitialDirectory = $initial
-              } elseif ([System.IO.File]::Exists($initial)) {
-                $dialog.InitialDirectory = [System.IO.Path]::GetDirectoryName($initial)
-                $dialog.FileName = [System.IO.Path]::GetFileName($initial)
-              }
-              if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-                $selected = $dialog.FileName
-              }
-              $dialog.Dispose()
+            } finally {
+              if ($null -ne $dialog) { $dialog.Dispose() }
+              $owner.Close()
+              $owner.Dispose()
             }
             if (-not [string]::IsNullOrEmpty($selected)) {
               $bytes = [System.Text.Encoding]::UTF8.GetBytes($selected)

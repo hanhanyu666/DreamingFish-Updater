@@ -7,9 +7,11 @@ import cn.dreamingfish.updater.management.ManagementPaths;
 import cn.dreamingfish.updater.management.ObjectStore;
 import cn.dreamingfish.updater.management.ProjectService;
 import cn.dreamingfish.updater.management.PlayerProgramService;
+import cn.dreamingfish.updater.management.PlayerDeploymentService;
 import cn.dreamingfish.updater.management.PublishService;
 import cn.dreamingfish.updater.management.PublicFileServer;
 import cn.dreamingfish.updater.management.ScanService;
+import cn.dreamingfish.updater.management.SourceFileService;
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import picocli.CommandLine;
 
@@ -20,7 +22,7 @@ import java.nio.file.Path;
 @CommandLine.Command(
         name = "dfs-admin",
         mixinStandardHelpOptions = true,
-        version = "DreamingFish Update System 0.1.13.1",
+        version = "DreamingFish Update System 0.1.14",
         description = "Self-hosted Minecraft modpack update management",
         subcommands = {
                 InitCommand.class,
@@ -33,7 +35,7 @@ import java.nio.file.Path;
         }
 )
 public final class ManagementCli implements Runnable {
-    static final String VERSION = "0.1.13.1";
+    static final String VERSION = "0.1.14";
     private static final Charset CONSOLE_OUTPUT_CHARSET =
             WindowsConsoleEncoding.outputCharset();
 
@@ -129,8 +131,12 @@ public final class ManagementCli implements Runnable {
         ScanService scanner = new ScanService(paths, database, json);
         PublishService publisher = new PublishService(paths, database, scanner, json);
         PlayerProgramService playerPrograms = new PlayerProgramService(paths, database, json);
+        SourceFileService sourceFiles = new SourceFileService(paths, database, json);
+        PlayerDeploymentService deployments = new PlayerDeploymentService(
+                paths, database, json);
         return new Services(paths, json, database, projects, scanner, publisher,
-                playerPrograms, new ObjectStore(paths), new BackupService(paths, database, json));
+                playerPrograms, deployments, sourceFiles, new ObjectStore(paths),
+                new BackupService(paths, database, json));
     }
 
     void printJson(Object value) {
@@ -180,8 +186,21 @@ public final class ManagementCli implements Runnable {
             ScanService scanner,
             PublishService publisher,
             PlayerProgramService playerPrograms,
+            PlayerDeploymentService deployments,
+            SourceFileService sourceFiles,
             ObjectStore objects,
             BackupService backups
     ) {
+    }
+
+    Path bootstrapAgentPath() {
+        String override = System.getProperty("dfs.bootstrapAgent", "").trim();
+        if (!override.isEmpty()) return Path.of(override).toAbsolutePath().normalize();
+        Path home = settingsFile().getParent();
+        Path packaged = home.resolve("support/bootstrap-agent.jar");
+        if (java.nio.file.Files.isRegularFile(packaged)) return packaged;
+        Path legacy = home.resolve("bootstrap-agent.jar");
+        if (java.nio.file.Files.isRegularFile(legacy)) return legacy;
+        return packaged;
     }
 }

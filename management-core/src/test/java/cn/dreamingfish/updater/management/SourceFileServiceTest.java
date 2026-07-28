@@ -1,0 +1,98 @@
+package cn.dreamingfish.updater.management;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class SourceFileServiceTest {
+    @TempDir
+    Path temporary;
+
+    @Test
+    void importsUploadsArchivesAndRecordsAReleasedManagedFile() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary.resolve("management"));
+        ProjectRecord project = fixture.createProject();
+        Path render = fixture.source.resolve("mods/render.jar");
+        Files.createDirectories(render.getParent());
+        Files.writeString(render, "render-v1");
+        fixture.projects.configure("demo", null, null, null,
+                project.rules().withForcedSyncFiles(List.of("mods/render.jar")));
+        fixture.scanner.createPreview("demo");
+        fixture.publisher.publish("demo", "1.0", "0.1.13", "First");
+
+        SourceFileService service = new SourceFileService(
+                fixture.paths, fixture.database, fixture.json);
+        SourceFileService.SourceFileEntry listed = service.list("demo").getFirst();
+        assertEquals("mods/render.jar", listed.path());
+        assertTrue(listed.forcedByFile());
+        assertTrue(listed.published());
+
+        SourceFileService.SourceMutation removed = service.remove(
+                "demo", "mods/render.jar", RemovalAction.RELEASE);
+        assertFalse(Files.exists(render));
+        assertTrue(Files.isRegularFile(removed.archivedPreviousFile()));
+        assertEquals("render-v1", Files.readString(removed.archivedPreviousFile()));
+        assertEquals(RemovalAction.RELEASE, removed.preview().changes().stream()
+                .filter(change -> change.path().equals("mods/render.jar"))
+                .findFirst().orElseThrow().removalAction());
+        assertTrue(fixture.database.requireProject("demo")
+                .rules().forcedSyncFiles().isEmpty());
+
+        Path external = temporary.resolve("new-config.toml");
+        Files.writeString(external, "from-server");
+        SourceFileService.SourceMutation imported = service.importFile(
+                "demo", external, "config", false);
+        assertEquals("config/new-config.toml", imported.path());
+        assertEquals("from-server", Files.readString(
+                fixture.source.resolve("config/new-config.toml")));
+
+        byte[] uploaded = "from-browser".getBytes(StandardCharsets.UTF_8);
+        SourceFileService.SourceMutation uploadedWithoutScan = service.upload(
+                "demo", "mods/browser.jar", new ByteArrayInputStream(uploaded),
+                uploaded.length, false, false);
+        assertNull(uploadedWithoutScan.preview());
+        assertEquals("from-browser", Files.readString(
+                fixture.source.resolve("mods/browser.jar")));
+
+        Files.writeString(external, "replacement");
+        SourceFileService.SourceMutation overwritten = service.importFile(
+                "demo", external, "config", true);
+        assertTrue(Files.isRegularFile(overwritten.archivedPreviousFile()));
+        assertEquals("from-server", Files.readString(
+                overwritten.archivedPreviousFile()));
+        assertEquals("replacement", Files.readString(
+                fixture.source.resolve("config/new-config.toml")));
+    }
+
+    @Test
+    void forcedDirectoryFileCannotBeReleasedFromManagement() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary.resolve("forced"));
+        ProjectRecord project = fixture.createProject();
+        Path mod = fixture.source.resolve("mods/required.jar");
+        Files.createDirectories(mod.getParent());
+        Files.writeString(mod, "required");
+        fixture.projects.configure("demo", null, null, null,
+                project.rules().withForcedSyncDirectories(List.of("mods")));
+        fixture.scanner.createPreview("demo");
+        fixture.publisher.publish("demo", "1.0", "0.1.13", "First");
+
+        SourceFileService service = new SourceFileService(
+                fixture.paths, fixture.database, fixture.json);
+        ManagementException failure = assertThrows(ManagementException.class,
+                () -> service.remove("demo", "mods/required.jar",
+                        RemovalAction.RELEASE));
+        assertTrue(failure.getMessage().contains("forced sync directory"));
+        assertTrue(Files.isRegularFile(mod));
+    }
+}

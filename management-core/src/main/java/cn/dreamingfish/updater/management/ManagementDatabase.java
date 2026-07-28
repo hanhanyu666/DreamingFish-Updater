@@ -152,19 +152,21 @@ public final class ManagementDatabase {
         }
     }
 
-    public void updateProject(String projectId, Path source, String publicBaseUrl,
-                              Branding branding, ProjectRules rules) {
+    public void updateProject(String projectId, String displayName, Path source,
+                              String publicBaseUrl, Branding branding, ProjectRules rules) {
         String sql = """
                 UPDATE projects
-                SET source_path = ?, public_base_url = ?, branding_json = ?, rules_json = ?
+                SET display_name = ?, source_path = ?, public_base_url = ?,
+                    branding_json = ?, rules_json = ?
                 WHERE id = ?
                 """;
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, source.toAbsolutePath().normalize().toString());
-            statement.setString(2, publicBaseUrl);
-            statement.setString(3, json.writeString(branding));
-            statement.setString(4, json.writeString(rules));
-            statement.setString(5, projectId);
+            statement.setString(1, displayName);
+            statement.setString(2, source.toAbsolutePath().normalize().toString());
+            statement.setString(3, publicBaseUrl);
+            statement.setString(4, json.writeString(branding));
+            statement.setString(5, json.writeString(rules));
+            statement.setString(6, projectId);
             if (statement.executeUpdate() != 1) {
                 throw new ManagementException("Unknown project: " + projectId);
             }

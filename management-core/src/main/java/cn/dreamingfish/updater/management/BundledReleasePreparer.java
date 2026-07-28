@@ -55,6 +55,18 @@ public final class BundledReleasePreparer {
 
     public PreparedBundledRelease prepare(String projectId, String releaseId,
                                            Path instanceRoot, Path playerHome) {
+        return prepare(projectId, releaseId, instanceRoot, playerHome, true);
+    }
+
+    /** Writes a signed origin baseline without copying the managed release files. */
+    public PreparedBundledRelease prepareBaseline(String projectId, String releaseId,
+                                                   Path instanceRoot, Path playerHome) {
+        return prepare(projectId, releaseId, instanceRoot, playerHome, false);
+    }
+
+    private PreparedBundledRelease prepare(String projectId, String releaseId,
+                                            Path instanceRoot, Path playerHome,
+                                            boolean materializeManagedFiles) {
         Path instance = instanceRoot.toAbsolutePath().normalize();
         Path home = playerHome.toAbsolutePath().normalize();
         requireSafeDirectory(instance, "Minecraft instance directory");
@@ -67,11 +79,15 @@ public final class BundledReleasePreparer {
         validateProtectedPaths(instance, home, signed.manifest());
 
         List<PreparedFile> files = preflightFiles(instance, signed.manifest());
-        rejectFilesManagedByOtherReleases(instance, signed.manifest());
-        rejectForcedDirectoryExtras(instance, signed.manifest());
+        if (materializeManagedFiles) {
+            rejectFilesManagedByOtherReleases(instance, signed.manifest());
+            rejectForcedDirectoryExtras(instance, signed.manifest());
+        }
         clearRuntimeState(instance, home);
-        int materialized = materializeFiles(files);
-        createForcedDirectories(instance, signed.manifest());
+        int materialized = materializeManagedFiles ? materializeFiles(files) : 0;
+        if (materializeManagedFiles) {
+            createForcedDirectories(instance, signed.manifest());
+        }
         writeBaseline(instance, signed);
         return new PreparedBundledRelease(stored.releaseId(), stored.displayVersion(),
                 stored.sequence(), signed.sha256(), files.size(), materialized,
