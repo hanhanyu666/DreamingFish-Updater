@@ -50,7 +50,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.shape.Rectangle;
 import javafx.css.PseudoClass;
 import javafx.stage.Stage;
 import javafx.util.Duration;
@@ -315,6 +314,19 @@ final class PlayerView {
             currentPath.setText("Minecraft 正在继续启动");
         }
         showFileNotices(result);
+        setWorking(false);
+        actionRow.setVisible(false);
+        actionRow.setManaged(false);
+    }
+
+    void showUnverifiedOfflineLaunch() {
+        stage.setText("未验证离线启动");
+        currentPath.setText("无法连接更新服务器，本次未检查整合包");
+        progress.setProgress(0);
+        percent.setText("--");
+        byteSummary.setText("未执行文件验证");
+        unmanaged.setManaged(false);
+        unmanaged.setVisible(false);
         setWorking(false);
         actionRow.setVisible(false);
         actionRow.setManaged(false);
@@ -650,18 +662,9 @@ final class PlayerView {
         root.getChildren().addAll(background, refractedBackground, shade, glassWash,
                 canvas, glassRim, glassSweep);
 
-        Rectangle clip = new Rectangle();
-        clip.widthProperty().bind(root.widthProperty());
-        clip.heightProperty().bind(root.heightProperty());
-        clip.setArcWidth(58);
-        clip.setArcHeight(58);
-        root.setClip(clip);
-
         stageWindow.maximizedProperty().addListener((observable, oldValue, maximizedValue) -> {
             boolean maximizedState = Boolean.TRUE.equals(maximizedValue);
             root.pseudoClassStateChanged(WINDOW_MAXIMIZED, maximizedState);
-            clip.setArcWidth(maximizedState ? 0 : 58);
-            clip.setArcHeight(maximizedState ? 0 : 58);
             installMaximizeGlyph(maximize, maximizedState);
             maximize.setTooltip(new Tooltip(maximizedState ? "还原窗口" : "最大化"));
             maximize.setAccessibleText(maximizedState ? "还原窗口" : "最大化");

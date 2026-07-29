@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.13";
+    static final String VERSION = "0.1.14";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
@@ -110,6 +110,7 @@ public final class PlayerApplication extends Application {
         String stylesheet = PlayerApplication.class.getResource("player.css").toExternalForm();
         scene.getStylesheets().add(stylesheet);
         stage.setScene(scene);
+        WindowsWindowRegion.install(stage, 29);
         view.setCloseAction(this::requestClose);
         view.setRetryAction(this::startUpdate);
         view.setOpenDirectoryAction(this::openPlayerDirectory);
@@ -272,6 +273,7 @@ public final class PlayerApplication extends Application {
                 refreshReleaseHistory();
             } catch (Exception e) {
                 working = false;
+                if (handleUnverifiedOfflineLaunch(e)) return;
                 log.error("Update failed", e);
                 Platform.runLater(() -> showFailure(errorTitle(e), e));
             }
@@ -446,6 +448,10 @@ public final class PlayerApplication extends Application {
     private void finishSuccessfully(UpdateResult result) {
         lastArchiveDirectory = result.archiveDirectory();
         view.showResult(result);
+        startAutoCloseCountdown();
+    }
+
+    private void startAutoCloseCountdown() {
         if (autoCloseSuppressed) {
             view.showLaunchKeptOpen();
             return;
@@ -462,6 +468,29 @@ public final class PlayerApplication extends Application {
         }));
         autoCloseCountdown.setCycleCount(AUTO_CLOSE_SECONDS);
         autoCloseCountdown.play();
+    }
+
+    private boolean handleUnverifiedOfflineLaunch(Exception failure) {
+        if (!allowsUnverifiedOfflineLaunch(failure)) return false;
+        try (GameUpdateLock gameLock = acquireGameUpdateLock()) {
+            permitClient.allow(gameLock::close);
+            launchPermitted = true;
+        } catch (Exception permitFailure) {
+            log.error("Unable to grant unverified offline launch permission", permitFailure);
+            Platform.runLater(() -> showFailure(errorTitle(permitFailure), permitFailure));
+            return true;
+        }
+        log.warn("Update service unavailable; launch granted without validating this installation");
+        Platform.runLater(() -> {
+            view.showUnverifiedOfflineLaunch();
+            startAutoCloseCountdown();
+        });
+        return true;
+    }
+
+    static boolean allowsUnverifiedOfflineLaunch(Throwable failure) {
+        return failure instanceof UpdateException update
+                && update.code() == UpdateErrorCode.NETWORK_UNAVAILABLE;
     }
 
     private void keepWindowOpen() {

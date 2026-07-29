@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.13",
+    [string]$Version = "0.1.14",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
@@ -233,7 +233,7 @@ if (-not $AdminOnly) {
         "--app-version", $Version,
         "--vendor", "DreamingFish",
         "--description", "Minecraft modpack player updater",
-        "--add-modules", "java.desktop,java.net.http,jdk.crypto.ec,jdk.unsupported",
+        "--add-modules", "java.desktop,java.logging,java.net.http,jdk.crypto.ec,jdk.unsupported",
         "--java-options", "-Dfile.encoding=UTF-8"
     )
 

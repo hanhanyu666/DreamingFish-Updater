@@ -29,6 +29,10 @@ final class PlayerLog {
         write("INFO", message, null);
     }
 
+    synchronized void warn(String message) {
+        write("WARN", message, null);
+    }
+
     synchronized void error(String message, Throwable error) {
         write("ERROR", message, error);
     }
