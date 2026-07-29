@@ -19,9 +19,9 @@
 
 ```powershell
 .\mvnw.cmd test
-.\packaging\build-distributions.ps1 -Version 0.1.14 -AdminOnly -SkipLinux
-.\packaging\build-distributions.ps1 -Version 0.1.13 -PlayerOnly -SkipLinux
-.\packaging\smoke-test-distributions.ps1 -Version 0.1.13 -AdminVersion 0.1.14
+.\packaging\build-distributions.ps1 -Version 0.1.15 -AdminOnly -SkipLinux
+.\packaging\build-distributions.ps1 -Version 0.1.14 -PlayerOnly -SkipLinux
+.\packaging\smoke-test-distributions.ps1 -Version 0.1.14 -AdminVersion 0.1.15
 ```
 
 `-AdminOnly` 只生成管理端发行包，`-PlayerOnly` 只生成玩家端发行包，避免两个独立组件被误用同一个版本号。
@@ -29,6 +29,10 @@
 发行包冒烟测试会重新解压实际 ZIP，在 `target/` 的临时目录中模拟三个整合包版本、制作历史玩家包、校验玩家程序防篡改和启动 HTTP 服务；成功后自动删除临时数据，不会接触现有 Minecraft 实例或管理端数据。
 
 管理端新增或修改日常功能时，CLI 与 Web 必须调用同一应用服务并同步提供入口；确实不适合 Web 的高风险运维能力必须在文档中明确说明。涉及 Web 的版本发布前还必须完成 API 自动化测试和真实桌面浏览器测试，至少覆盖 `1366×768`、`1440×900`、`1920×1080`，检查主要流程、上传进度、错误反馈、滚动与按钮可见性、布局稳定性、横向溢出和浏览器控制台错误。
+
+玩家端、管理端和 Bootstrap Agent 独立发布、独立递增版本。发行提交统一使用
+`[玩家 - 版本号] 内容`、`[管理 - 版本号] 内容`、`[Agent - 版本号] 内容`；一次
+同时修改多个组件时拆成对应的发行提交，不再只写一个无法辨认组件的版本号。
 
 打包脚本生成以下文件，其中 `<版本号>` 由 `build-distributions.ps1 -Version` 决定：
 

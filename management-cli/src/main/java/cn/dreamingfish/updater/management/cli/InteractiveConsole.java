@@ -228,7 +228,7 @@ final class InteractiveConsole {
         printPreview(preview);
         preview = promptRemovalDecisions(project, preview);
         String version = promptRequired("本次显示版本（例如 1.0.1）");
-        String minimumPlayer = prompt("最低玩家端程序版本", "0.1.13");
+        String minimumPlayer = prompt("最低玩家端程序版本", "0.1.14");
         String changelog = ChangelogInput.interactive(
                 readLine("更新记录（可留空；输入 @文件路径读取 UTF-8 文本）："),
                 root.settingsFile().getParent());

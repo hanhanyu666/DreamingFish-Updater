@@ -249,7 +249,7 @@ final class AdminWebServer implements AutoCloseable {
                             root.services().scanner().createPreview(projectId))));
             case "publish" -> {
                 PublishRequest request = readJson(exchange, PublishRequest.class);
-                sendJson(exchange, 201, mutate(() -> releaseView(
+                sendJson(exchange, 201, mutate(() -> publishAndRefreshService(() ->
                         root.services().publisher().publish(
                                 projectId,
                                 required(request.displayVersion, "显示版本"),
@@ -274,7 +274,7 @@ final class AdminWebServer implements AutoCloseable {
             }
             case "rollback" -> {
                 RollbackRequest request = readJson(exchange, RollbackRequest.class);
-                sendJson(exchange, 201, mutate(() -> releaseView(
+                sendJson(exchange, 201, mutate(() -> publishAndRefreshService(() ->
                         root.services().publisher().rollback(
                                 projectId,
                                 required(request.targetReleaseId, "目标发布"),
@@ -585,6 +585,26 @@ final class AdminWebServer implements AutoCloseable {
         result.put("createdAt", release.createdAt());
         result.put("changelog", release.changelog());
         result.put("manifestSha256", release.manifestSha256());
+        return result;
+    }
+
+    private Map<String, Object> publishAndRefreshService(
+            Callable<StoredRelease> operation) throws Exception {
+        StoredRelease release = operation.call();
+        boolean restarted = false;
+        String warning = null;
+        if (publicService.running()) {
+            try {
+                publicService.restartIfRunning();
+                restarted = true;
+            } catch (RuntimeException e) {
+                warning = "版本已经发布，但 HTTP 文件服务重启失败：" + usefulMessage(e);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>(releaseView(release));
+        result.put("publicServiceRestarted", restarted);
+        result.put("publicService", publicService.status());
+        result.put("serviceWarning", warning);
         return result;
     }
 

@@ -37,6 +37,12 @@ final class PublicServiceController implements AutoCloseable {
         return status();
     }
 
+    synchronized Status restartIfRunning() {
+        if (server == null) return status();
+        stop();
+        return start();
+    }
+
     synchronized boolean running() {
         return server != null;
     }

@@ -20,7 +20,6 @@
       <nav class="navigation" aria-label="管理功能">
         <button class="nav-button active" data-view="dashboard"><span>⌂</span>概览</button>
         <button class="nav-button requires-project" data-view="project"><span>◫</span>项目设置</button>
-        <button class="nav-button requires-project" data-view="files"><span>≡</span>源文件</button>
         <button class="nav-button requires-project" data-view="publish"><span>↑</span>扫描与发布</button>
         <button class="nav-button requires-project" data-view="player"><span>▣</span>玩家端程序</button>
         <button class="nav-button requires-project" data-view="instance"><span>◇</span>玩家实例</button>
@@ -176,7 +175,7 @@
           </form>
         </section>
 
-        <section class="view" id="view-files">
+        <section class="view" id="view-publish">
           <section class="panel">
             <div class="panel-header source-file-header">
               <div>
@@ -202,9 +201,7 @@
               <div class="empty-state" id="source-file-empty">标准源目录中没有托管文件</div>
             </div>
           </section>
-        </section>
 
-        <section class="view" id="view-publish">
           <section class="panel">
             <div class="panel-header">
               <div>
@@ -269,7 +266,7 @@
               </label>
               <label class="field">
                 <span>最低玩家端程序版本</span>
-                <input name="minimumPlayerVersion" value="0.1.13" required>
+                <input name="minimumPlayerVersion" value="0.1.14" required>
               </label>
               <label class="field span-2">
                 <span>更新记录</span>

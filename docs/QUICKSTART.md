@@ -42,7 +42,7 @@ D:\DFSSource\
 
 ### 1. 启动管理端和 Web 页面
 
-把 `dfs-admin-windows-x64-0.1.14.zip` 解压到 `D:\DFSAdmin`，双击：
+把 `dfs-admin-windows-x64-0.1.15.zip` 解压到 `D:\DFSAdmin`，双击：
 
 ```text
 D:\DFSAdmin\DreamingFishAdmin.exe
@@ -105,9 +105,9 @@ http://你的公网IP:39988
 
 ### 3. 发布一次玩家端程序
 
-这一步在玩家端 `0.1.13` 期间只做一次。以后只更新模组或配置时不要重复做。
+这一步在玩家端 `0.1.14` 期间只做一次。以后只更新模组或配置时不要重复做。
 
-把 `dreamingfish-player-windows-x64-0.1.13.zip` 解压到临时目录，例如：
+把 `dreamingfish-player-windows-x64-0.1.14.zip` 解压到临时目录，例如：
 
 ```text
 D:\DFSPlayerTemplate
@@ -121,8 +121,8 @@ D:\DFSPlayerTemplate
 | 最低 Bootstrap Agent 版本 | `0.1.2` |
 | 玩家端发行包解压根目录 | `D:\DFSPlayerTemplate` |
 
-管理端会自动读取 `0.1.13` 版本号并定位
-`DreamingFishUpdater\app\0.1.13\DreamingFishUpdater.exe`。确认发布后，临时解压出的
+管理端会自动读取 `0.1.14` 版本号并定位
+`DreamingFishUpdater\app\0.1.14\DreamingFishUpdater.exe`。确认发布后，临时解压出的
 `D:\DFSPlayerTemplate` 可以删除；管理端已经把程序按内容保存进 `data`。
 
 ### 4. 发布第一个整合包版本
@@ -131,12 +131,15 @@ D:\DFSPlayerTemplate
 
 ```text
 显示版本：1.0.0
-最低玩家端程序版本：0.1.13
+最低玩家端程序版本：0.1.14
 更新记录：首次发布
 ```
 
 点击“发布整合包”，再次确认。Web 页面按 UTF-8 传输中文，不需要使用
 `@更新记录.txt` 的终端兼容写法。
+
+如果公共下载服务已经由当前 Web 管理进程启动，发布完成后会自动重启该服务，
+页面会明确显示结果；玩家随后访问 `latest` 时会直接取得新版本。
 
 发布是不可变的。内容有误时不要修改旧发布，应修正标准目录后再发布一个新版本。
 
@@ -198,6 +201,10 @@ http://你的公网IP:8080/healthz
 最后用 PCL 启动一次 `D:\MyModpack`，确认更新器出现、Minecraft 获得启动
 许可，再导出并发布完整整合包。
 
+玩家端无法连接更新服务器时会继续启动游戏：有完整签名基线时先验证本地安装，
+没有基线时显示“未验证离线启动”并跳过本次文件检查。签名错误、文件损坏、危险
+路径或未完成事务不属于网络故障，仍会拦截启动。
+
 ## 以后更新模组或配置
 
 普通在线更新只做三件事：
@@ -209,7 +216,7 @@ http://你的公网IP:8080/healthz
 不需要再次发布玩家端程序，不需要再次制作玩家实例，也不需要让玩家重新下载
 完整整合包。玩家下次启动游戏时会按文件差异更新，只下载本机缺少或内容变化的对象。
 
-也可以直接在 Web 左侧“源文件”中管理 `D:\DFSSource`：从自己当前电脑拖入或
+也可以直接在 Web“扫描与发布”页最上方管理 `D:\DFSSource`：从自己当前电脑拖入或
 多选上传文件，或用 `…` 选择 VPS 本机文件。覆盖和移除前的旧文件会归档到
 `D:\DFSAdmin\data\source-archive\`。一次上传多个文件时，整批只扫描一次。
 

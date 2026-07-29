@@ -113,7 +113,7 @@ C:\DreamingFishAdmin\management-settings.json
 
 ### 2.1 启动本机 Web 管理界面
 
-管理端 `0.1.14` 提供可选的桌面优先 Web 页面。它与完整 CLI 调用相同的
+管理端 `0.1.15` 提供可选的桌面优先 Web 页面。它与完整 CLI 调用相同的
 项目、扫描、发布和实例服务，不需要 Node、数据库服务或额外 Web 框架。
 
 进入主菜单后选择：
@@ -323,7 +323,7 @@ C:\DreamingFishSource\building_server\
 
 不需要上传完整 `.minecraft`，也不需要上传 `assets/`、`libraries/`、存档、日志或 PCL。
 
-也可以在 Web“源文件”页完成这些操作：
+也可以在 Web“扫描与发布”页顶部的“标准源文件”区域完成这些操作：
 
 - 从当前浏览器拖入或多选文件上传到指定相对目录；整批文件上传完只扫描一次；
 - 输入路径或用 `…` 打开管理服务器本机文件选择器，从 VPS 文件系统导入；
@@ -365,7 +365,7 @@ dreamingfish-player-windows-x64\
     .dreamingfish-bootstrap\
     DreamingFishUpdater\
         app\
-            0.1.13\
+            0.1.14\
                 DreamingFishUpdater.exe
                 app\
                 runtime\
@@ -378,7 +378,7 @@ dreamingfish-player-windows-x64\
 [6] 发布玩家端程序
 ```
 
-当前玩家端 `0.1.13` 示例应填写：
+当前玩家端 `0.1.14` 示例应填写：
 
 | 终端问题 | 填写内容 |
 | --- | --- |
@@ -417,11 +417,13 @@ Web 页面可逐项选择，也可批量设置。参数式发布可用
 | 终端问题 | 首次发布示例 |
 | --- | --- |
 | 本次显示版本 | `1.0.0` |
-| 最低玩家端程序版本 | `0.1.13` |
+| 最低玩家端程序版本 | `0.1.14` |
 | 更新记录 | `建筑服首次发布` |
 | 确认不可变版本 | `Y` |
 
 发布成功后，管理端 `data/` 会保存签名清单和文件对象。不要手动修改其中内容。
+如果公共 HTTP 服务由当前 Web 管理进程启动，Web 发布和回滚成功后会自动重启
+下载服务；重启失败不会回滚已经创建的不可变发布，页面会单独显示服务警告。
 
 确认发布前，管理端会回显数据库实际收到的更新记录。如果中文已经变成
 `P`、`0` 或乱码，应选择 `N` 取消。可以把内容保存为 UTF-8 文本文件，
@@ -523,7 +525,7 @@ dreamingfish-player-windows-x64-<版本号>.zip
 ```text
 <实例>\.dreamingfish-bootstrap\bootstrap-agent.jar
 <实例>\DreamingFishUpdater\state\active-player.properties
-<实例>\DreamingFishUpdater\app\0.1.13\DreamingFishUpdater.exe
+<实例>\DreamingFishUpdater\app\0.1.14\DreamingFishUpdater.exe
 ```
 
 `.dreamingfish-bootstrap` 是隐藏目录，复制时不能漏掉。
@@ -738,6 +740,11 @@ management-settings.json
 
 界面的“运行记录”直接读取这份 UTF-8 日志。“更新记录”通过管理端只读历史接口展示全部发布，并在本地缓存；旧管理端没有历史接口或当前断网时，至少仍会显示当前签名发布和已有缓存。
 
+玩家端 `0.1.14` 在更新服务器不可达时区分两种离线状态：已有签名基线的实例会
+验证最近安装后使用离线许可；从未验证过的实例也会放行，但界面明确标记“未验证
+离线启动”，不会声称文件已经校验。只有 `NETWORK_UNAVAILABLE` 会走这条可用性
+策略；签名、清单、重放、路径、事务、哈希和已验证安装完整性错误仍会拒绝启动。
+
 ## 六、管理端备份
 
 管理端根目录的 `data/` 包含项目私钥和全部发布数据，必须备份。不要只备份标准整合包目录。
@@ -760,7 +767,7 @@ C:\DreamingFishAdmin\data\
 C:\DreamingFishAdmin\management-settings.json
 ```
 
-升级到 `0.1.14` 时：
+升级到 `0.1.15` 时：
 
 1. 先停止 HTTP/Web 服务并退出旧管理端；
 2. 备份上面的 `data/` 和 `management-settings.json`；
@@ -772,7 +779,7 @@ C:\DreamingFishAdmin\management-settings.json
 不需要重新创建项目、重新发布整合包或重新发布玩家端程序。
 
 如果已经把旧 `data/` 和设置文件拖到新的管理端根目录，但设置仍保存旧版本目录
-的绝对路径，只要新目录中的 `data/management.db` 有效，`0.1.14` 会优先使用这个
+的绝对路径，只要新目录中的 `data/management.db` 有效，`0.1.14` 及更高版本会优先使用这个
 本地 `data/` 并自动改写设置。只有空 `data/` 时不会抢占原配置，避免误用空库。
 
 ## 七、常见错误

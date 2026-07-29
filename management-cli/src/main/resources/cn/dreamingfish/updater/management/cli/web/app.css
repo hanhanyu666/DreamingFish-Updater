@@ -809,7 +809,7 @@ input[readonly] {
 }
 
 .source-file-table {
-  max-height: calc(100vh - 285px);
+  max-height: 420px;
   min-height: 220px;
 }
 

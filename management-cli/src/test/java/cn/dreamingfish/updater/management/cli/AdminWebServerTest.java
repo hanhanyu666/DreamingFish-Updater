@@ -52,6 +52,9 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("梦鱼更新管理"));
             assertTrue(page.body().contains("单文件强制同步"));
             assertTrue(page.body().contains("data-path-kind=\"directory\""));
+            assertTrue(!page.body().contains("data-view=\"files\""));
+            assertTrue(page.body().indexOf("标准源文件")
+                    < page.body().indexOf("发布预览"));
             assertEquals("text/html; charset=utf-8", page.headers()
                     .firstValue("Content-Type").orElseThrow());
             assertEquals("DENY", page.headers()
@@ -119,6 +122,34 @@ class AdminWebServerTest {
                     URI.create("http://127.0.0.1:" + publicPort),
                     "/healthz", "GET", null, null);
             assertEquals(200, health.statusCode(), health.body());
+
+            Files.writeString(source.resolve("example.jar"), "web-content-v2");
+            HttpResponse<String> rescanned = send(
+                    base, "/api/projects/web-demo/scan", "POST", "{}", token);
+            assertEquals(200, rescanned.statusCode(), rescanned.body());
+            HttpResponse<String> republished = send(
+                    base, "/api/projects/web-demo/publish", "POST",
+                    json.writeString(Map.of(
+                            "displayVersion", "1.1.0",
+                            "minimumPlayerVersion", "0.1.14",
+                            "changelog", "验证 HTTP 服务自动重启"
+                    )), token);
+            assertEquals(201, republished.statusCode(), republished.body());
+            assertTrue(republished.body().contains(
+                    "\"publicServiceRestarted\":true"), republished.body());
+            assertTrue(republished.body().contains(
+                    "\"running\":true"), republished.body());
+
+            HttpResponse<String> refreshedHealth = send(
+                    URI.create("http://127.0.0.1:" + publicPort),
+                    "/healthz", "GET", null, null);
+            assertEquals(200, refreshedHealth.statusCode(), refreshedHealth.body());
+            HttpResponse<String> latest = send(
+                    URI.create("http://127.0.0.1:" + publicPort),
+                    "/v1/projects/web-demo/latest", "GET", null, null);
+            assertEquals(200, latest.statusCode(), latest.body());
+            assertTrue(latest.body().contains("\"displayVersion\":\"1.1.0\""),
+                    latest.body());
 
             HttpResponse<String> stopped = send(
                     base, "/api/public-service/stop", "POST", "{}", token);

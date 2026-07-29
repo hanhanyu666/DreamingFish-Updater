@@ -15,7 +15,6 @@ const app = {
 const titles = {
   dashboard: "运行概览",
   project: "项目设置",
-  files: "源文件管理",
   publish: "扫描与发布",
   player: "玩家端程序",
   instance: "玩家实例",
@@ -83,7 +82,7 @@ async function refreshState(preferredProjectId = app.selectedProjectId) {
   renderState();
   if (nextProject) {
     await loadProject(nextProject);
-    if (app.view === "files" || app.view === "publish") {
+    if (app.view === "publish") {
       await loadSourceFiles();
     }
   } else {
@@ -500,12 +499,11 @@ function renderSettings() {
 function bindEvents() {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", async () => {
-      const needsSourceFiles = button.dataset.view === "files"
-        || button.dataset.view === "publish";
+      const needsSourceFiles = button.dataset.view === "publish";
       if (needsSourceFiles && app.project && !app.sourceFiles) {
         await runBusy("正在读取标准源目录", async () => {
           await loadSourceFiles();
-          showView("files");
+          showView(button.dataset.view);
         });
         return;
       }
@@ -515,7 +513,7 @@ function bindEvents() {
   byId("project-select").addEventListener("change", async (event) => {
     await runBusy("正在切换项目", async () => {
       await loadProject(event.target.value);
-      if (app.view === "files") await loadSourceFiles();
+      if (app.view === "publish") await loadSourceFiles();
       renderDashboard();
     });
   });
@@ -719,7 +717,7 @@ async function uploadSelectedSources() {
     await loadProject(app.project.id);
     await loadSourceFiles();
     byId("source-add-dialog").close();
-    showView("files");
+    showView("publish");
     toast(`${files.length} 个文件已加入标准源目录`);
   } catch (error) {
     toast(error.message, true);
@@ -800,7 +798,7 @@ async function importServerSource() {
     await loadProject(app.project.id);
     await loadSourceFiles();
     byId("source-add-dialog").close();
-    showView("files");
+    showView("publish");
     toast("服务器文件已加入标准源目录");
   });
 }
@@ -816,7 +814,7 @@ async function removeSourceFile(file) {
     );
     await loadProject(app.project.id);
     await loadSourceFiles();
-    showView("files");
+    showView("publish");
     const playerResult = action === "RELEASE"
       ? "玩家本地将保留该文件"
       : "玩家更新时将移除该文件";
@@ -1052,9 +1050,9 @@ function bindPublish() {
         { method: "POST", body: payload }
       );
       form.reset();
-      form.elements.minimumPlayerVersion.value = "0.1.13";
+      form.elements.minimumPlayerVersion.value = "0.1.14";
       await refreshState(app.project.id);
-      toast(`版本 ${release.displayVersion} 已发布`);
+      showPublishedToast(release, `版本 ${release.displayVersion} 已发布`);
     });
   });
 }
@@ -1179,9 +1177,19 @@ function bindRollback() {
         { method: "POST", body: payload }
       );
       await refreshState(app.project.id);
-      toast(`回滚版本 ${release.displayVersion} 已发布`);
+      showPublishedToast(release, `回滚版本 ${release.displayVersion} 已发布`);
     });
   });
+}
+
+function showPublishedToast(release, message) {
+  if (release.serviceWarning) {
+    toast(`${message}；${release.serviceWarning}`, true);
+  } else if (release.publicServiceRestarted) {
+    toast(`${message}，HTTP 文件服务已自动重启`);
+  } else {
+    toast(message);
+  }
 }
 
 function openRollback(release) {
