@@ -27,7 +27,9 @@ class NewsRepositoryTest {
         assertTrue(introduction.markdown().contains("外缘带"));
         assertTrue(introduction.markdown().contains("逐光会"));
         assertTrue(introduction.markdown().contains("梁朔"));
-        assertTrue(introduction.markdown().length() < 1_500, "世界观导览应保持简短");
+        assertTrue(introduction.markdown().contains("扩岸计划"));
+        assertTrue(introduction.markdown().length() >= 1_000, "世界观导览应提供必要深度");
+        assertTrue(introduction.markdown().length() < 2_000, "世界观导览不应堆砌过多设定");
 
         NewsArticle announcement = articles.get(1);
         assertEquals("来自另一维度的求助", announcement.title());

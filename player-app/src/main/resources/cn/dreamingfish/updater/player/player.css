@@ -1094,6 +1094,19 @@
     -fx-text-fill: rgba(255, 213, 159, 0.78);
     -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
     -fx-font-size: 11px;
+    -fx-line-spacing: 2px;
+}
+
+.player-mod-count {
+    -fx-min-width: 132px;
+    -fx-alignment: center-right;
+    -fx-text-fill: rgba(255, 248, 220, 0.58);
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+}
+
+.player-mod-list {
+    -fx-padding: 5 8 24 2;
 }
 
 .mod-row {

@@ -96,7 +96,8 @@ final class PlayerView {
         UPDATE("本次更新"),
         HISTORY("更新记录"),
         LOGS("运行记录"),
-        FILES("本地文件");
+        FILES("本地文件"),
+        PLAYER_MODS("自选模组");
 
         private final String label;
 
@@ -174,9 +175,19 @@ final class PlayerView {
     private final ScrollPane modScroll = new ScrollPane(modList);
     private final TextField modSearch = new TextField();
     private final Label modEmpty = new Label("没有检测到模组");
-    private final Label modWarning = new Label("停用必要模组可能导致游戏崩溃或无法连接服务器。更改会在本次更新完成前重新校验；游戏已经启动时则从下次启动生效。");
+    private final Label modWarning = new Label("停用必要模组可能导致游戏崩溃或无法连接服务器。\n"
+            + "更改会在本次更新完成前重新校验；游戏已经启动时则从下次启动生效。");
     private final Button restoreMods = new Button("恢复整合包默认");
     private final VBox modPage = new VBox(12);
+    private final VBox playerModList = new VBox();
+    private final ScrollPane playerModScroll = new ScrollPane(playerModList);
+    private final TextField playerModSearch = new TextField();
+    private final Label playerModCount = new Label();
+    private final Label playerModEmpty = new Label("没有检测到玩家自选模组");
+    private final Label playerModWarning = new Label(
+            "这些模组不属于服务器整合包，更新器会保留玩家的本地选择。\n"
+                    + "停用模组可能导致依赖缺失或无法进入服务器，请确认后再修改。");
+    private final VBox playerModPage = new VBox(12);
     private final TreeTableView<LocalFileEntry> localFileTree = new TreeTableView<>();
     private final TreeTableColumn<LocalFileEntry, LocalFileEntry> localFileInfoColumn =
             new TreeTableColumn<>();
@@ -382,12 +393,18 @@ final class PlayerView {
     void setLocalMods(List<LocalModEntry> mods) {
         boolean preserveScroll = !modList.getChildren().isEmpty();
         double scrollPosition = modScroll.getVvalue();
+        double playerModScrollPosition = playerModScroll.getVvalue();
         localMods = mods == null ? List.of() : List.copyOf(mods);
         locallyDisabledMods = (int) localMods.stream()
                 .filter(entry -> entry.disabled() && !entry.forced()).count();
         rebuildModList();
+        rebuildPlayerModList();
+        updatePlayerModTabVisibility();
         if (preserveScroll) {
-            Platform.runLater(() -> modScroll.setVvalue(scrollPosition));
+            Platform.runLater(() -> {
+                modScroll.setVvalue(scrollPosition);
+                playerModScroll.setVvalue(playerModScrollPosition);
+            });
         }
     }
 
@@ -452,7 +469,13 @@ final class PlayerView {
                 new LocalModEntry("component:renderer", "旧版渲染优化",
                         "mods/legacy-renderer.jar", "renderer", true, true, false, false),
                 new LocalModEntry("component:dreamingfish", "DreamingFish Core",
-                        "mods/dreamingfish-core.jar", "dreamingfish", true, false, true, false)));
+                        "mods/dreamingfish-core.jar", "dreamingfish", true, false, true, false),
+                new LocalModEntry("component:embeddium-options-api", "Embeddium Options API",
+                        "mods/embeddium-options-api.jar", "embeddium-options-api",
+                        false, false, true, false),
+                new LocalModEntry("component:xaerominimap", "Xaero's Minimap",
+                        "mods/xaeros-minimap.jar", "xaerominimap",
+                        false, false, true, false)));
         updateSummary.setManaged(true);
         updateSummary.setVisible(true);
     }
@@ -895,13 +918,13 @@ final class PlayerView {
         unmanaged.setWrapText(true);
         unmanaged.setOnMouseClicked(event -> {
             if (event.getButton() == MouseButton.PRIMARY && event.isStillSincePress()) {
-                openUnmanagedModManagement();
+                openPlayerModPage();
             }
         });
         unmanaged.setOnKeyPressed(event -> {
             if (event.getCode() == javafx.scene.input.KeyCode.ENTER
                     || event.getCode() == javafx.scene.input.KeyCode.SPACE) {
-                openUnmanagedModManagement();
+                openPlayerModPage();
                 event.consume();
             }
         });
@@ -1235,6 +1258,8 @@ final class PlayerView {
         HBox.setHgrow(modSearch, Priority.ALWAYS);
         modWarning.getStyleClass().add("mod-warning");
         modWarning.setWrapText(true);
+        modWarning.setMaxWidth(Double.MAX_VALUE);
+        modWarning.setMinHeight(Region.USE_PREF_SIZE);
         modList.getStyleClass().add("mod-list");
         modScroll.getStyleClass().add("drawer-scroll");
         modScroll.setFitToWidth(true);
@@ -1242,6 +1267,29 @@ final class PlayerView {
         modScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         VBox.setVgrow(modScroll, Priority.ALWAYS);
         modPage.getChildren().addAll(modTools, modWarning, modScroll);
+
+        playerModSearch.setPromptText("搜索玩家自选模组");
+        playerModSearch.getStyleClass().add("mod-search");
+        playerModSearch.setMaxWidth(Double.MAX_VALUE);
+        playerModSearch.textProperty().addListener(
+                (observable, oldValue, newValue) -> rebuildPlayerModList());
+        playerModCount.getStyleClass().add("player-mod-count");
+        HBox playerModTools = new HBox(14, playerModSearch, playerModCount);
+        playerModTools.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(playerModSearch, Priority.ALWAYS);
+        playerModWarning.getStyleClass().add("mod-warning");
+        playerModWarning.setWrapText(true);
+        playerModWarning.setMaxWidth(Double.MAX_VALUE);
+        playerModWarning.setMinHeight(Region.USE_PREF_SIZE);
+        playerModList.getStyleClass().addAll("mod-list", "player-mod-list");
+        playerModScroll.getStyleClass().add("drawer-scroll");
+        playerModScroll.setFitToWidth(true);
+        playerModScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        playerModScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        VBox.setVgrow(playerModScroll, Priority.ALWAYS);
+        playerModPage.getChildren().addAll(
+                playerModTools, playerModWarning, playerModScroll);
+        rebuildPlayerModList();
 
         localFileSearch.setPromptText("搜索目录、文件名或路径");
         localFileSearch.getStyleClass().add("mod-search");
@@ -1254,6 +1302,8 @@ final class PlayerView {
         HBox.setHgrow(localFileSearch, Priority.ALWAYS);
         localFileWarning.getStyleClass().add("mod-warning");
         localFileWarning.setWrapText(true);
+        localFileWarning.setMaxWidth(Double.MAX_VALUE);
+        localFileWarning.setMinHeight(Region.USE_PREF_SIZE);
         localFileTree.getStyleClass().add("local-file-tree");
         configureLocalFileColumns();
         localFileTree.setShowRoot(false);
@@ -1286,12 +1336,13 @@ final class PlayerView {
         showLocalManagementMode(LocalManagementMode.FILES);
 
         drawerContent.getChildren().addAll(
-                updateDetailsPage, historyScroll, logs, localManagementPage);
+                updateDetailsPage, historyScroll, logs, localManagementPage, playerModPage);
         VBox.setVgrow(drawerContent, Priority.ALWAYS);
         detailsDrawer.getChildren().addAll(header, tabs, drawerContent);
         setDrawerExpanded(false);
         setReleaseHistory(null);
         showDrawerMode(DrawerMode.HISTORY);
+        updatePlayerModTabVisibility();
     }
 
     private void buildLaunchNotice() {
@@ -1343,6 +1394,7 @@ final class PlayerView {
         setDrawerNodeVisible(historyScroll, mode == DrawerMode.HISTORY);
         setDrawerNodeVisible(logs, mode == DrawerMode.LOGS);
         setDrawerNodeVisible(localManagementPage, mode == DrawerMode.FILES);
+        setDrawerNodeVisible(playerModPage, mode == DrawerMode.PLAYER_MODS);
         if (detailsDrawer.isVisible()) updateDetailToggleLabels(mode);
     }
 
@@ -1486,13 +1538,14 @@ final class PlayerView {
         modManagementMode.setSelected(!files);
     }
 
-    private void openUnmanagedModManagement() {
-        if (visibleUnmanagedMods.isEmpty()) return;
-        showDrawerMode(DrawerMode.FILES);
-        showLocalManagementMode(LocalManagementMode.MODS);
+    private void openPlayerModPage() {
+        if (playerAddedMods(localMods, visibleUnmanagedMods).isEmpty()) return;
+        rebuildPlayerModList();
+        updatePlayerModTabVisibility();
+        showDrawerMode(DrawerMode.PLAYER_MODS);
         detailsDrawer.setManaged(true);
         detailsDrawer.setVisible(true);
-        updateDetailToggleLabels(DrawerMode.FILES);
+        updateDetailToggleLabels(DrawerMode.PLAYER_MODS);
         detailsOpenedAction.run();
     }
 
@@ -1747,6 +1800,79 @@ final class PlayerView {
         }
     }
 
+    private void rebuildPlayerModList() {
+        String query = playerModSearch.getText() == null
+                ? "" : playerModSearch.getText().strip().toLowerCase(Locale.ROOT);
+        List<LocalModEntry> all = playerAddedMods(localMods, visibleUnmanagedMods);
+        long enabled = all.stream().filter(entry -> !entry.disabled()).count();
+        playerModCount.setText("共 " + all.size() + " 个  ·  " + enabled + " 个启用");
+        playerModList.getChildren().clear();
+        List<LocalModEntry> visible = all.stream()
+                .filter(entry -> query.isEmpty()
+                        || entry.displayName().toLowerCase(Locale.ROOT).contains(query)
+                        || entry.path().toLowerCase(Locale.ROOT).contains(query)
+                        || entry.componentId() != null
+                        && entry.componentId().toLowerCase(Locale.ROOT).contains(query))
+                .toList();
+        if (visible.isEmpty()) {
+            playerModEmpty.setText(all.isEmpty()
+                    ? "没有检测到玩家自选模组" : "没有匹配的玩家自选模组");
+            playerModEmpty.getStyleClass().setAll("drawer-empty");
+            playerModList.getChildren().add(playerModEmpty);
+            return;
+        }
+        for (int index = 0; index < visible.size(); index++) {
+            playerModList.getChildren().add(createModRow(visible.get(index)));
+            if (index + 1 < visible.size()) {
+                Region divider = new Region();
+                divider.getStyleClass().add("drawer-divider");
+                divider.setMinHeight(1);
+                playerModList.getChildren().add(divider);
+            }
+        }
+    }
+
+    static List<LocalModEntry> playerAddedMods(List<LocalModEntry> scanned,
+                                                List<Path> detectedPaths) {
+        Map<String, LocalModEntry> entries = new LinkedHashMap<>();
+        if (scanned != null) {
+            scanned.stream().filter(entry -> !entry.managed()).forEach(entry ->
+                    entries.put(foldPath(entry.path()), entry));
+        }
+        if (detectedPaths != null) {
+            for (Path detected : detectedPaths) {
+                String path = detected.normalize().toString().replace('\\', '/');
+                entries.computeIfAbsent(foldPath(path), ignored -> new LocalModEntry(
+                        "path:" + foldPath(path), modNameFromPath(detected), path,
+                        null, false, false, true, false));
+            }
+        }
+        return entries.values().stream()
+                .sorted(java.util.Comparator.comparing(LocalModEntry::disabled).reversed()
+                        .thenComparing(LocalModEntry::displayName,
+                                String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    private static String modNameFromPath(Path path) {
+        Path fileName = path.getFileName();
+        String value = fileName == null ? path.toString() : fileName.toString();
+        return value.toLowerCase(Locale.ROOT).endsWith(".jar")
+                ? value.substring(0, value.length() - 4) : value;
+    }
+
+    private void updatePlayerModTabVisibility() {
+        boolean hasPlayerMods = !playerAddedMods(localMods, visibleUnmanagedMods).isEmpty();
+        Button button = drawerTabs.get(DrawerMode.PLAYER_MODS);
+        if (button != null) {
+            button.setManaged(hasPlayerMods);
+            button.setVisible(hasPlayerMods);
+        }
+        if (!hasPlayerMods && drawerMode == DrawerMode.PLAYER_MODS) {
+            showDrawerMode(DrawerMode.FILES);
+        }
+    }
+
     private Node createModRow(LocalModEntry entry) {
         Label name = new Label(entry.displayName());
         name.getStyleClass().add("mod-name");
@@ -1948,6 +2074,8 @@ final class PlayerView {
 
     private void updateUnmanagedNotice(String text, List<Path> mods, List<String> contextLines) {
         visibleUnmanagedMods = mods == null ? List.of() : List.copyOf(mods);
+        rebuildPlayerModList();
+        updatePlayerModTabVisibility();
         boolean present = text != null && !text.isBlank();
         boolean actionable = !visibleUnmanagedMods.isEmpty();
         unmanaged.setText(present ? text : "");
@@ -1956,7 +2084,7 @@ final class PlayerView {
         unmanaged.setCursor(actionable ? Cursor.HAND : Cursor.DEFAULT);
         unmanaged.setFocusTraversable(actionable);
         unmanaged.setAccessibleText(present
-                ? text + (actionable ? "，点击打开模组启停管理" : "")
+                ? text + (actionable ? "，点击打开自选模组标签页" : "")
                 : "");
         unmanaged.getStyleClass().remove("unmanaged-action");
         if (actionable) unmanaged.getStyleClass().add("unmanaged-action");
@@ -1986,7 +2114,7 @@ final class PlayerView {
                 .forEach(path -> lines.add("  " + path));
         if (values.size() > 20) lines.add("  另有 " + (values.size() - 20) + " 个未展开");
         lines.add("");
-        lines.add("点击进入“本地文件 → 模组启停”管理");
+        lines.add("点击进入“自选模组”标签页");
         return String.join(System.lineSeparator(), lines);
     }
 

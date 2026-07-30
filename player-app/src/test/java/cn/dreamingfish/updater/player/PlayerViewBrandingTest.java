@@ -60,6 +60,21 @@ class PlayerViewBrandingTest {
 
         assertTrue(details.contains("玩家自选模组（2 个）"));
         assertTrue(details.contains("mods/xaeros-minimap.jar"));
-        assertTrue(details.contains("点击进入“本地文件 → 模组启停”管理"));
+        assertTrue(details.contains("点击进入“自选模组”标签页"));
+    }
+
+    @Test
+    void playerModDrawerContainsOnlyPlayerAddedModsAndFillsDetectedPaths() {
+        List<LocalModEntry> entries = PlayerView.playerAddedMods(List.of(
+                        new LocalModEntry("component:server", "服务器模组", "mods/server.jar",
+                                "server", true, false, true, false),
+                        new LocalModEntry("component:minimap", "小地图", "mods/minimap.jar",
+                                "minimap", false, false, true, false)),
+                List.of(Path.of("mods/minimap.jar"), Path.of("mods/visual-tweaks.jar")));
+
+        assertEquals(2, entries.size());
+        assertTrue(entries.stream().noneMatch(LocalModEntry::managed));
+        assertTrue(entries.stream().anyMatch(entry -> entry.displayName().equals("小地图")));
+        assertTrue(entries.stream().anyMatch(entry -> entry.path().equals("mods/visual-tweaks.jar")));
     }
 }
