@@ -80,14 +80,14 @@
 
 .brand-chinese {
     -fx-text-fill: rgba(255, 248, 226, 0.96);
-    -fx-font-size: 15px;
+    -fx-font-size: 16px;
     -fx-font-weight: 700;
 }
 
 .brand-dreaming,
 .brand-fish {
-    -fx-font-family: "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI";
-    -fx-font-size: 14px;
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 15px;
     -fx-font-weight: 700;
 }
 
@@ -112,7 +112,7 @@
     -fx-border-color: transparent;
     -fx-border-width: 0 0 2 0;
     -fx-text-fill: rgba(255, 248, 226, 0.62);
-    -fx-font-size: 14px;
+    -fx-font-size: 15px;
     -fx-font-weight: 600;
     -fx-cursor: hand;
 }
@@ -134,7 +134,7 @@
     -fx-background-color: transparent;
     -fx-background-radius: 10;
     -fx-text-fill: rgba(255, 248, 220, 0.86);
-    -fx-font-size: 19px;
+    -fx-font-size: 20px;
     -fx-cursor: hand;
 }
 
@@ -164,7 +164,7 @@
 
 .music-button {
     -fx-font-family: "Segoe UI Symbol", "HarmonyOS Sans SC", "Microsoft YaHei UI";
-    -fx-font-size: 18px;
+    -fx-font-size: 19px;
     -fx-font-weight: 700;
 }
 
@@ -176,7 +176,7 @@
 .music-note-glyph {
     -fx-text-fill: rgba(255, 248, 220, 0.86);
     -fx-font-family: "Segoe UI Symbol", "HarmonyOS Sans SC", "Microsoft YaHei UI";
-    -fx-font-size: 19px;
+    -fx-font-size: 20px;
     -fx-font-weight: 700;
 }
 
@@ -192,21 +192,21 @@
 
 .welcome-title {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 34px;
+    -fx-font-size: 35px;
     -fx-font-weight: 700;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.62), 26, 0.22, 0, 8);
 }
 
 .product-name {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 64px;
+    -fx-font-size: 65px;
     -fx-font-weight: 800;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.70), 34, 0.25, 0, 12);
 }
 
 .subtitle {
     -fx-text-fill: rgba(255, 241, 200, 0.84);
-    -fx-font-size: 15px;
+    -fx-font-size: 16px;
 }
 
 .player-identity {
@@ -228,12 +228,12 @@
 
 .player-caption {
     -fx-text-fill: rgba(255, 248, 220, 0.52);
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .player-name {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 15px;
+    -fx-font-size: 16px;
     -fx-font-weight: 700;
 }
 
@@ -280,43 +280,43 @@
     -fx-border-width: 1;
     -fx-text-fill: rgba(255, 248, 220, 0.88);
     -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
-    -fx-font-size: 11px;
+    -fx-font-size: 12px;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.48), 24, 0.18, 0, 8);
 }
 
 .update-summary-version {
     -fx-text-fill: -dfs-accent;
-    -fx-font-size: 11px;
+    -fx-font-size: 12px;
     -fx-font-weight: 800;
 }
 
 .update-summary-changelog {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-font-weight: 700;
 }
 
 .update-summary-counts {
     -fx-text-fill: rgba(255, 248, 220, 0.58);
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .stage-label {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 18px;
+    -fx-font-size: 19px;
     -fx-font-weight: 700;
 }
 
 .percent-label {
     -fx-text-fill: -dfs-accent;
-    -fx-font-size: 18px;
+    -fx-font-size: 19px;
     -fx-font-weight: 800;
 }
 
 .current-path,
 .byte-summary {
     -fx-text-fill: rgba(255, 248, 220, 0.64);
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
 }
 
 .update-progress {
@@ -341,7 +341,7 @@
     -fx-background-radius: 9;
     -fx-padding: 5 3;
     -fx-text-fill: #fff1c8;
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
     -fx-cursor: hand;
 }
 
@@ -352,7 +352,7 @@
 
 .unmanaged-notice {
     -fx-text-fill: #ffc36f;
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
 }
 
 .archive-button {
@@ -365,7 +365,7 @@
     -fx-border-color: rgba(255, 195, 111, 0.28);
     -fx-border-radius: 9;
     -fx-text-fill: #ffd39a;
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
     -fx-font-weight: 700;
     -fx-cursor: hand;
 }
@@ -376,8 +376,8 @@
 
 .updater-info {
     -fx-text-fill: rgba(255, 248, 226, 0.58);
-    -fx-font-size: 10px;
-    -fx-font-family: "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI";
+    -fx-font-size: 11px;
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
 }
 
 .content-page-layer {
@@ -436,15 +436,15 @@
 
 .page-eyebrow {
     -fx-text-fill: -dfs-accent;
-    -fx-font-family: "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI";
-    -fx-font-size: 11px;
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 12px;
     -fx-font-weight: 700;
 }
 
 .page-title {
     -fx-padding: 9 0 0 0;
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 35px;
+    -fx-font-size: 36px;
     -fx-font-weight: 800;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.48), 18, 0.16, 0, 5);
 }
@@ -452,15 +452,15 @@
 .page-version {
     -fx-padding: 7 0 13 0;
     -fx-text-fill: #fff8dc;
-    -fx-font-family: "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI";
-    -fx-font-size: 17px;
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 18px;
     -fx-font-weight: 700;
 }
 
 .page-lead {
     -fx-padding: 8 0 0 0;
     -fx-text-fill: rgba(255, 241, 200, 0.82);
-    -fx-font-size: 15px;
+    -fx-font-size: 16px;
     -fx-font-weight: 600;
 }
 
@@ -477,14 +477,14 @@
 .page-copy {
     -fx-padding: 15 0 0 0;
     -fx-text-fill: rgba(255, 248, 226, 0.76);
-    -fx-font-size: 14px;
+    -fx-font-size: 15px;
     -fx-line-spacing: 5px;
 }
 
 .page-callout {
     -fx-padding: 20 0 0 0;
     -fx-text-fill: -dfs-accent;
-    -fx-font-size: 15px;
+    -fx-font-size: 16px;
     -fx-font-weight: 700;
 }
 
@@ -506,13 +506,13 @@
     -fx-background-color: rgba(46, 232, 223, 0.16);
     -fx-background-radius: 11;
     -fx-text-fill: -dfs-accent;
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-font-weight: 800;
 }
 
 .launch-notice-text {
     -fx-text-fill: rgba(255, 248, 226, 0.92);
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-font-weight: 600;
 }
 
@@ -557,7 +557,7 @@
 
 .drawer-title {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 18px;
+    -fx-font-size: 19px;
     -fx-font-weight: 700;
 }
 
@@ -571,7 +571,7 @@
     -fx-background-color: transparent;
     -fx-background-radius: 8;
     -fx-text-fill: rgba(255, 248, 220, 0.56);
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
     -fx-font-weight: 700;
     -fx-cursor: hand;
 }
@@ -675,14 +675,14 @@
 .update-detail-version {
     -fx-padding: 8 2 0 2;
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 17px;
+    -fx-font-size: 18px;
     -fx-font-weight: 800;
 }
 
 .update-detail-changelog {
     -fx-padding: 0 2 2 2;
     -fx-text-fill: rgba(255, 248, 220, 0.76);
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
     -fx-line-spacing: 4px;
 }
 
@@ -691,7 +691,7 @@
     -fx-border-color: transparent transparent rgba(255, 255, 255, 0.09) transparent;
     -fx-border-width: 0 0 1 0;
     -fx-text-fill: rgba(255, 248, 220, 0.50);
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .update-detail-list {
@@ -716,7 +716,7 @@
     -fx-alignment: center;
     -fx-padding: 4 7 4 7;
     -fx-background-radius: 6;
-    -fx-font-size: 9px;
+    -fx-font-size: 10px;
     -fx-font-weight: 800;
 }
 
@@ -742,7 +742,7 @@
 
 .update-detail-path {
     -fx-text-fill: rgba(255, 248, 220, 0.72);
-    -fx-font-size: 11px;
+    -fx-font-size: 12px;
 }
 
 .history-entry {
@@ -751,13 +751,13 @@
 
 .history-version {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 15px;
+    -fx-font-size: 16px;
     -fx-font-weight: 800;
 }
 
 .history-time {
     -fx-text-fill: rgba(255, 248, 220, 0.42);
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .history-current {
@@ -765,14 +765,14 @@
     -fx-background-color: rgba(46, 232, 223, 0.12);
     -fx-background-radius: 6;
     -fx-text-fill: -dfs-accent;
-    -fx-font-size: 9px;
+    -fx-font-size: 10px;
     -fx-font-weight: 800;
 }
 
 .history-changelog {
     -fx-text-fill: rgba(255, 248, 220, 0.72);
     -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
     -fx-line-spacing: 4px;
 }
 
@@ -784,7 +784,7 @@
     -fx-padding: 28 8 8 8;
     -fx-text-fill: rgba(255, 248, 220, 0.44);
     -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
 }
 
 .log-list {
@@ -798,7 +798,7 @@
     -fx-background-color: transparent;
     -fx-text-fill: rgba(255, 248, 220, 0.72);
     -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Cascadia Mono", "Consolas";
-    -fx-font-size: 11px;
+    -fx-font-size: 12px;
 }
 
 .log-list .list-cell:filled:selected,
@@ -827,7 +827,7 @@
     -fx-border-color: rgba(255, 255, 255, 0.12);
     -fx-border-radius: 8;
     -fx-text-fill: #fff1c8;
-    -fx-font-size: 11px;
+    -fx-font-size: 12px;
     -fx-font-weight: 700;
     -fx-cursor: hand;
 }
@@ -842,7 +842,7 @@
     -fx-background-radius: 8;
     -fx-text-fill: rgba(255, 213, 159, 0.78);
     -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .mod-row {
@@ -851,19 +851,19 @@
 
 .mod-name {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 13px;
+    -fx-font-size: 14px;
     -fx-font-weight: 700;
 }
 
 .mod-detail {
     -fx-text-fill: rgba(255, 248, 220, 0.42);
     -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
 }
 
 .mod-toggle {
     -fx-text-fill: rgba(255, 248, 220, 0.68);
-    -fx-font-size: 11px;
+    -fx-font-size: 12px;
     -fx-cursor: hand;
 }
 
@@ -893,7 +893,7 @@
     -fx-background-color: rgba(255, 255, 255, 0.045);
     -fx-background-radius: 7;
     -fx-text-fill: rgba(255, 248, 220, 0.52);
-    -fx-font-size: 11px;
+    -fx-font-size: 12px;
     -fx-cursor: hand;
 }
 
@@ -964,13 +964,13 @@
 
 .local-file-name {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
     -fx-font-weight: 700;
 }
 
 .local-file-detail {
     -fx-text-fill: rgba(255, 248, 220, 0.42);
-    -fx-font-size: 9px;
+    -fx-font-size: 10px;
 }
 
 .dfs-dialog-pane {
@@ -1024,20 +1024,20 @@
 
 .dfs-dialog-title {
     -fx-text-fill: rgba(255, 248, 220, 0.50);
-    -fx-font-size: 10px;
+    -fx-font-size: 11px;
     -fx-font-weight: 800;
 }
 
 .dfs-dialog-heading {
     -fx-text-fill: #fff8dc;
-    -fx-font-size: 20px;
+    -fx-font-size: 21px;
     -fx-font-weight: 800;
     -fx-line-spacing: 2px;
 }
 
 .dfs-dialog-message {
     -fx-text-fill: rgba(255, 248, 220, 0.72);
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
     -fx-font-weight: 600;
     -fx-line-spacing: 5px;
 }
@@ -1056,7 +1056,7 @@
     -fx-padding: 8 17 8 17;
     -fx-background-radius: 10;
     -fx-border-radius: 10;
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
     -fx-font-weight: 800;
     -fx-text-overrun: clip;
     -fx-cursor: hand;

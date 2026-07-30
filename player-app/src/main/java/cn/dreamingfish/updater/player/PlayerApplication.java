@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.14";
+    static final String VERSION = "0.1.15";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
@@ -97,7 +97,7 @@ public final class PlayerApplication extends Application {
     public void start(Stage primaryStage) {
         loadBundledFont();
         stage = primaryStage;
-        stage.initStyle(StageStyle.UNDECORATED);
+        stage.initStyle(StageStyle.TRANSPARENT);
         stage.setTitle("DreamingFish Updater");
         stage.setWidth(1180);
         stage.setHeight(680);
@@ -106,11 +106,10 @@ public final class PlayerApplication extends Application {
         stage.setResizable(true);
 
         view = new PlayerView(stage);
-        Scene scene = new Scene(view.root(), 1180, 680, Color.web("#05090b"));
+        Scene scene = new Scene(view.root(), 1180, 680, Color.TRANSPARENT);
         String stylesheet = PlayerApplication.class.getResource("player.css").toExternalForm();
         scene.getStylesheets().add(stylesheet);
         stage.setScene(scene);
-        WindowsWindowRegion.install(stage, 29);
         view.setCloseAction(this::requestClose);
         view.setRetryAction(this::startUpdate);
         view.setOpenDirectoryAction(this::openPlayerDirectory);

@@ -50,6 +50,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.Rectangle;
 import javafx.css.PseudoClass;
 import javafx.stage.Stage;
 import javafx.util.Duration;
@@ -662,9 +663,18 @@ final class PlayerView {
         root.getChildren().addAll(background, refractedBackground, shade, glassWash,
                 canvas, glassRim, glassSweep);
 
+        Rectangle clip = new Rectangle();
+        clip.widthProperty().bind(root.widthProperty());
+        clip.heightProperty().bind(root.heightProperty());
+        clip.setArcWidth(58);
+        clip.setArcHeight(58);
+        root.setClip(clip);
+
         stageWindow.maximizedProperty().addListener((observable, oldValue, maximizedValue) -> {
             boolean maximizedState = Boolean.TRUE.equals(maximizedValue);
             root.pseudoClassStateChanged(WINDOW_MAXIMIZED, maximizedState);
+            clip.setArcWidth(maximizedState ? 0 : 58);
+            clip.setArcHeight(maximizedState ? 0 : 58);
             installMaximizeGlyph(maximize, maximizedState);
             maximize.setTooltip(new Tooltip(maximizedState ? "还原窗口" : "最大化"));
             maximize.setAccessibleText(maximizedState ? "还原窗口" : "最大化");

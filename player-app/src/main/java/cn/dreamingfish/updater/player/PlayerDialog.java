@@ -49,7 +49,7 @@ final class PlayerDialog {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(owner);
         dialog.initModality(Modality.WINDOW_MODAL);
-        dialog.initStyle(StageStyle.UNDECORATED);
+        dialog.initStyle(StageStyle.TRANSPARENT);
         dialog.setTitle(title);
         dialog.setResizable(false);
 
@@ -58,7 +58,7 @@ final class PlayerDialog {
         URL stylesheet = PlayerDialog.class.getResource("player.css");
         if (stylesheet != null) pane.getStylesheets().add(stylesheet.toExternalForm());
         copyBrandingColors(owner, pane);
-        configureOpaqueScene(pane);
+        configureTransparentScene(pane);
 
         double width = preferredWidth(owner);
         double contentWidth = width - 76;
@@ -131,11 +131,11 @@ final class PlayerDialog {
         }
     }
 
-    private static void configureOpaqueScene(DialogPane pane) {
+    private static void configureTransparentScene(DialogPane pane) {
         pane.sceneProperty().addListener((observable, oldScene, newScene) -> {
-            if (newScene != null) newScene.setFill(Color.web("#0b1114"));
+            if (newScene != null) newScene.setFill(Color.TRANSPARENT);
         });
-        if (pane.getScene() != null) pane.getScene().setFill(Color.web("#0b1114"));
+        if (pane.getScene() != null) pane.getScene().setFill(Color.TRANSPARENT);
     }
 
     private static double preferredWidth(Stage owner) {
