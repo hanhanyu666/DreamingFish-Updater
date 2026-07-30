@@ -35,7 +35,7 @@ final class NewsPage {
 
     private final StackPane root = new StackPane();
     private final List<NewsArticle> articles;
-    private final Node listView;
+    private final ScrollPane listView;
     private Consumer<URI> openExternalLink = ignored -> { };
     private Runnable interactionAction = () -> { };
     private boolean showingArticle;
@@ -72,7 +72,7 @@ final class NewsPage {
 
     void showList() {
         showingArticle = false;
-        replaceContent(listView);
+        replaceContent(listView, false);
     }
 
     List<NewsArticle> articles() {
@@ -88,7 +88,7 @@ final class NewsPage {
         if (latest != null) showArticle(latest);
     }
 
-    private Node createListView(String loadError) {
+    private ScrollPane createListView(String loadError) {
         VBox page = createPageBody(900);
         page.getChildren().addAll(
                 label("DREAMINGFISH NEWS", "page-eyebrow"),
@@ -174,12 +174,12 @@ final class NewsPage {
         VBox.setMargin(hero, new Insets(17, 0, 13, 0));
         VBox.setMargin(markdown, new Insets(16, 0, 0, 0));
         page.getChildren().addAll(back, hero, date, title, summary, divider(), markdown);
-        replaceContent(pageScroll(page));
+        replaceContent(pageScroll(page), true);
     }
 
-    private void replaceContent(Node content) {
+    private void replaceContent(Node content, boolean scrollToTop) {
         root.getChildren().setAll(content);
-        if (content instanceof ScrollPane scroll) scroll.setVvalue(0);
+        if (scrollToTop && content instanceof ScrollPane scroll) scroll.setVvalue(0);
     }
 
     private static StackPane cover(java.net.URL resource, double width, double height,
