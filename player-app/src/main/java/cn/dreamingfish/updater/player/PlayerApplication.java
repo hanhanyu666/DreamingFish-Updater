@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URI;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -45,7 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.15";
+    static final String VERSION = "0.1.16";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
@@ -119,6 +120,7 @@ public final class PlayerApplication extends Application {
         });
         view.setDetailsOpenedAction(this::keepWindowOpen);
         view.setMusicToggleAction(this::toggleBackgroundMusic);
+        view.setOpenExternalLinkAction(this::openExternalLink);
         view.setLocalModToggleAction(this::changeLocalModPreference);
         view.setRestoreModsAction(this::restoreLocalModDefaults);
         view.setLocalFileToggleAction(this::changeLocalFilePreference);
@@ -595,6 +597,18 @@ public final class PlayerApplication extends Application {
             if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(archive.toFile());
         } catch (IOException | UnsupportedOperationException e) {
             if (log != null) log.error("Unable to open forced sync archive directory", e);
+        }
+    }
+
+    private void openExternalLink(URI uri) {
+        keepWindowOpen();
+        try {
+            if (Desktop.isDesktopSupported()
+                    && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(uri);
+            }
+        } catch (IOException | UnsupportedOperationException | SecurityException e) {
+            if (log != null) log.error("Unable to open news link", e);
         }
     }
 

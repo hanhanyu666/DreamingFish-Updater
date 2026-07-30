@@ -51,4 +51,15 @@ class PlayerViewBrandingTest {
         assertTrue(details.contains("mods/updated-0.jar"));
         assertTrue(details.contains("另外 4 项未展开"));
     }
+
+    @Test
+    void formatsPlayerAddedModsForTheHomePageHoverEntry() {
+        String details = PlayerView.formatUnmanagedModDetails(List.of(
+                Path.of("mods", "xaeros-minimap.jar"),
+                Path.of("mods", "embeddium-options-api.jar")));
+
+        assertTrue(details.contains("玩家自选模组（2 个）"));
+        assertTrue(details.contains("mods/xaeros-minimap.jar"));
+        assertTrue(details.contains("点击进入“本地文件 → 模组启停”管理"));
+    }
 }

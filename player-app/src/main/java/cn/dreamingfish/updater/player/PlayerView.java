@@ -56,6 +56,7 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -68,6 +69,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 final class PlayerView {
     private static final PseudoClass MUSIC_PLAYING = PseudoClass.getPseudoClass("playing");
@@ -131,6 +133,7 @@ final class PlayerView {
     private final AnchorPane canvas = new AnchorPane();
     private final Region glassSweep = new Region();
     private final StackPane contentPageLayer = new StackPane();
+    private final NewsPage newsPage = new NewsPage();
     private final Map<Page, Button> navigationButtons = new EnumMap<>(Page.class);
     private final Map<Page, Node> contentPages = new EnumMap<>(Page.class);
     private final Label productName = new Label();
@@ -146,6 +149,7 @@ final class PlayerView {
     private final Label byteSummary = new Label("-- / --");
     private final ProgressBar progress = new ProgressBar(-1);
     private final Label unmanaged = new Label();
+    private final Tooltip unmanagedTooltip = new Tooltip();
     private final Button openArchive = new Button("打开备份目录");
     private final HBox actionRow = new HBox(10);
     private final Button retry = new Button("重试");
@@ -203,12 +207,14 @@ final class PlayerView {
     private HBox titleBar;
     private VBox identityPane;
     private HBox playerIdentityPane;
+    private VBox latestNewsPane;
     private VBox progressPane;
     private VBox updateArea;
     private DrawerMode drawerMode;
     private Page currentPage = Page.HOME;
     private List<LocalModEntry> localMods = List.of();
     private List<LocalFileEntry> localFiles = List.of();
+    private List<Path> visibleUnmanagedMods = List.of();
     private String renderedLocalFileQuery;
     private int locallyDisabledMods;
     private int locallyExcludedFiles;
@@ -222,6 +228,7 @@ final class PlayerView {
     private Runnable openArchiveAction = () -> { };
     private Runnable detailsOpenedAction = () -> { };
     private Runnable musicToggleAction = () -> { };
+    private Consumer<URI> openExternalLinkAction = ignored -> { };
     private BiConsumer<LocalModEntry, Boolean> localModToggleAction = (entry, disabled) -> { };
     private Runnable restoreModsAction = () -> { };
     private BiConsumer<LocalFileEntry, Boolean> localFileToggleAction = (entry, managed) -> { };
@@ -399,9 +406,9 @@ final class PlayerView {
         progress.setProgress(0.68);
         percent.setText("68%");
         byteSummary.setText("184 MB / 271 MB");
-        unmanaged.setText("检测到 2 个玩家自选模组  ›");
-        unmanaged.setManaged(true);
-        unmanaged.setVisible(true);
+        showUnmanaged(List.of(
+                Path.of("mods/embeddium-options-api.jar"),
+                Path.of("mods/xaeros-minimap.jar")));
         updateSummaryVersion.setText("版本 1.20.1-r12");
         updateSummaryChangelog.setText("新增梦屿群系探索内容");
         updateSummaryCounts.setText("安装 / 更新 6 项  ·  删除 1 项  ·  本地停用 2 项");
@@ -501,6 +508,11 @@ final class PlayerView {
         musicToggleAction = action;
     }
 
+    void setOpenExternalLinkAction(Consumer<URI> action) {
+        openExternalLinkAction = action == null ? ignored -> { } : action;
+        newsPage.setOpenExternalLink(uri -> openExternalLinkAction.accept(uri));
+    }
+
     void setLocalModToggleAction(BiConsumer<LocalModEntry, Boolean> action) {
         localModToggleAction = action == null ? (entry, disabled) -> { } : action;
     }
@@ -577,6 +589,7 @@ final class PlayerView {
                 backgroundScale, refractionScale,
                 reveal(titleBar, 0, -10, 70),
                 reveal(identityPane, -22, 6, 130),
+                reveal(latestNewsPane, 18, 6, 165),
                 reveal(playerIdentityPane, -14, 10, 230),
                 reveal(updateArea, 18, 14, 190),
                 reveal(updaterInfo, 0, 8, 310),
@@ -622,6 +635,7 @@ final class PlayerView {
         titleBar = createTitleBar(stageWindow);
         identityPane = createIdentity();
         playerIdentityPane = createPlayerIdentity();
+        latestNewsPane = createLatestNewsPane();
         progressPane = createProgressRegion();
         updateArea = createUpdateArea();
         buildContentPages();
@@ -635,14 +649,16 @@ final class PlayerView {
         AnchorPane.setTopAnchor(identityPane, 154.0);
         AnchorPane.setLeftAnchor(playerIdentityPane, 56.0);
         AnchorPane.setBottomAnchor(playerIdentityPane, 38.0);
-        AnchorPane.setRightAnchor(updateArea, 50.0);
+        AnchorPane.setRightAnchor(latestNewsPane, 32.0);
+        AnchorPane.setTopAnchor(latestNewsPane, 108.0);
+        AnchorPane.setRightAnchor(updateArea, 32.0);
         AnchorPane.setBottomAnchor(updateArea, 52.0);
         AnchorPane.setTopAnchor(contentPageLayer, 52.0);
         AnchorPane.setLeftAnchor(contentPageLayer, 0.0);
         AnchorPane.setRightAnchor(contentPageLayer, 0.0);
         AnchorPane.setBottomAnchor(contentPageLayer, 0.0);
         updaterInfo.getStyleClass().add("updater-info");
-        AnchorPane.setRightAnchor(updaterInfo, 52.0);
+        AnchorPane.setRightAnchor(updaterInfo, 34.0);
         AnchorPane.setBottomAnchor(updaterInfo, 17.0);
         AnchorPane.setTopAnchor(launchNoticeLayer, 67.0);
         AnchorPane.setLeftAnchor(launchNoticeLayer, 0.0);
@@ -658,8 +674,12 @@ final class PlayerView {
         AnchorPane.setRightAnchor(resizeGrip, 0.0);
         AnchorPane.setBottomAnchor(resizeGrip, 0.0);
 
-        canvas.getChildren().addAll(identityPane, playerIdentityPane, updateArea,
+        canvas.getChildren().addAll(identityPane, playerIdentityPane, latestNewsPane, updateArea,
                 updaterInfo, contentPageLayer, launchNoticeLayer, detailsDrawer, titleBar, resizeGrip);
+        root.widthProperty().addListener((observable, oldValue, newValue) ->
+                updateLatestNewsVisibility());
+        root.heightProperty().addListener((observable, oldValue, newValue) ->
+                updateLatestNewsVisibility());
         root.getChildren().addAll(background, refractedBackground, shade, glassWash,
                 canvas, glassRim, glassSweep);
 
@@ -785,6 +805,58 @@ final class PlayerView {
         return box;
     }
 
+    private VBox createLatestNewsPane() {
+        NewsArticle latest = newsPage.latestArticle();
+        VBox pane = new VBox(5);
+        pane.getStyleClass().add("home-latest-news");
+        pane.setPrefWidth(430);
+        pane.setMinWidth(390);
+        pane.setMaxWidth(430);
+        pane.setCursor(Cursor.HAND);
+        pane.setFocusTraversable(true);
+
+        if (latest == null) {
+            pane.setManaged(false);
+            pane.setVisible(false);
+            return pane;
+        }
+
+        Label metadata = new Label("最新新闻  ·  "
+                + latest.publishedOn().format(DateTimeFormatter.ofPattern("yyyy.MM.dd")));
+        metadata.getStyleClass().add("home-latest-news-meta");
+        Label title = new Label(latest.title());
+        title.getStyleClass().add("home-latest-news-title");
+        title.setMaxWidth(Double.MAX_VALUE);
+        Label summary = new Label(latest.summary());
+        summary.getStyleClass().add("home-latest-news-summary");
+        summary.setWrapText(true);
+        summary.setMaxHeight(40);
+        summary.setMaxWidth(Double.MAX_VALUE);
+        Label action = new Label("查看全文  ›");
+        action.getStyleClass().add("home-latest-news-action");
+        pane.getChildren().addAll(metadata, title, summary, action);
+        pane.setAccessibleText("最新新闻，" + latest.title() + "，点击查看全文");
+        pane.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.isStillSincePress()) {
+                openLatestNews();
+            }
+        });
+        pane.setOnKeyPressed(event -> {
+            if (event.getCode() == javafx.scene.input.KeyCode.ENTER
+                    || event.getCode() == javafx.scene.input.KeyCode.SPACE) {
+                openLatestNews();
+                event.consume();
+            }
+        });
+        return pane;
+    }
+
+    private void openLatestNews() {
+        showPage(Page.NEWS);
+        newsPage.showLatestArticle();
+        playPageReveal(List.of(newsPage.root()));
+    }
+
     private VBox createProgressRegion() {
         VBox box = new VBox(9);
         box.getStyleClass().add("progress-region");
@@ -821,6 +893,22 @@ final class PlayerView {
         unmanaged.setVisible(false);
         unmanaged.setManaged(false);
         unmanaged.setWrapText(true);
+        unmanaged.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.isStillSincePress()) {
+                openUnmanagedModManagement();
+            }
+        });
+        unmanaged.setOnKeyPressed(event -> {
+            if (event.getCode() == javafx.scene.input.KeyCode.ENTER
+                    || event.getCode() == javafx.scene.input.KeyCode.SPACE) {
+                openUnmanagedModManagement();
+                event.consume();
+            }
+        });
+        unmanagedTooltip.getStyleClass().add("unmanaged-mod-tooltip");
+        unmanagedTooltip.setAutoFix(true);
+        unmanagedTooltip.setWrapText(true);
+        unmanagedTooltip.setMaxWidth(520);
         openArchive.getStyleClass().add("archive-button");
         openArchive.setVisible(false);
         openArchive.setManaged(false);
@@ -898,21 +986,11 @@ final class PlayerView {
         }
         contentPageLayer.setManaged(false);
         contentPageLayer.setVisible(false);
+        newsPage.setInteractionAction(() -> detailsOpenedAction.run());
     }
 
     private Node createNewsPage() {
-        VBox page = createPageBody();
-        page.getChildren().addAll(
-                pageLabel("DREAMINGFISH NEWS  ·  2026.07.28", "page-eyebrow"),
-                pageLabel("来自另一维度的求助", "page-title"),
-                pageLabel("守望梦屿 · 建筑先行服现已开启", "page-lead"),
-                pageDivider(),
-                pageLabel("公元 5060 年，人类首次收到来自宇宙深处的信号。破译结果只有一个字：\"助\"。多年后，第二组信号抵达，画面中是一座染血的小镇，以及在街道上蹒跚前行的类人生物。", "page-copy"),
-                pageLabel("DingDua 大学那位曾破译信号的学者认定，这不是外星文明，而是来自平行宇宙地球的求助。另一个世界正在爆发丧尸灾难，NVSV 航天局因此发出公告：我们需要重建那座小镇的布局，为救援，也为验证一种可能性。", "page-copy"),
-                pageLabel("在正式踏入梦屿以前，建筑先行服将由玩家共同建造初始小镇和更多场景。你亲手放下的每一个方块，都会成为未来剧情的见证；砖瓦之间，也将藏下两个世界的真相。", "page-copy"),
-                pageLabel("下载群内最新整合包，在多人游戏中输入 dreamingfish.top 即可开始建造。", "page-callout")
-        );
-        return pageScroll(page);
+        return newsPage.root();
     }
 
     private Node createDreamHavenPage() {
@@ -986,10 +1064,17 @@ final class PlayerView {
     }
 
     private void showPage(Page requestedPage) {
-        if (requestedPage == currentPage) return;
+        if (requestedPage == currentPage) {
+            if (requestedPage == Page.NEWS && newsPage.showingArticle()) {
+                newsPage.showList();
+                playPageReveal(List.of(newsPage.root()));
+            }
+            return;
+        }
 
         hideDrawer();
         currentPage = requestedPage;
+        if (requestedPage == Page.NEWS) newsPage.showList();
         navigationButtons.forEach((page, button) ->
                 button.pseudoClassStateChanged(NAV_SELECTED, page == requestedPage));
 
@@ -1005,7 +1090,8 @@ final class PlayerView {
         }
 
         if (showHome) {
-            playPageReveal(List.of(identityPane, playerIdentityPane, updateArea, updaterInfo));
+            playPageReveal(List.of(identityPane, playerIdentityPane, latestNewsPane,
+                    updateArea, updaterInfo));
             return;
         }
 
@@ -1019,6 +1105,16 @@ final class PlayerView {
             node.setManaged(visible);
             node.setVisible(visible);
         }
+        updateLatestNewsVisibility();
+    }
+
+    private void updateLatestNewsVisibility() {
+        if (latestNewsPane == null) return;
+        boolean visible = currentPage == Page.HOME
+                && newsPage.latestArticle() != null
+                && root.getHeight() >= 640;
+        latestNewsPane.setManaged(visible);
+        latestNewsPane.setVisible(visible);
     }
 
     private static void playPageReveal(List<Node> nodes) {
@@ -1388,6 +1484,16 @@ final class PlayerView {
         setDrawerNodeVisible(modPage, !files);
         fileManagementMode.setSelected(files);
         modManagementMode.setSelected(!files);
+    }
+
+    private void openUnmanagedModManagement() {
+        if (visibleUnmanagedMods.isEmpty()) return;
+        showDrawerMode(DrawerMode.FILES);
+        showLocalManagementMode(LocalManagementMode.MODS);
+        detailsDrawer.setManaged(true);
+        detailsDrawer.setVisible(true);
+        updateDetailToggleLabels(DrawerMode.FILES);
+        detailsOpenedAction.run();
     }
 
     private void rebuildLocalFileTree() {
@@ -1793,13 +1899,10 @@ final class PlayerView {
 
     private void showUnmanaged(List<Path> mods) {
         boolean present = !mods.isEmpty();
-        unmanaged.setText(present ? "检测到 " + mods.size() + " 个玩家自选模组，已保留并继续启动  ›" : "");
-        unmanaged.setManaged(present);
-        unmanaged.setVisible(present);
-        if (present) {
-            unmanaged.setTooltip(new Tooltip(mods.stream().map(Path::toString)
-                    .limit(20).reduce((left, right) -> left + System.lineSeparator() + right).orElse("")));
-        }
+        String text = present
+                ? "检测到 " + mods.size() + " 个玩家自选模组，已保留并继续启动  ›"
+                : "";
+        updateUnmanagedNotice(text, mods, List.of());
     }
 
     private void showFileNotices(UpdateResult result) {
@@ -1824,9 +1927,6 @@ final class PlayerView {
             if (!unmanagedMods.isEmpty()) {
                 text += "；另有 " + unmanagedMods.size() + " 个玩家自选模组已保留";
             }
-            unmanaged.setText(text);
-            unmanaged.setManaged(true);
-            unmanaged.setVisible(true);
             List<String> noticeLines = new ArrayList<>();
             if (!archived.isEmpty()) {
                 noticeLines.add("备份位置：" + result.archiveDirectory());
@@ -1835,8 +1935,8 @@ final class PlayerView {
             }
             released.stream().map(Path::toString).limit(20)
                     .forEach(path -> noticeLines.add("保留：" + path));
-            unmanaged.setTooltip(new Tooltip(String.join(
-                    System.lineSeparator(), noticeLines)));
+            if (!unmanagedMods.isEmpty()) text += "  ›";
+            updateUnmanagedNotice(text, unmanagedMods, noticeLines);
             openArchive.setManaged(!archived.isEmpty());
             openArchive.setVisible(!archived.isEmpty());
             return;
@@ -1844,6 +1944,50 @@ final class PlayerView {
         openArchive.setManaged(false);
         openArchive.setVisible(false);
         showUnmanaged(unmanagedMods);
+    }
+
+    private void updateUnmanagedNotice(String text, List<Path> mods, List<String> contextLines) {
+        visibleUnmanagedMods = mods == null ? List.of() : List.copyOf(mods);
+        boolean present = text != null && !text.isBlank();
+        boolean actionable = !visibleUnmanagedMods.isEmpty();
+        unmanaged.setText(present ? text : "");
+        unmanaged.setManaged(present);
+        unmanaged.setVisible(present);
+        unmanaged.setCursor(actionable ? Cursor.HAND : Cursor.DEFAULT);
+        unmanaged.setFocusTraversable(actionable);
+        unmanaged.setAccessibleText(present
+                ? text + (actionable ? "，点击打开模组启停管理" : "")
+                : "");
+        unmanaged.getStyleClass().remove("unmanaged-action");
+        if (actionable) unmanaged.getStyleClass().add("unmanaged-action");
+
+        List<String> details = new ArrayList<>();
+        if (contextLines != null) details.addAll(contextLines);
+        if (actionable) {
+            if (!details.isEmpty()) details.add("");
+            details.add(formatUnmanagedModDetails(visibleUnmanagedMods));
+        }
+        if (details.isEmpty()) {
+            unmanaged.setTooltip(null);
+        } else {
+            unmanagedTooltip.setText(String.join(System.lineSeparator(), details));
+            unmanaged.setTooltip(unmanagedTooltip);
+        }
+    }
+
+    static String formatUnmanagedModDetails(List<Path> mods) {
+        List<Path> values = mods == null ? List.of() : mods;
+        List<String> lines = new ArrayList<>();
+        lines.add("玩家自选模组（" + values.size() + " 个）");
+        values.stream().limit(20)
+                .map(Path::normalize)
+                .map(Path::toString)
+                .map(path -> path.replace('\\', '/'))
+                .forEach(path -> lines.add("  " + path));
+        if (values.size() > 20) lines.add("  另有 " + (values.size() - 20) + " 个未展开");
+        lines.add("");
+        lines.add("点击进入“本地文件 → 模组启停”管理");
+        return String.join(System.lineSeparator(), lines);
     }
 
     private void setWorking(boolean working) {

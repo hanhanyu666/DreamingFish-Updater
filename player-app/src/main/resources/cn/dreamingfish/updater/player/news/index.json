@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "articles": [
+    {
+      "id": "building-server-open",
+      "title": "来自另一维度的求助",
+      "summary": "守望梦屿仍在加急开发。在正式踏入梦屿以前，建筑先行服邀请所有玩家共同建造故事中的初始小镇。",
+      "publishedOn": "2026-07-28",
+      "cover": "images/hero-dreamhaven.png",
+      "body": "news/articles/building-server-open.md"
+    }
+  ]
+}

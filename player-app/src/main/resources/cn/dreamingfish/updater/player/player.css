@@ -237,6 +237,49 @@
     -fx-font-weight: 700;
 }
 
+.home-latest-news {
+    -fx-padding: 13 15;
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.025)),
+        rgba(4, 10, 11, 0.63);
+    -fx-background-radius: 19;
+    -fx-border-color: rgba(255, 255, 255, 0.15);
+    -fx-border-radius: 19;
+    -fx-border-width: 1;
+}
+
+.home-latest-news:hover,
+.home-latest-news:focused {
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(46, 232, 223, 0.15), rgba(176, 108, 255, 0.045)),
+        rgba(4, 10, 11, 0.72);
+    -fx-border-color: rgba(46, 232, 223, 0.40);
+}
+
+.home-latest-news-meta {
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 10px;
+    -fx-font-weight: 700;
+}
+
+.home-latest-news-title {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 18px;
+    -fx-font-weight: 800;
+}
+
+.home-latest-news-summary {
+    -fx-text-fill: rgba(255, 248, 226, 0.66);
+    -fx-font-size: 12px;
+    -fx-line-spacing: 2px;
+}
+
+.home-latest-news-action {
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+}
+
 .progress-region {
     -fx-padding: 18 18 17 18;
     -fx-background-color:
@@ -255,9 +298,9 @@
     -fx-background-color:
         linear-gradient(to bottom right, rgba(46, 232, 223, 0.10), rgba(176, 108, 255, 0.055)),
         rgba(3, 7, 8, 0.54);
-    -fx-background-radius: 16;
+    -fx-background-radius: 19;
     -fx-border-color: rgba(255, 255, 255, 0.16);
-    -fx-border-radius: 16;
+    -fx-border-radius: 19;
     -fx-border-width: 1;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.24), 18, 0.14, 0, 6);
 }
@@ -353,6 +396,26 @@
 .unmanaged-notice {
     -fx-text-fill: #ffc36f;
     -fx-font-size: 13px;
+}
+
+.unmanaged-notice.unmanaged-action:hover,
+.unmanaged-notice.unmanaged-action:focused {
+    -fx-text-fill: #ffe0ac;
+}
+
+.tooltip.unmanaged-mod-tooltip {
+    -fx-padding: 13 15 13 15;
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(255, 195, 111, 0.10), rgba(46, 232, 223, 0.035)),
+        rgba(4, 9, 11, 0.97);
+    -fx-background-radius: 13;
+    -fx-border-color: rgba(255, 211, 154, 0.24);
+    -fx-border-radius: 13;
+    -fx-border-width: 1;
+    -fx-text-fill: rgba(255, 248, 226, 0.90);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 12px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.48), 22, 0.18, 0, 8);
 }
 
 .archive-button {
@@ -486,6 +549,194 @@
     -fx-text-fill: -dfs-accent;
     -fx-font-size: 16px;
     -fx-font-weight: 700;
+}
+
+.news-card-list {
+    -fx-padding: 0 0 24 0;
+}
+
+.news-card {
+    -fx-padding: 12;
+    -fx-min-height: 157px;
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.025)),
+        rgba(4, 10, 11, 0.72);
+    -fx-background-radius: 8;
+    -fx-border-color: rgba(255, 255, 255, 0.14);
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+
+.news-card:hover,
+.news-card:focused {
+    -fx-background-color:
+        linear-gradient(to bottom right, rgba(46, 232, 223, 0.14), rgba(176, 108, 255, 0.055)),
+        rgba(4, 10, 11, 0.79);
+    -fx-border-color: rgba(46, 232, 223, 0.40);
+    -fx-effect: dropshadow(gaussian, rgba(46, 232, 223, 0.14), 18, 0.12, 0, 5);
+}
+
+.news-card-cover,
+.news-article-cover {
+    -fx-background-color: rgba(255, 255, 255, 0.045);
+    -fx-background-radius: 8;
+}
+
+.news-cover-image {
+    -fx-background-radius: 8;
+}
+
+.news-card-date {
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+}
+
+.news-card-title {
+    -fx-text-fill: #fff8dc;
+    -fx-font-size: 20px;
+    -fx-font-weight: 800;
+}
+
+.news-card-summary {
+    -fx-text-fill: rgba(255, 248, 226, 0.68);
+    -fx-font-size: 13px;
+    -fx-line-spacing: 3px;
+}
+
+.news-read-button,
+.news-back-button {
+    -fx-padding: 3 0;
+    -fx-background-color: transparent;
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+    -fx-cursor: hand;
+}
+
+.news-read-button:hover,
+.news-back-button:hover {
+    -fx-text-fill: #fff8dc;
+}
+
+.news-empty,
+.news-cover-missing {
+    -fx-text-fill: rgba(255, 248, 226, 0.52);
+    -fx-font-size: 14px;
+}
+
+.news-empty {
+    -fx-padding: 28 0;
+}
+
+.markdown-body {
+    -fx-padding: 0 0 46 0;
+}
+
+.markdown-paragraph,
+.markdown-text,
+.markdown-list-item {
+    -fx-fill: rgba(255, 248, 226, 0.78);
+    -fx-text-fill: rgba(255, 248, 226, 0.78);
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-size: 15px;
+}
+
+.markdown-heading {
+    -fx-padding: 10 0 1 0;
+}
+
+.markdown-heading .text {
+    -fx-fill: #fff8dc;
+    -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    -fx-font-weight: 800;
+}
+
+.markdown-h1 .text {
+    -fx-font-size: 28px;
+}
+
+.markdown-h2 .text {
+    -fx-font-size: 23px;
+}
+
+.markdown-h3 .text {
+    -fx-font-size: 19px;
+}
+
+.markdown-strong {
+    -fx-fill: #fff8dc;
+    -fx-font-weight: 800;
+}
+
+.markdown-emphasis {
+    -fx-font-style: italic;
+}
+
+.markdown-quote {
+    -fx-padding: 13 16;
+    -fx-background-color: rgba(46, 232, 223, 0.065);
+    -fx-border-color: transparent transparent transparent -dfs-accent;
+    -fx-border-width: 0 0 0 3;
+}
+
+.markdown-list {
+    -fx-padding: 1 0 1 10;
+}
+
+.markdown-list-marker {
+    -fx-text-fill: -dfs-accent;
+    -fx-font-size: 15px;
+    -fx-font-weight: 800;
+}
+
+.markdown-inline-code,
+.markdown-code-block {
+    -fx-font-family: "Cascadia Mono", "Consolas", "Microsoft YaHei UI";
+}
+
+.markdown-inline-code {
+    -fx-padding: 1 5;
+    -fx-background-color: rgba(255, 255, 255, 0.09);
+    -fx-background-radius: 4;
+    -fx-text-fill: #d9fffb;
+    -fx-font-size: 13px;
+}
+
+.markdown-code-block {
+    -fx-padding: 14 16;
+    -fx-background-color: rgba(1, 5, 6, 0.72);
+    -fx-background-radius: 6;
+    -fx-border-color: rgba(255, 255, 255, 0.11);
+    -fx-border-radius: 6;
+    -fx-text-fill: rgba(230, 255, 252, 0.86);
+    -fx-font-size: 13px;
+}
+
+.markdown-link {
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+    -fx-text-fill: -dfs-accent;
+    -fx-underline: true;
+    -fx-font-size: 15px;
+}
+
+.markdown-link:visited {
+    -fx-text-fill: #c9a4ff;
+}
+
+.markdown-divider {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+}
+
+.markdown-image-frame {
+    -fx-background-color: rgba(255, 255, 255, 0.04);
+    -fx-background-radius: 8;
+}
+
+.markdown-image-missing {
+    -fx-padding: 24;
+    -fx-text-fill: rgba(255, 248, 226, 0.44);
 }
 
 .launch-notice {
