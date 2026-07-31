@@ -4,6 +4,8 @@ DreamingFish 管理端 Linux x64
   chmod +x dfs-admin runtime/bin/java
   ./dfs-admin
 
+Linux 启动脚本已自动启用 Java IPv4 网络栈，确保公共 HTTP 服务实际监听 IPv4 的 0.0.0.0；不需要再手动设置 JAVA_TOOL_OPTIONS。
+
 不带参数会进入中文交互终端。管理数据自动保存在本目录的 data 文件夹中，不需要配置；首次向导只询问 HTTP 设置。
 标准整合包源目录不需要是完整游戏目录。目录里放什么就管理什么，可以只放 mods，也可以只放 config。Web“扫描与发布”页顶部可上传、导入、归档并移除文件。
 

@@ -122,22 +122,24 @@
             </div>
             <div class="form-grid">
               <label class="field span-2">
-                <span>项目显示名称</span>
+                <span>项目显示名称（必填）</span>
                 <input name="displayName" maxlength="120" required>
               </label>
               <label class="field span-2">
-                <span>标准整合包目录</span>
+                <span>整合包文件目录（必填）</span>
                 <div class="path-input-row">
                   <input name="sourceDirectory" required>
-                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择标准整合包目录">浏览</button>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择整合包文件目录">浏览</button>
                 </div>
+                <small class="field-help">只放需要发布的 mods、config 等内容，不需要完整 .minecraft。</small>
               </label>
               <label class="field span-2">
-                <span>玩家访问公共 HTTP 地址</span>
-                <input name="publicBaseUrl" type="url" required>
+                <span>玩家访问公共 HTTP 地址（必填）</span>
+                <input name="publicBaseUrl" type="url" placeholder="http://example.com:39988" required>
+                <small class="field-help">必须能从玩家电脑访问；不要填写 0.0.0.0、127.0.0.1 或服务器内网监听地址。</small>
               </label>
               <label class="field">
-                <span>界面产品名称</span>
+                <span>界面产品名称（必填）</span>
                 <input name="productName" required>
               </label>
               <label class="field">
@@ -151,6 +153,7 @@
               <label class="field span-2">
                 <span>强制同步一级目录</span>
                 <input name="forcedSyncDirectories" placeholder="mods, config">
+                <small class="field-help">目录内玩家额外文件会被归档或移除，只在需要完全一致时启用。</small>
               </label>
               <label class="field color-field">
                 <span>主强调色</span>
@@ -179,7 +182,7 @@
           <section class="panel">
             <div class="panel-header source-file-header">
               <div>
-                <h2>标准源文件</h2>
+                <h2>整合包文件</h2>
                 <span id="source-file-count">尚未读取</span>
               </div>
               <div class="button-row">
@@ -193,13 +196,51 @@
               <div><span>总大小</span><strong id="source-total-size">--</strong></div>
               <div><span>强制同步</span><strong id="source-forced-count">--</strong></div>
             </div>
+            <div class="selection-toolbar">
+              <label class="selection-check">
+                <input id="source-file-select-all" type="checkbox">
+                <span>全选当前列表</span>
+              </label>
+              <span id="source-file-selection-count">未选择文件</span>
+              <button class="secondary-button" id="clear-source-selection" type="button">清空选择</button>
+              <button class="danger-button" id="remove-selected-source-files" type="button" disabled>移除所选</button>
+            </div>
             <div class="table-wrap source-file-table">
               <table>
-                <thead><tr><th>状态</th><th>托管路径</th><th>大小</th><th>修改时间</th><th></th></tr></thead>
+                <thead><tr><th>选择</th><th>状态</th><th>文件或文件夹</th><th>大小</th><th>修改时间</th><th></th></tr></thead>
                 <tbody id="source-file-table"></tbody>
               </table>
-              <div class="empty-state" id="source-file-empty">标准源目录中没有托管文件</div>
+              <div class="empty-state" id="source-file-empty">整合包目录中没有文件</div>
             </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header forced-file-header">
+              <div>
+                <h2>单文件强制同步</h2>
+                <span id="forced-file-count">扫描后可视化选择；玩家不能在本地豁免已选文件</span>
+              </div>
+              <div class="button-row">
+                <input class="table-search" id="forced-file-search" placeholder="搜索文件">
+                <button class="secondary-button" id="clear-forced-files" type="button">清空选择</button>
+                <button class="primary-button" id="save-forced-files" type="button">保存设置</button>
+              </div>
+            </div>
+            <div class="selection-toolbar">
+              <label class="selection-check">
+                <input id="forced-file-select-all" type="checkbox">
+                <span>全选当前列表</span>
+              </label>
+              <span id="forced-file-visible-count">等待读取文件</span>
+            </div>
+            <div class="table-wrap forced-file-table">
+              <table>
+                <thead><tr><th>强制</th><th>文件或文件夹</th><th>策略</th><th>大小</th></tr></thead>
+                <tbody id="forced-file-table"></tbody>
+              </table>
+              <div class="empty-state" id="forced-file-empty">请先读取或扫描整合包目录</div>
+            </div>
+            <p class="notice-line forced-file-notice">强制同步文件会覆盖玩家修改并忽略本地豁免；这里只影响选中的文件，不会强制同目录的其它内容。</p>
           </section>
 
           <section class="panel">
@@ -211,7 +252,7 @@
               <div class="button-row">
                 <button class="secondary-button" id="release-all-button" type="button">全部保留</button>
                 <button class="secondary-button" id="delete-all-button" type="button">全部删除</button>
-                <button class="secondary-button" id="scan-button" type="button">↻ 扫描源目录</button>
+                <button class="secondary-button" id="scan-button" type="button">↻ 扫描整合包目录</button>
               </div>
             </div>
             <div class="preview-summary" id="preview-summary">
@@ -229,28 +270,6 @@
             </div>
           </section>
 
-          <section class="panel">
-            <div class="panel-header forced-file-header">
-              <div>
-                <h2>单文件强制同步</h2>
-                <span id="forced-file-count">扫描后可视化选择；玩家不能在本地豁免已选文件</span>
-              </div>
-              <div class="button-row">
-                <input class="table-search" id="forced-file-search" placeholder="搜索文件">
-                <button class="secondary-button" id="clear-forced-files" type="button">清空选择</button>
-                <button class="primary-button" id="save-forced-files" type="button">保存设置</button>
-              </div>
-            </div>
-            <div class="table-wrap forced-file-table">
-              <table>
-                <thead><tr><th>强制</th><th>托管文件</th><th>策略</th><th>大小</th></tr></thead>
-                <tbody id="forced-file-table"></tbody>
-              </table>
-              <div class="empty-state" id="forced-file-empty">请先扫描标准整合包目录</div>
-            </div>
-            <p class="notice-line forced-file-notice">强制同步文件会覆盖玩家修改并忽略本地豁免；这里只影响选中的文件，不会强制同目录的其它内容。</p>
-          </section>
-
           <form class="panel form-panel" id="publish-form">
             <div class="panel-header">
               <div>
@@ -261,11 +280,11 @@
             </div>
             <div class="form-grid">
               <label class="field">
-                <span>本次显示版本</span>
+                <span>本次显示版本（必填）</span>
                 <input name="displayVersion" placeholder="1.0.1" required>
               </label>
               <label class="field">
-                <span>最低玩家端程序版本</span>
+                <span>最低玩家端程序版本（必填）</span>
                 <input name="minimumPlayerVersion" value="0.1.14" required>
               </label>
               <label class="field span-2">
@@ -297,15 +316,15 @@
             </div>
             <div class="form-grid">
               <label class="field">
-                <span>平台</span>
+                <span>平台（必填）</span>
                 <input name="platform" value="windows-x64" required>
               </label>
               <label class="field">
-                <span>最低 Bootstrap Agent 版本</span>
+                <span>最低 Bootstrap Agent 版本（必填）</span>
                 <input name="minimumBootstrapVersion" value="0.1.2" required>
               </label>
               <label class="field span-2">
-                <span>玩家端发行包解压根目录</span>
+                <span>玩家端发行包解压根目录（必填）</span>
                 <div class="path-input-row">
                   <input name="sourceDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择玩家端发行包解压根目录">浏览</button>
@@ -336,18 +355,18 @@
             </div>
             <div class="form-grid">
               <label class="field span-2">
-                <span>输出父目录</span>
+                <span>输出父目录（必填）</span>
                 <div class="path-input-row">
                   <input name="outputDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="outputDirectory" data-path-title="选择首次部署包输出目录">浏览</button>
                 </div>
               </label>
               <label class="field">
-                <span>平台</span>
+                <span>平台（必填）</span>
                 <input name="platform" value="windows-x64" required>
               </label>
               <label class="field">
-                <span>原整合包对应版本</span>
+                <span>原整合包对应版本（必填）</span>
                 <select name="releaseId" required></select>
               </label>
             </div>
@@ -361,22 +380,22 @@
             </div>
             <div class="form-grid">
               <label class="field span-2">
-                <span>Minecraft 版本隔离实例目录</span>
+                <span>Minecraft 版本隔离实例目录（必填）</span>
                 <div class="path-input-row">
                   <input name="instanceDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="instanceDirectory" data-path-title="选择 Minecraft 实例目录">浏览</button>
                 </div>
               </label>
               <label class="field">
-                <span>平台</span>
+                <span>平台（必填）</span>
                 <input name="platform" value="windows-x64" required>
               </label>
               <label class="field">
-                <span>实例内玩家端目录</span>
+                <span>实例内玩家端目录（必填）</span>
                 <input name="playerHome" value="DreamingFishUpdater" required>
               </label>
               <label class="field span-2">
-                <span>整合包发布版本</span>
+                <span>整合包发布版本（必填）</span>
                 <select name="releaseId" required></select>
               </label>
               <label class="field span-2">
@@ -395,20 +414,23 @@
             </div>
             <div class="form-grid">
               <label class="field">
-                <span>HTTP 文件服务监听地址</span>
+                <span>HTTP 文件服务监听地址（必填）</span>
                 <input name="httpHost" required>
+                <small class="field-help">服务器本机绑定地址，VPS 部署通常填写 0.0.0.0；不是玩家公网地址。</small>
               </label>
               <label class="field">
-                <span>HTTP 文件服务端口</span>
+                <span>HTTP 文件服务端口（必填）</span>
                 <input name="httpPort" type="number" min="1" max="65535" required>
+                <small class="field-help">服务器内部实际监听端口，公网端口转发应指向这里。</small>
               </label>
               <label class="field">
                 <span>Web 管理监听地址</span>
                 <input name="webHost" value="127.0.0.1" readonly>
               </label>
               <label class="field">
-                <span>Web 管理端口</span>
+                <span>Web 管理端口（必填）</span>
                 <input name="webPort" type="number" min="1" max="65535" required>
+                <small class="field-help">仅监听 127.0.0.1，远程管理请使用 SSH 隧道。</small>
               </label>
               <label class="field span-2">
                 <span>管理数据目录</span>
@@ -433,18 +455,39 @@
         <button class="icon-button" value="cancel" aria-label="关闭">×</button>
       </div>
       <div class="form-grid">
-        <label class="field"><span>项目 ID</span><input name="id" pattern="[a-z0-9][a-z0-9._-]{0,63}" required></label>
-        <label class="field"><span>项目显示名称</span><input name="displayName" required></label>
-        <label class="field span-2">
-          <span>标准整合包目录</span>
-          <div class="path-input-row">
-            <input name="sourceDirectory" required>
-            <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择标准整合包目录">浏览</button>
-          </div>
+        <label class="field">
+          <span>项目 ID（必填）</span>
+          <input name="id" pattern="[a-z0-9][a-z0-9._-]{0,63}" placeholder="build-server" title="小写字母或数字开头，可包含点、下划线和连字符" required>
+          <small class="field-help">用于接口、目录和玩家端绑定，创建后不应随意更改。</small>
         </label>
-        <label class="field span-2"><span>玩家访问公共 HTTP 地址</span><input name="publicBaseUrl" type="url" required></label>
-        <label class="field span-2"><span>强制同步一级目录</span><input name="forcedSyncDirectories" placeholder="mods, config"></label>
-        <label class="field span-2"><span>服务器地址</span><input name="serverAddress"></label>
+        <label class="field">
+          <span>项目显示名称（必填）</span>
+          <input name="displayName" placeholder="梦鱼建筑服" required>
+          <small class="field-help">显示在管理端和玩家更新器中。</small>
+        </label>
+        <label class="field span-2">
+          <span>整合包文件目录（必填）</span>
+          <div class="path-input-row">
+            <input name="sourceDirectory" placeholder="/opt/dreamingfish/projects/build-server" required>
+            <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择整合包文件目录">浏览</button>
+          </div>
+          <small class="field-help">只放需要发布的 mods、config 等内容；必须与管理数据目录分开。</small>
+        </label>
+        <label class="field span-2">
+          <span>玩家访问公共 HTTP 地址（必填）</span>
+          <input name="publicBaseUrl" type="url" placeholder="http://example.com:39988" required>
+          <small class="field-help">填写玩家实际访问的公网域名或 IP 与端口，不是 0.0.0.0、127.0.0.1 或内网监听地址。</small>
+        </label>
+        <label class="field span-2">
+          <span>强制同步一级目录（可选）</span>
+          <input name="forcedSyncDirectories" placeholder="mods, config">
+          <small class="field-help">目录内玩家额外文件会被归档或移除，请谨慎启用。</small>
+        </label>
+        <label class="field span-2">
+          <span>Minecraft 服务器地址（可选）</span>
+          <input name="serverAddress" placeholder="play.example.com:25565">
+          <small class="field-help">仅用于玩家界面展示，可与更新服务地址不同。</small>
+        </label>
       </div>
       <div class="modal-actions">
         <button class="secondary-button" value="cancel">取消</button>
@@ -474,7 +517,7 @@
       <input name="targetReleaseId" type="hidden">
       <div class="form-grid one-column">
         <label class="field"><span>目标版本</span><input name="targetLabel" readonly></label>
-        <label class="field"><span>新的显示版本</span><input name="displayVersion" required></label>
+        <label class="field"><span>新的显示版本（必填）</span><input name="displayVersion" required></label>
         <label class="field"><span>更新记录</span><textarea name="changelog" rows="4"></textarea></label>
       </div>
       <div class="modal-actions">
@@ -492,7 +535,7 @@
       </div>
       <div class="form-grid one-column source-add-grid">
         <label class="field">
-          <span>目标目录（相对于标准整合包目录）</span>
+          <span>目标目录（相对于整合包文件目录）</span>
           <input name="targetDirectory" placeholder="例如 mods；留空表示根目录">
         </label>
         <label class="check-field">
@@ -535,6 +578,20 @@
       <div class="modal-actions source-remove-actions">
         <button class="secondary-button" value="cancel">取消</button>
         <button class="secondary-button" id="source-release-action" value="RELEASE">放弃管理并保留</button>
+        <button class="danger-button" value="DELETE">从玩家端删除</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal compact-modal" id="source-bulk-remove-dialog">
+    <form method="dialog">
+      <div class="modal-accent warning"></div>
+      <span class="modal-kicker">BULK REMOVE</span>
+      <h2>批量移除整合包文件</h2>
+      <p id="source-bulk-remove-message"></p>
+      <div class="modal-actions source-remove-actions">
+        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" id="source-bulk-release-action" value="RELEASE">放弃管理并保留</button>
         <button class="danger-button" value="DELETE">从玩家端删除</button>
       </div>
     </form>

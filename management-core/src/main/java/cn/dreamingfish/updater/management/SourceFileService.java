@@ -148,38 +148,91 @@ public final class SourceFileService {
 
     public SourceMutation remove(String projectId, String sourcePath,
                                  RemovalAction action) {
+        SourceBatchMutation batch = removeBatch(projectId,
+                List.of(new SourceRemoval(sourcePath, action)));
+        RemovedSourceFile removed = batch.removed().getFirst();
+        return new SourceMutation(
+                removed.path(), removed.archivedPreviousFile(), batch.preview());
+    }
+
+    public SourceBatchMutation removeBatch(
+            String projectId, List<SourceRemoval> removals) {
+        if (removals == null || removals.isEmpty()) {
+            throw new ManagementException("Choose at least one managed source file to remove");
+        }
         ProjectRecord project = database.requireProject(projectId);
-        String normalized = PathSafety.normalizeManifestPath(sourcePath);
-        boolean insideForcedDirectory = project.rules().forcedSyncDirectories().stream()
-                .anyMatch(directory -> insideDirectory(normalized, directory));
-        if (insideForcedDirectory && action == RemovalAction.RELEASE) {
-            throw new ManagementException(
-                    "Files inside a forced sync directory cannot be released from management");
-        }
-        Path source = resolve(project, normalized);
-        requireSafeRegularFile(source, "Managed source file");
-        boolean published = latestPublishedFiles(projectId).contains(fold(normalized));
-        if (published && action == null) {
-            throw new ManagementException(
-                    "Choose whether players should delete or retain the removed file");
+        Set<String> publishedFiles = latestPublishedFiles(projectId);
+        Set<String> unique = new HashSet<>();
+        List<PreparedRemoval> prepared = new ArrayList<>();
+        for (SourceRemoval removal : removals) {
+            if (removal == null) {
+                throw new ManagementException("Source removal entry cannot be empty");
+            }
+            String normalized = PathSafety.normalizeManifestPath(removal.path());
+            if (!unique.add(fold(normalized))) {
+                throw new ManagementException(
+                        "Managed source file was selected more than once: " + normalized);
+            }
+            boolean insideForcedDirectory = project.rules().forcedSyncDirectories().stream()
+                    .anyMatch(directory -> insideDirectory(normalized, directory));
+            if (insideForcedDirectory && removal.action() == RemovalAction.RELEASE) {
+                throw new ManagementException(
+                        "Files inside a forced sync directory cannot be released from management");
+            }
+            Path source = resolve(project, normalized);
+            requireSafeRegularFile(source, "Managed source file");
+            boolean published = publishedFiles.contains(fold(normalized));
+            if (published && removal.action() == null) {
+                throw new ManagementException(
+                        "Choose whether players should delete or retain the removed file");
+            }
+            prepared.add(new PreparedRemoval(
+                    normalized, source, removal.action(), published));
         }
 
-        Path archived = archive(project, normalized, source);
+        List<ArchivedRemoval> archived = new ArrayList<>();
+        for (PreparedRemoval removal : prepared) {
+            archived.add(new ArchivedRemoval(removal,
+                    archive(project, removal.path(), removal.source())));
+        }
+
+        List<ArchivedRemoval> deleted = new ArrayList<>();
         try {
-            Files.delete(source);
-            removeEmptyParents(project.sourceDirectory(), source.getParent());
-        } catch (IOException e) {
-            restoreArchive(archived, source, e);
-            throw new ManagementException("Unable to remove managed source file: " + normalized, e);
+            for (ArchivedRemoval removal : archived) {
+                Files.delete(removal.removal().source());
+                deleted.add(removal);
+            }
+            for (ArchivedRemoval removal : deleted) {
+                removeEmptyParents(project.sourceDirectory(),
+                        removal.removal().source().getParent());
+            }
+            clearExactForcedFiles(project, unique);
+        } catch (IOException | RuntimeException e) {
+            for (int index = deleted.size() - 1; index >= 0; index--) {
+                ArchivedRemoval removal = deleted.get(index);
+                restoreArchive(removal.archive(), removal.removal().source(), e);
+            }
+            if (e instanceof ManagementException managementException) {
+                throw managementException;
+            }
+            throw new ManagementException(
+                    "Unable to remove managed source files", e);
         }
 
-        clearExactForcedFile(project, normalized);
         PublishPreview preview = scanner.createPreview(projectId);
-        if (published) {
-            preview = scanner.decideRemovals(projectId,
-                    List.of(new RemovalDecision(normalized, action)));
+        List<RemovalDecision> decisions = prepared.stream()
+                .filter(PreparedRemoval::published)
+                .map(removal -> new RemovalDecision(
+                        removal.path(), removal.action()))
+                .toList();
+        if (!decisions.isEmpty()) {
+            preview = scanner.decideRemovals(projectId, decisions);
         }
-        return new SourceMutation(normalized, archived, preview);
+        List<RemovedSourceFile> removed = archived.stream()
+                .map(removal -> new RemovedSourceFile(
+                        removal.removal().path(), removal.archive()))
+                .toList();
+        return new SourceBatchMutation(removed, preview);
     }
 
     private SourceMutation install(ProjectRecord project, String targetPath,
@@ -262,9 +315,9 @@ public final class SourceFileService {
         }
     }
 
-    private void clearExactForcedFile(ProjectRecord project, String path) {
+    private void clearExactForcedFiles(ProjectRecord project, Set<String> foldedPaths) {
         List<String> forced = project.rules().forcedSyncFiles().stream()
-                .filter(candidate -> !fold(candidate).equals(fold(path)))
+                .filter(candidate -> !foldedPaths.contains(fold(candidate)))
                 .toList();
         if (forced.size() == project.rules().forcedSyncFiles().size()) return;
         ProjectRules rules = project.rules().withForcedSyncFiles(forced);
@@ -322,6 +375,10 @@ public final class SourceFileService {
         Path candidate = current;
         while (candidate != null && !candidate.equals(normalizedRoot)
                 && candidate.startsWith(normalizedRoot)) {
+            if (!Files.isDirectory(candidate, LinkOption.NOFOLLOW_LINKS)) {
+                candidate = candidate.getParent();
+                continue;
+            }
             try (var children = Files.list(candidate)) {
                 if (children.findAny().isPresent()) break;
             }
@@ -362,6 +419,35 @@ public final class SourceFileService {
             String path,
             Path archivedPreviousFile,
             PublishPreview preview
+    ) {
+    }
+
+    public record SourceRemoval(String path, RemovalAction action) {
+    }
+
+    public record RemovedSourceFile(String path, Path archivedPreviousFile) {
+    }
+
+    public record SourceBatchMutation(
+            List<RemovedSourceFile> removed,
+            PublishPreview preview
+    ) {
+        public SourceBatchMutation {
+            removed = List.copyOf(removed);
+        }
+    }
+
+    private record PreparedRemoval(
+            String path,
+            Path source,
+            RemovalAction action,
+            boolean published
+    ) {
+    }
+
+    private record ArchivedRemoval(
+            PreparedRemoval removal,
+            Path archive
     ) {
     }
 }

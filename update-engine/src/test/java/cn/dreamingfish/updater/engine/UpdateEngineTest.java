@@ -73,7 +73,7 @@ class UpdateEngineTest {
             Files.writeString(instance.resolve("config/forced.txt"), "damaged");
             UpdateException rejected = assertThrows(UpdateException.class,
                     () -> engine.update(request(instance, playerHome, server.binding()), null));
-            assertEquals(UpdateErrorCode.LOCAL_STATE_INVALID, rejected.code());
+            assertEquals(UpdateErrorCode.LOCAL_CONTENT_CHANGED, rejected.code());
         }
     }
 

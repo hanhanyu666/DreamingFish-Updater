@@ -53,7 +53,11 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("单文件强制同步"));
             assertTrue(page.body().contains("data-path-kind=\"directory\""));
             assertTrue(!page.body().contains("data-view=\"files\""));
-            assertTrue(page.body().indexOf("标准源文件")
+            assertTrue(page.body().contains("整合包文件"));
+            assertTrue(page.body().contains("全选当前列表"));
+            assertTrue(page.body().indexOf("整合包文件")
+                    < page.body().indexOf("单文件强制同步"));
+            assertTrue(page.body().indexOf("单文件强制同步")
                     < page.body().indexOf("发布预览"));
             assertEquals("text/html; charset=utf-8", page.headers()
                     .firstValue("Content-Type").orElseThrow());
@@ -241,14 +245,16 @@ class AdminWebServerTest {
             assertEquals(201, published.statusCode(), published.body());
 
             HttpResponse<String> removed = send(base,
-                    "/api/projects/files-demo/files/remove", "POST",
+                    "/api/projects/files-demo/files/remove-batch", "POST",
                     json.writeString(Map.of(
-                            "path", "mods/example.jar",
+                            "paths", new String[]{
+                                    "mods/example.jar", "config/new.toml"},
                             "action", "RELEASE")), token);
             assertEquals(200, removed.statusCode(), removed.body());
-            assertTrue(removed.body().contains("archivedPreviousFile"));
+            assertTrue(removed.body().contains("\"count\":2"));
             assertTrue(removed.body().contains("\"removalAction\":\"RELEASE\""));
             assertTrue(!Files.exists(source.resolve("example.jar")));
+            assertTrue(!Files.exists(source.getParent().resolve("config/new.toml")));
 
             Path serverFile = temporary.resolve("server-added.jar");
             Files.writeString(serverFile, "server-import");
@@ -266,6 +272,9 @@ class AdminWebServerTest {
             assertTrue(script.body().contains("单文件强制"));
             assertTrue(script.body().contains("bindSourceFiles"));
             assertTrue(script.body().contains("app.sourceFiles?.files"));
+            assertTrue(script.body().contains("fileTreeRows"));
+            assertTrue(script.body().contains("remove-batch"));
+            assertTrue(script.body().contains("本次没有修改"));
         }
     }
 

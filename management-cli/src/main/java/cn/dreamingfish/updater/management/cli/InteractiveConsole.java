@@ -38,9 +38,17 @@ final class InteractiveConsole {
                 configureFirstRun();
             }
             root.services();
-            if (firstRun && root.services().projects().list().isEmpty()
-                    && confirm("目前还没有项目，是否现在创建第一个项目？", true)) {
-                createProject();
+            if (firstRun && root.services().projects().list().isEmpty()) {
+                root.out().println();
+                root.out().println("还没有整合包项目。推荐在 Web 管理界面中完成首次创建，"
+                        + "每个必填项都带有用途和示例。");
+                if (confirm("是否现在启动 Web 管理界面并创建第一个项目？", true)) {
+                    serveWeb(false);
+                }
+                if (root.services().projects().list().isEmpty()
+                        && confirm("仍未创建项目，是否改用命令行创建？", true)) {
+                    createProject();
+                }
             }
             mainMenu();
         } catch (InputEnded ignored) {
@@ -53,25 +61,36 @@ final class InteractiveConsole {
         root.out().println();
         root.out().println("首次运行配置");
         root.out().println("管理数据会自动保存在管理端根目录的 data 文件夹中。");
+        root.out().println("这里配置的是服务器本机监听方式，不是玩家访问的公网地址。");
+        root.out().println("玩家访问地址会在创建每个整合包项目时单独填写。");
 
         ManagementSettings current = root.settings();
         Path data = root.dataDirectory.toAbsolutePath().normalize();
         root.out().println("管理数据目录：" + data);
-        String host = prompt("HTTP 监听地址", current.httpHost());
-        int port = promptPort("HTTP 监听端口", current.httpPort());
+        root.out().println();
+        root.out().println("HTTP 文件服务监听地址：玩家更新器下载文件时，服务在本机绑定的地址。");
+        root.out().println("  公网/VPS 部署通常保留 0.0.0.0；只允许本机访问时填写 127.0.0.1。");
+        String host = prompt("HTTP 文件服务监听地址（必填）", current.httpHost());
+        root.out().println("HTTP 文件服务端口：服务器内部实际监听端口；NAT 或端口转发需指向这里。");
+        root.out().println("  示例：公网 39988 映射到服务器 8080 时，此处填写 8080。");
+        int port = promptPort("HTTP 文件服务端口（必填）", current.httpPort());
+        root.out().println("Web 管理端口：仅供管理员使用，固定监听 127.0.0.1，可通过 SSH 隧道访问。");
+        root.out().println("  该端口不会写入玩家端，也不应直接暴露到公网。");
+        int webPort = promptWebPort(
+                "Web 管理界面端口（必填）", current.webPort(), port);
         root.saveSettings(new ManagementSettings(
                 ManagementSettings.CURRENT_SCHEMA,
                 data.toString(),
                 current.defaultProjectId(),
                 host,
                 port,
-                current.webPort()
+                webPort
         ));
         root.services();
         root.out().println("配置已保存到：" + root.settingsFile());
         root.out().println("管理数据目录已初始化：" + root.dataDirectory);
         root.out().println("Web 管理界面：http://127.0.0.1:"
-                + current.webPort() + "/");
+                + webPort + "/");
     }
 
     private void mainMenu() {
@@ -122,7 +141,7 @@ final class InteractiveConsole {
         var services = root.services();
         root.out().println();
         root.out().println("项目：" + project.displayName() + " (" + project.id() + ")");
-        root.out().println("标准整合包目录：" + project.sourceDirectory());
+        root.out().println("整合包文件目录：" + project.sourceDirectory());
         root.out().println("公共地址：" + project.publicBaseUrl());
         root.out().println("强制同步目录：" + displayForcedDirectories(project.rules()));
         root.out().println("服务器地址：" + displayOrNone(project.branding().serverAddress()));
@@ -144,19 +163,31 @@ final class InteractiveConsole {
     private void createProject() {
         root.out().println();
         root.out().println("创建整合包项目");
-        root.out().println("标准整合包目录可以只包含 mods 和 config，也可以放入其它需要发布的目录。");
-        String id = promptRequired("项目 ID（小写字母、数字、点、下划线或连字符）");
-        String name = promptRequired("项目显示名称");
-        Path source = promptDirectory("标准整合包目录", null, true);
+        root.out().println("【必填】项目 ID：用于目录、接口和玩家端绑定；创建后不应随意更改。");
+        root.out().println("  格式：小写字母或数字开头，可包含点、下划线和连字符，例如 build-server。");
+        String id = promptRequired("项目 ID（必填）");
+        root.out().println("【必填】项目显示名称：显示在管理端和玩家更新器中，例如 梦鱼建筑服。");
+        String name = promptRequired("项目显示名称（必填）");
+        root.out().println("【必填】整合包文件目录：只放准备交给更新器管理的内容，例如 mods、config。");
+        root.out().println("  不需要复制完整 .minecraft；该目录必须与管理端 data 目录分开。");
+        Path source = promptDirectory("整合包文件目录（必填）", null, true);
+        root.out().println("强制同步目录：玩家不能保留目录内的额外文件，更新器会归档或移除它们。");
+        root.out().println("  只在确实需要目录完全一致时启用；留空表示不启用。");
         String forcedInput = readLine(
                 "强制同步一级目录（逗号分隔，留空不启用，例如 mods）：").trim();
+        root.out().println("强制同步文件：仅指定文件不能被玩家豁免，不影响同目录的其它文件。");
         String forcedFilesInput = readLine(
                 "强制同步文件（逗号分隔，留空不启用，例如 mods/required.jar）：").trim();
-        String publicUrl = prompt("玩家访问的公共 HTTP 地址", defaultPublicUrl());
-        String subtitle = prompt("副标题", "Minecraft 整合包更新");
-        String serverAddress = prompt("Minecraft 服务器地址（可留空）", "");
-        String accent = prompt("主强调色", "#2ee8df");
-        String secondaryAccent = prompt("次强调色", "#b06cff");
+        root.out().println("【必填】玩家访问公共 HTTP 地址：写入玩家部署包，必须能从玩家电脑访问。");
+        root.out().println("  示例：http://example.com:39988；不要填写 0.0.0.0、127.0.0.1 或 localhost。");
+        root.out().println("  它可以与服务器内部监听端口不同，但必须包含玩家实际使用的公网端口。");
+        String publicUrl = promptRequired("玩家访问公共 HTTP 地址（必填）");
+        root.out().println("以下为玩家更新器的界面信息，直接按回车可使用默认值。");
+        String subtitle = prompt("副标题（界面说明文字）", "Minecraft 整合包更新");
+        String serverAddress = prompt("Minecraft 服务器地址（可留空；与更新地址可以不同）", "");
+        String accent = prompt("主强调色（#RRGGBB）", "#2ee8df");
+        String secondaryAccent = prompt("次强调色（#RRGGBB）", "#b06cff");
+        root.out().println("封面图片用于玩家更新器电脑端背景；支持的图片格式由系统图片解码器决定。");
         String coverInput = readLine("电脑端封面图片路径（可留空）：").trim();
         Path cover = coverInput.isEmpty() ? null : requireRegularFile(coverInput, "封面图片");
 
@@ -174,14 +205,21 @@ final class InteractiveConsole {
         root.saveSettings(root.settings().withDefaultProject(id));
         root.out().println("项目已创建：" + project.displayName() + " (" + project.id() + ")");
         root.out().println("项目签名私钥已保存在管理数据目录，请通过加密备份保护它。");
+        root.out().println("建议下一步在 Web 管理界面添加整合包文件、扫描差异并创建首次发布。");
+        if (confirm("是否现在启动 Web 管理界面继续配置？", true)) {
+            serveWeb(false);
+        }
     }
 
     private void configureProject() {
         ProjectRecord current = selectProject();
         if (current == null) return;
         root.out().println("直接按回车保留当前值。");
-        String displayName = prompt("项目显示名称", current.displayName());
-        Path source = promptDirectory("标准整合包目录", current.sourceDirectory(), false);
+        root.out().println("玩家访问公共 HTTP 地址必须是玩家电脑可访问的公网域名或 IP，"
+                + "不是服务器监听地址。");
+        root.out().println("强制同步目录会清理玩家本地额外文件，修改前请确认影响范围。");
+        String displayName = prompt("项目显示名称（必填）", current.displayName());
+        Path source = promptDirectory("整合包文件目录（必填）", current.sourceDirectory(), false);
         String currentForced = String.join(",", current.rules().forcedSyncDirectories());
         String forcedInput = prompt("强制同步一级目录（逗号分隔，输入 - 清空）", currentForced);
         List<String> forcedDirectories = ProjectCreateCommand.parsePaths(forcedInput);
@@ -191,7 +229,7 @@ final class InteractiveConsole {
                 "强制同步文件（逗号分隔，输入 - 清空）", currentForcedFiles);
         List<String> forcedFiles = ProjectCreateCommand.parsePaths(
                 forcedFilesInput);
-        String publicUrl = prompt("玩家访问的公共 HTTP 地址", current.publicBaseUrl());
+        String publicUrl = prompt("玩家访问公共 HTTP 地址（必填）", current.publicBaseUrl());
         Branding old = current.branding();
         String productName = prompt("界面产品名称", old.productName());
         String subtitle = prompt("副标题", old.subtitle());
@@ -259,7 +297,7 @@ final class InteractiveConsole {
         root.out().println("强制同步目录：" + displayForcedDirectories(project.rules()));
         root.out().println("强制同步文件：" + displayForcedFiles(project.rules()));
         if (preview.changes().isEmpty()) {
-            root.out().println("没有文件变更。");
+            root.out().println("本次没有修改。");
             return;
         }
         root.out().println("变更明细：");
@@ -418,12 +456,13 @@ final class InteractiveConsole {
         ManagementSettings current = root.settings();
         root.out().println("设置文件：" + root.settingsFile());
         root.out().println("管理数据目录：" + Path.of(current.dataDirectory()));
-        String host = prompt("HTTP 监听地址", current.httpHost());
-        int port = promptPort("HTTP 监听端口", current.httpPort());
-        int webPort = promptPort("Web 管理端口（仅监听 127.0.0.1）", current.webPort());
-        if (webPort == port) {
-            throw new ManagementException("Web 管理端口不能与 HTTP 文件服务端口相同");
-        }
+        root.out().println("HTTP 设置用于玩家下载；Web 管理界面固定只监听 127.0.0.1。");
+        root.out().println("这里不修改玩家公网地址；公网地址在各项目设置中单独维护。");
+        String host = prompt("HTTP 文件服务监听地址（必填）", current.httpHost());
+        int port = promptPort("HTTP 文件服务端口（必填）", current.httpPort());
+        int webPort = promptWebPort(
+                "Web 管理端口（必填；仅监听 127.0.0.1）",
+                current.webPort(), port);
         root.saveSettings(new ManagementSettings(
                 ManagementSettings.CURRENT_SCHEMA,
                 current.dataDirectory(),
@@ -465,18 +504,24 @@ final class InteractiveConsole {
     }
 
     private void serveWeb() {
+        serveWeb(true);
+    }
+
+    private void serveWeb(boolean askBeforeStart) {
         ManagementSettings settings = root.settings();
         String address = "http://127.0.0.1:" + settings.webPort() + "/";
-        if (!confirm("启动 Web 管理界面 " + address + "？", true)) return;
+        if (askBeforeStart && !confirm("启动 Web 管理界面 " + address + "？", true)) return;
         try (AdminWebServer server = new AdminWebServer(root)) {
             Thread shutdown = new Thread(server::close, "dfs-admin-web-shutdown");
             try {
                 Runtime.getRuntime().addShutdownHook(shutdown);
                 server.start();
                 root.out().println("Web 管理界面已启动：" + address);
+                root.out().println("请在浏览器中打开以上地址完成项目创建和发布管理。");
                 root.out().println("远程服务器可使用 SSH 隧道：ssh -L "
                         + settings.webPort() + ":127.0.0.1:" + settings.webPort()
                         + " <用户>@<服务器>");
+                root.out().println("建立隧道后，仍在本地浏览器打开：" + address);
                 waitForServiceStop();
             } finally {
                 server.close();
@@ -564,7 +609,7 @@ final class InteractiveConsole {
                     .sorted(String.CASE_INSENSITIVE_ORDER)
                     .toList();
         } catch (IOException e) {
-            throw new ManagementException("无法读取标准整合包目录：" + source, e);
+            throw new ManagementException("无法读取整合包文件目录：" + source, e);
         }
     }
 
@@ -647,6 +692,15 @@ final class InteractiveConsole {
         }
     }
 
+    private int promptWebPort(
+            String label, int defaultValue, int httpPort) {
+        while (true) {
+            int webPort = promptPort(label, defaultValue);
+            if (webPort != httpPort) return webPort;
+            root.out().println("Web 管理端口不能与 HTTP 文件服务端口相同，请重新输入。");
+        }
+    }
+
     private boolean confirm(String question, boolean defaultYes) {
         String suffix = defaultYes ? " [Y/n]：" : " [y/N]：";
         while (true) {
@@ -668,10 +722,6 @@ final class InteractiveConsole {
         } catch (IOException e) {
             throw new ManagementException("无法读取终端输入", e);
         }
-    }
-
-    private String defaultPublicUrl() {
-        return "http://127.0.0.1:" + root.settings().httpPort();
     }
 
     private static String topLevelName(String path) {

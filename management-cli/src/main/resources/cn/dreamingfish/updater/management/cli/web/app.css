@@ -597,6 +597,12 @@ td:last-child {
   font-weight: 650;
 }
 
+.field-help {
+  color: var(--faint);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
 .span-2 {
   grid-column: span 2;
 }
@@ -775,6 +781,81 @@ input[readonly] {
   margin-top: 12px;
 }
 
+.selection-toolbar {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 13px;
+  border-bottom: 1px solid var(--border);
+  background: #0e161a;
+}
+
+.selection-toolbar > span {
+  flex: 1;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.selection-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.selection-check input,
+.tree-selection-check {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+  accent-color: var(--cyan);
+  cursor: pointer;
+}
+
+.selection-check input:disabled,
+.tree-selection-check:disabled {
+  cursor: default;
+}
+
+.file-tree-folder {
+  background: rgba(53, 216, 208, 0.035);
+}
+
+.file-tree-folder:hover {
+  background: rgba(53, 216, 208, 0.065);
+}
+
+.file-tree-folder td {
+  height: 40px;
+  color: #dce8e6;
+  font-weight: 700;
+}
+
+.tree-indented-cell {
+  padding-left: calc(13px + var(--tree-depth) * 18px);
+}
+
+.tree-folder-name {
+  color: #dbe7e5;
+}
+
+.tree-folder-count {
+  margin-left: 9px;
+  color: var(--faint);
+  font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.folder-status {
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--muted);
+}
+
 .source-file-header .button-row {
   flex: 0 1 560px;
 }
@@ -815,16 +896,22 @@ input[readonly] {
 
 .source-file-table th:first-child,
 .source-file-table td:first-child {
-  width: 112px;
+  width: 62px;
+  text-align: center;
 }
 
-.source-file-table th:nth-child(3),
-.source-file-table td:nth-child(3) {
-  width: 100px;
+.source-file-table th:nth-child(2),
+.source-file-table td:nth-child(2) {
+  width: 112px;
 }
 
 .source-file-table th:nth-child(4),
 .source-file-table td:nth-child(4) {
+  width: 100px;
+}
+
+.source-file-table th:nth-child(5),
+.source-file-table td:nth-child(5) {
   width: 154px;
 }
 

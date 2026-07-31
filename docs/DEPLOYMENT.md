@@ -484,6 +484,15 @@ chmod +x dfs-admin runtime/bin/java
 ./dfs-admin
 ```
 
+Linux 启动脚本会自动加入：
+
+```text
+-Djava.net.preferIPv4Stack=true
+```
+
+这会确保公共 HTTP 服务监听 IPv4 的 `0.0.0.0:8080`，无需手动设置
+`JAVA_TOOL_OPTIONS`。它只影响 Linux 管理端发行包。
+
 管理数据同样自动位于管理端根目录的：
 
 ```text

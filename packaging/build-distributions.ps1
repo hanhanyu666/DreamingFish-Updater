@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.18",
+    [string]$Version = "0.1.19",
+    [string]$AdminVersion = "0.1.16",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
@@ -177,8 +178,8 @@ if ($PlayerOnly) {
     $adminOutputs = @(
         (Join-Path $distRoot "dfs-admin-windows-x64"),
         (Join-Path $distRoot "dfs-admin-linux-x64"),
-        (Join-Path $distRoot "dfs-admin-windows-x64-$Version.zip"),
-        (Join-Path $distRoot "dfs-admin-linux-x64-$Version.zip")
+        (Join-Path $distRoot "dfs-admin-windows-x64-$AdminVersion.zip"),
+        (Join-Path $distRoot "dfs-admin-linux-x64-$AdminVersion.zip")
     )
     foreach ($adminOutput in $adminOutputs) {
         if (Test-Path -LiteralPath $adminOutput) {
@@ -279,7 +280,7 @@ Invoke-Checked $jpackage @(
     "--input", $adminInput,
     "--main-jar", "dfs-admin.jar",
     "--main-class", "cn.dreamingfish.updater.management.cli.ManagementCli",
-    "--app-version", $Version,
+    "--app-version", $AdminVersion,
     "--vendor", "DreamingFish",
     "--description", "DreamingFish modpack update management",
     "--win-console",
@@ -298,11 +299,11 @@ $adminVersionOutput = & (Join-Path $adminWindows "DreamingFishAdmin.exe") --vers
 if ($LASTEXITCODE -ne 0) {
     throw "Packaged admin version check failed: $($adminVersionOutput -join [Environment]::NewLine)"
 }
-$expectedAdminVersion = "DreamingFish Update System $Version"
+$expectedAdminVersion = "DreamingFish Update System $AdminVersion"
 if (($adminVersionOutput -join " ").Trim() -ne $expectedAdminVersion) {
     throw "Packaged admin reported the wrong version; expected '$expectedAdminVersion', got '$($adminVersionOutput -join ' ')'"
 }
-New-Zip $adminWindows (Join-Path $distRoot "dfs-admin-windows-x64-$Version.zip")
+New-Zip $adminWindows (Join-Path $distRoot "dfs-admin-windows-x64-$AdminVersion.zip")
 
 if (-not $SkipLinux) {
     # Linux cannot use a Windows runtime. Package a verified upstream Linux Java 21 runtime instead.
@@ -320,14 +321,19 @@ if (-not $SkipLinux) {
     New-Item -ItemType Directory -Force -Path (Join-Path $adminLinux "support") | Out-Null
     Copy-Item -LiteralPath $agentJar.FullName -Destination `
         (Join-Path $adminLinux "support\bootstrap-agent.jar")
-    Copy-Item -LiteralPath (Join-Path $templates "dfs-admin") -Destination $adminLinux
+    $linuxLauncher = Join-Path $adminLinux "dfs-admin"
+    Copy-Item -LiteralPath (Join-Path $templates "dfs-admin") -Destination $linuxLauncher
+    $linuxLauncherText = Get-Content -Raw -LiteralPath $linuxLauncher
+    if (-not $linuxLauncherText.Contains("-Djava.net.preferIPv4Stack=true")) {
+        throw "The Linux admin launcher must force the IPv4 network stack."
+    }
     Copy-Item -LiteralPath (Join-Path $templates "README-management-linux.txt") `
         -Destination (Join-Path $adminLinux "README.txt")
     Copy-Item -LiteralPath (Join-Path $repoRoot "docs\QUICKSTART.md") `
         -Destination (Join-Path $adminLinux "QUICKSTART.md")
     Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") `
         -Destination (Join-Path $adminLinux "DEPLOYMENT.md")
-    New-Zip $adminLinux (Join-Path $distRoot "dfs-admin-linux-x64-$Version.zip")
+    New-Zip $adminLinux (Join-Path $distRoot "dfs-admin-linux-x64-$AdminVersion.zip")
 }
 
 Write-Host "Distributions created in $distRoot"

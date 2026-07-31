@@ -21,4 +21,14 @@ class PlayerOfflineLaunchPolicyTest {
                 new RuntimeException(new UpdateException(
                         UpdateErrorCode.NETWORK_UNAVAILABLE, "wrapped"))));
     }
+
+    @Test
+    void allowsManualOverrideOnlyForChangedManagedContent() {
+        assertTrue(PlayerApplication.allowsLocalContentOverride(
+                new UpdateException(UpdateErrorCode.LOCAL_CONTENT_CHANGED, "changed")));
+        assertFalse(PlayerApplication.allowsLocalContentOverride(
+                new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID, "metadata")));
+        assertFalse(PlayerApplication.allowsLocalContentOverride(
+                new UpdateException(UpdateErrorCode.INVALID_SIGNATURE, "invalid")));
+    }
 }

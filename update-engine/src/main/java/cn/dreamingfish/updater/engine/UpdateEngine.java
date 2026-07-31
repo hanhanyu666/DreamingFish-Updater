@@ -120,16 +120,16 @@ public final class UpdateEngine {
                         local.release().manifest().forcedSyncDirectories());
         if (!localStore.verifyFiles(paths, local, progress, effectiveOverrides,
                 request.cancellationToken())) {
-            throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID,
-                    "The update service is unavailable and the last installation is no longer valid",
+            throw new UpdateException(UpdateErrorCode.LOCAL_CONTENT_CHANGED,
+                    "The update service is unavailable and managed files were changed locally",
                     networkFailure);
         }
         UpdatePlan localPlan = planner.create(paths, local.release(), local,
                 effectiveOverrides, progress,
                 request.cancellationToken());
         if (!localPlan.operations().isEmpty()) {
-            throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID,
-                    "The offline installation requires repair", networkFailure);
+            throw new UpdateException(UpdateErrorCode.LOCAL_CONTENT_CHANGED,
+                    "The offline installation has managed files that require repair", networkFailure);
         }
         persistBundledBaseline(paths, local);
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,

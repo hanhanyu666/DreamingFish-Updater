@@ -46,7 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.18";
+    static final String VERSION = "0.1.19";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
@@ -113,6 +113,7 @@ public final class PlayerApplication extends Application {
         stage.setScene(scene);
         view.setCloseAction(this::requestClose);
         view.setRetryAction(this::startUpdate);
+        view.setContinueLaunchAction(this::continueAfterLocalContentChange);
         view.setOpenDirectoryAction(this::openPlayerDirectory);
         view.setOpenArchiveAction(() -> {
             keepWindowOpen();
@@ -494,6 +495,11 @@ public final class PlayerApplication extends Application {
                 && update.code() == UpdateErrorCode.NETWORK_UNAVAILABLE;
     }
 
+    static boolean allowsLocalContentOverride(Throwable failure) {
+        return failure instanceof UpdateException update
+                && update.code() == UpdateErrorCode.LOCAL_CONTENT_CHANGED;
+    }
+
     private void keepWindowOpen() {
         autoCloseSuppressed = true;
         if (autoCloseCountdown != null) {
@@ -507,7 +513,31 @@ public final class PlayerApplication extends Application {
         String detail = error.getMessage() == null || error.getMessage().isBlank()
                 ? "请查看日志后重试"
                 : error.getMessage();
-        view.showError(title, detail);
+        view.showError(title, detail, allowsLocalContentOverride(error));
+    }
+
+    private void continueAfterLocalContentChange() {
+        if (!PlayerDialog.confirm(stage, PlayerDialog.Tone.WARNING,
+                "忽略本地文件变更", "仍然启动 Minecraft？",
+                "更新服务器当前不可用，部分受管理的本地文件与上次验证版本不一致。"
+                        + "继续后会保留当前文件，本次不会把它标记为已验证。",
+                "仍然启动", "返回检查")) {
+            return;
+        }
+        Thread.ofVirtual().name("manual-local-content-launch").start(() -> {
+            try {
+                permitClient.allow();
+                launchPermitted = true;
+                log.warn("Player chose to launch with locally changed managed files");
+                Platform.runLater(() -> {
+                    view.showLocalContentOverrideLaunch();
+                    startAutoCloseCountdown();
+                });
+            } catch (Exception e) {
+                log.error("Unable to grant launch permission after local content override", e);
+                Platform.runLater(() -> showFailure(errorTitle(e), e));
+            }
+        });
     }
 
     private void showInitializationFailure(Exception error) {
@@ -640,6 +670,7 @@ public final class PlayerApplication extends Application {
             case GAME_RUNNING -> "请先关闭正在运行的游戏";
             case INSTANCE_BUSY -> "另一个更新任务正在运行";
             case HASH_MISMATCH, DOWNLOAD_FAILED -> "更新文件下载失败";
+            case LOCAL_CONTENT_CHANGED -> "本地托管文件已变更";
             case LOCAL_STATE_INVALID -> "本地整合包需要修复";
             case PATH_UNSAFE -> "发布中包含不安全路径";
             case RECOVERY_FAILED, TRANSACTION_FAILED -> "更新事务未能完成";

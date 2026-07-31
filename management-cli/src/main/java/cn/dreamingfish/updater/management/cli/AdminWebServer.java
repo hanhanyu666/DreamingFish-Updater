@@ -234,6 +234,22 @@ final class AdminWebServer implements AutoCloseable {
                                     required(request.path, "托管文件路径"),
                                     request.action))));
                 }
+                case "remove-batch" -> {
+                    if (!exchange.getRequestMethod().equals("POST")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "源文件批量移除只允许 POST");
+                    }
+                    SourceBatchRemoveRequest request = readJson(
+                            exchange, SourceBatchRemoveRequest.class);
+                    List<SourceFileService.SourceRemoval> removals =
+                            request.paths == null ? List.of() : request.paths.stream()
+                                    .map(sourcePath -> new SourceFileService.SourceRemoval(
+                                            required(sourcePath, "托管文件路径"), request.action))
+                                    .toList();
+                    sendJson(exchange, 200, mutate(() -> sourceBatchMutationView(
+                            root.services().sourceFiles().removeBatch(
+                                    projectId, removals))));
+                }
                 default -> throw new WebApiException(
                         404, "not_found", "文件管理 API 不存在");
             }
@@ -641,6 +657,18 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
+    private static Map<String, Object> sourceBatchMutationView(
+            SourceFileService.SourceBatchMutation mutation) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("count", mutation.removed().size());
+        result.put("removed", mutation.removed().stream().map(file -> Map.of(
+                "path", file.path(),
+                "archivedPreviousFile", file.archivedPreviousFile().toString()
+        )).toList());
+        result.put("preview", previewView(mutation.preview()));
+        return result;
+    }
+
     private static Map<String, Object> previewView(PublishPreview preview) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("previewId", preview.previewId());
@@ -900,6 +928,12 @@ final class AdminWebServer implements AutoCloseable {
 
     private record SourceRemoveRequest(
             String path,
+            RemovalAction action
+    ) {
+    }
+
+    private record SourceBatchRemoveRequest(
+            List<String> paths,
             RemovalAction action
     ) {
     }

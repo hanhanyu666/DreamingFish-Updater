@@ -95,4 +95,41 @@ class SourceFileServiceTest {
         assertTrue(failure.getMessage().contains("forced sync directory"));
         assertTrue(Files.isRegularFile(mod));
     }
+
+    @Test
+    void batchRemovalArchivesAllFilesAndScansOnlyTheFinalState() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary.resolve("batch"));
+        ProjectRecord project = fixture.createProject();
+        Path first = fixture.source.resolve("mods/first.jar");
+        Path second = fixture.source.resolve("config/second.toml");
+        Files.createDirectories(first.getParent());
+        Files.createDirectories(second.getParent());
+        Files.writeString(first, "first");
+        Files.writeString(second, "second");
+        fixture.projects.configure("demo", null, null, null,
+                project.rules().withForcedSyncFiles(List.of(
+                        "mods/first.jar", "config/second.toml")));
+        fixture.scanner.createPreview("demo");
+        fixture.publisher.publish("demo", "1.0", "0.1.13", "First");
+
+        SourceFileService service = new SourceFileService(
+                fixture.paths, fixture.database, fixture.json);
+        SourceFileService.SourceBatchMutation result = service.removeBatch(
+                "demo", List.of(
+                        new SourceFileService.SourceRemoval(
+                                "mods/first.jar", RemovalAction.DELETE),
+                        new SourceFileService.SourceRemoval(
+                                "config/second.toml", RemovalAction.DELETE)));
+
+        assertEquals(2, result.removed().size());
+        assertFalse(Files.exists(first));
+        assertFalse(Files.exists(second));
+        assertTrue(result.removed().stream().allMatch(file ->
+                Files.isRegularFile(file.archivedPreviousFile())));
+        assertEquals(2, result.preview().changes().stream()
+                .filter(change -> change.removalAction() == RemovalAction.DELETE)
+                .count());
+        assertTrue(fixture.database.requireProject("demo")
+                .rules().forcedSyncFiles().isEmpty());
+    }
 }

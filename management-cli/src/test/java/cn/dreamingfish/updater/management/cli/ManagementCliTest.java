@@ -24,7 +24,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.1.15"));
+        assertTrue(version.out().contains("0.1.16"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -150,6 +150,9 @@ class ManagementCliTest {
         String input = String.join(System.lineSeparator(),
                 "",
                 "18081",
+                "18081",
+                "",
+                "n",
                 "",
                 "interactive-pack",
                 "交互测试整合包",
@@ -162,6 +165,7 @@ class ManagementCliTest {
                 "",
                 "",
                 "",
+                "n",
                 "4",
                 "1.0.0",
                 "",
@@ -174,6 +178,11 @@ class ManagementCliTest {
         Invocation invocation = invokeWithInput(settingsFile, input);
         assertEquals(0, invocation.exitCode(), invocation.err());
         assertTrue(invocation.out().contains("首次运行配置"));
+        assertTrue(invocation.out().contains("不是玩家访问的公网地址"));
+        assertTrue(invocation.out().contains("Web 管理界面并创建第一个项目"));
+        assertTrue(invocation.out().contains("玩家访问公共 HTTP 地址（必填）"));
+        assertTrue(invocation.out().contains(
+                "Web 管理端口不能与 HTTP 文件服务端口相同，请重新输入"));
         assertTrue(invocation.out().contains("管理数据目录：" + data));
         assertTrue(!invocation.out().contains("管理数据目录 ["));
         assertTrue(invocation.out().contains("本次内容范围：config/、mods/"));

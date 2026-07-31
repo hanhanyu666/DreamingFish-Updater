@@ -8,6 +8,7 @@ const app = {
   view: "dashboard",
   busy: false,
   forcedFileSelection: new Set(),
+  sourceFileSelection: new Set(),
   sourceFiles: null,
   pendingUploads: []
 };
@@ -104,6 +105,7 @@ async function loadProject(projectId, platform) {
       + `?platform=${encodeURIComponent(requestedPlatform)}`
   );
   app.forcedFileSelection = new Set(app.project.forcedSyncFiles || []);
+  app.sourceFileSelection = new Set();
   app.sourceFiles = null;
   renderProjectOptions();
   renderProjectDependentViews();
@@ -199,6 +201,12 @@ async function loadSourceFiles() {
   app.sourceFiles = await api(
     `/api/projects/${encodeURIComponent(app.project.id)}/files`
   );
+  const selected = app.sourceFileSelection;
+  app.sourceFileSelection = new Set(
+    (app.sourceFiles.files || [])
+      .filter((file) => pathSelected(selected, file.path))
+      .map((file) => file.path)
+  );
   renderSourceFiles();
   renderForcedFiles();
 }
@@ -210,15 +218,21 @@ function renderSourceFiles() {
     byId("source-managed-count").textContent = "--";
     byId("source-total-size").textContent = "--";
     byId("source-forced-count").textContent = "--";
+    byId("source-file-selection-count").textContent = "未选择文件";
+    byId("source-file-select-all").checked = false;
+    byId("source-file-select-all").indeterminate = false;
+    byId("source-file-select-all").disabled = true;
+    byId("remove-selected-source-files").disabled = true;
     setRows("source-file-table", "source-file-empty", []);
     return;
   }
   const query = byId("source-file-search").value
     .trim().toLocaleLowerCase("zh-CN");
-  const files = (result.files || []).filter((file) =>
+  const allFiles = result.files || [];
+  const files = allFiles.filter((file) =>
     !query || file.path.toLocaleLowerCase("zh-CN").includes(query)
   );
-  const forcedCount = (result.files || []).filter(
+  const forcedCount = allFiles.filter(
     (file) => file.forcedByDirectory || file.forcedByFile
   ).length;
   byId("source-file-count").textContent = query
@@ -227,25 +241,99 @@ function renderSourceFiles() {
   byId("source-managed-count").textContent = String(result.count);
   byId("source-total-size").textContent = formatBytes(result.totalBytes);
   byId("source-forced-count").textContent = String(forcedCount);
-  const rows = files.map((file) => {
-    const status = document.createElement("span");
-    status.className = "source-status";
-    if (file.forcedByDirectory || file.forcedByFile) {
-      status.classList.add("forced");
-      status.textContent = file.forcedByDirectory ? "目录强制" : "单文件强制";
-    } else {
-      status.textContent = file.policy === "DEFAULT" ? "默认文件" : "普通托管";
-    }
-    const remove = actionButton("移除", () => removeSourceFile(file));
-    return row([
-      status,
-      pathCell(file.path),
-      formatBytes(file.size),
-      formatDate(file.lastModifiedMillis),
-      remove
-    ]);
-  });
+  byId("source-file-empty").textContent = query
+    ? "没有符合搜索条件的文件"
+    : "整合包目录中没有文件";
+  const rows = fileTreeRows(
+    files,
+    sourceFolderRow,
+    sourceFileRow
+  );
   setRows("source-file-table", "source-file-empty", rows);
+  updateSourceFileSelection(files);
+}
+
+function sourceFolderRow(node, depth) {
+  const control = treeSelectionCell(
+    node.entries,
+    (file) => pathSelected(app.sourceFileSelection, file.path),
+    () => true,
+    (checked, files) => {
+      setPathsSelected(app.sourceFileSelection, files, checked);
+      renderSourceFiles();
+    },
+    node.path ? `选择 ${node.path}/ 中的全部文件` : "选择当前列表中的全部文件"
+  );
+  const status = document.createElement("span");
+  status.className = "source-status folder-status";
+  status.textContent = node.path ? "文件夹" : "全部";
+  const folder = folderPathCell(node, depth);
+  const totalBytes = node.entries.reduce(
+    (sum, file) => sum + Number(file.size || 0), 0
+  );
+  const item = row([
+    control,
+    status,
+    folder,
+    formatBytes(totalBytes),
+    "--",
+    ""
+  ]);
+  item.className = "file-tree-folder";
+  return item;
+}
+
+function sourceFileRow(file, depth) {
+  const control = document.createElement("td");
+  const checkbox = selectionCheckbox(
+    pathSelected(app.sourceFileSelection, file.path),
+    false,
+    `选择 ${file.path}`
+  );
+  checkbox.addEventListener("change", () => {
+    setPathSelected(app.sourceFileSelection, file.path, checkbox.checked);
+    renderSourceFiles();
+  });
+  control.append(checkbox);
+
+  const status = document.createElement("span");
+  status.className = "source-status";
+  if (file.forcedByDirectory || file.forcedByFile) {
+    status.classList.add("forced");
+    status.textContent = file.forcedByDirectory ? "目录强制" : "单文件强制";
+  } else {
+    status.textContent = file.policy === "DEFAULT" ? "默认文件" : "普通托管";
+  }
+  const filePath = pathCell(file.path);
+  indentTreeCell(filePath, depth);
+  const remove = actionButton("移除", () => removeSourceFile(file));
+  const item = row([
+    control,
+    status,
+    filePath,
+    formatBytes(file.size),
+    formatDate(file.lastModifiedMillis),
+    remove
+  ]);
+  item.className = "file-tree-file";
+  return item;
+}
+
+function updateSourceFileSelection(visibleFiles = []) {
+  const allFiles = app.sourceFiles?.files || [];
+  const selected = allFiles.filter(
+    (file) => pathSelected(app.sourceFileSelection, file.path)
+  );
+  byId("source-file-selection-count").textContent = selected.length === 0
+    ? "未选择文件"
+    : `已选择 ${selected.length} 个文件`;
+  byId("remove-selected-source-files").disabled = selected.length === 0;
+  applySelectionState(
+    byId("source-file-select-all"),
+    visibleFiles,
+    (file) => pathSelected(app.sourceFileSelection, file.path),
+    () => true
+  );
 }
 
 function renderProjectForm() {
@@ -282,6 +370,7 @@ function renderPreview() {
       element.textContent = "--";
     });
     byId("preview-time").textContent = "尚未扫描";
+    byId("preview-empty").textContent = "扫描后显示文件变更";
     setRows("preview-table", "preview-empty", []);
     byId("release-all-button").disabled = true;
     byId("delete-all-button").disabled = true;
@@ -301,7 +390,10 @@ function renderPreview() {
     `扫描于 ${formatDate(preview.createdAt)}`
       + (removals.length > 0
         ? ` · ${undecided > 0 ? `待决定 ${undecided} 项` : "移除项已确认"}`
-        : "");
+        : preview.changes.length === 0 ? " · 本次没有修改" : "");
+  byId("preview-empty").textContent = preview.changes.length === 0
+    ? "本次没有修改"
+    : "扫描后显示文件变更";
   byId("release-all-button").disabled = removals.length === 0;
   byId("delete-all-button").disabled = removals.length === 0;
   const rows = preview.changes.map((change) => {
@@ -365,10 +457,31 @@ function renderRemovalStatus() {
 }
 
 function renderForcedFiles() {
+  const allFiles = forcedFileCandidates();
+  const query = byId("forced-file-search").value.trim().toLocaleLowerCase("zh-CN");
+  const files = allFiles
+    .filter((file) => !query
+      || file.path.toLocaleLowerCase("zh-CN").includes(query))
+    .sort(compareFilePath);
+  byId("forced-file-empty").textContent = query
+    ? "没有符合搜索条件的文件"
+    : "请先读取或扫描整合包目录";
+  const rows = fileTreeRows(
+    files,
+    forcedFolderRow,
+    forcedFileRow
+  );
+  setRows("forced-file-table", "forced-file-empty", rows);
+  updateForcedFileCount(files, allFiles);
+}
+
+function forcedFileCandidates() {
   const previewFiles = app.project?.preview?.files
     || app.sourceFiles?.files
     || [];
-  const known = new Map(previewFiles.map((file) => [foldPath(file.path), file]));
+  const known = new Map(previewFiles.map(
+    (file) => [foldPath(file.path), file]
+  ));
   (app.project?.forcedSyncFiles || []).forEach((path) => {
     if (!known.has(foldPath(path))) {
       known.set(foldPath(path), {
@@ -378,64 +491,88 @@ function renderForcedFiles() {
       });
     }
   });
-  const query = byId("forced-file-search").value.trim().toLocaleLowerCase("zh-CN");
-  const files = [...known.values()]
-    .filter((file) => !query
-      || file.path.toLocaleLowerCase("zh-CN").includes(query))
-    .sort((left, right) => left.path.localeCompare(
-      right.path, "zh-CN", { sensitivity: "base" }
-    ));
-  const rows = files.map((file) => {
-    const directoryForced = insideForcedDirectory(file.path);
-    const missing = file.policy === "MISSING";
-    const control = document.createElement("td");
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "forced-file-check";
-    checkbox.dataset.path = file.path;
-    checkbox.checked = directoryForced
-      || app.forcedFileSelection.has(file.path);
-    checkbox.disabled = directoryForced || missing;
-    checkbox.title = directoryForced
-      ? "该文件已由强制同步目录覆盖"
-      : missing
-        ? "源目录中已找不到该文件；取消旧选择后保存"
-        : "玩家不能豁免选中的文件";
-    control.append(checkbox);
-    const fileForced = [...app.forcedFileSelection]
-      .some((path) => foldPath(path) === foldPath(file.path));
-    const policy = directoryForced
-      ? "目录强制"
-      : fileForced ? "单文件强制"
-        : missing ? "源文件缺失"
-          : file.policy === "DEFAULT" ? "默认" : "普通托管";
-    const policyCell = textCell(policy);
-    checkbox.addEventListener("change", () => {
-      if (checkbox.checked) app.forcedFileSelection.add(file.path);
-      else app.forcedFileSelection.delete(file.path);
-      policyCell.textContent = checkbox.checked
-        ? "单文件强制"
-        : file.policy === "DEFAULT" ? "默认" : "普通托管";
-      policyCell.title = policyCell.textContent;
-      updateForcedFileCount();
-    });
-    return row([
-      control,
-      pathCell(file.path),
-      policyCell,
-      file.size === null ? "--" : formatBytes(file.size)
-    ]);
-  });
-  setRows("forced-file-table", "forced-file-empty", rows);
-  updateForcedFileCount();
+  return [...known.values()].sort(compareFilePath);
 }
 
-function updateForcedFileCount() {
+function forcedFolderRow(node, depth) {
+  const control = forcedTreeSelectionCell(node.entries, (checked, files) => {
+    setPathsSelected(app.forcedFileSelection, files, checked);
+    renderForcedFiles();
+  }, node.path
+    ? `选择 ${node.path}/ 中全部可设置的文件`
+    : "选择当前列表中全部可设置的文件");
+  const available = node.entries.filter(forcedFileSelectable);
+  const selected = available.filter(
+    (file) => pathSelected(app.forcedFileSelection, file.path)
+  ).length;
+  const existing = node.entries.filter((file) => file.policy !== "MISSING");
+  const entirelyDirectoryForced = existing.length > 0
+    && existing.every((file) => insideForcedDirectory(file.path));
+  const policy = available.length === 0
+    ? entirelyDirectoryForced ? "已由目录强制" : "无可选文件"
+    : selected === 0
+      ? `${available.length} 个可选文件`
+      : `已选 ${selected}/${available.length}`;
+  const item = row([
+    control,
+    folderPathCell(node, depth),
+    policy,
+    formatBytes(node.entries.reduce(
+      (sum, file) => sum + Number(file.size || 0), 0
+    ))
+  ]);
+  item.className = "file-tree-folder";
+  return item;
+}
+
+function forcedFileRow(file, depth) {
+  const directoryForced = insideForcedDirectory(file.path);
+  const missing = file.policy === "MISSING";
+  const control = document.createElement("td");
+  const checkbox = selectionCheckbox(
+    directoryForced || pathSelected(app.forcedFileSelection, file.path),
+    directoryForced || missing,
+    directoryForced
+      ? "该文件已由强制同步目录覆盖"
+      : missing
+        ? "源目录中已找不到该文件；清空旧选择后保存即可移除规则"
+        : "玩家不能豁免选中的文件"
+  );
+  checkbox.classList.add("forced-file-check");
+  checkbox.dataset.path = file.path;
+  checkbox.addEventListener("change", () => {
+    setPathSelected(app.forcedFileSelection, file.path, checkbox.checked);
+    renderForcedFiles();
+  });
+  control.append(checkbox);
+  const fileForced = pathSelected(app.forcedFileSelection, file.path);
+  const policy = directoryForced
+    ? "目录强制"
+    : fileForced ? "单文件强制"
+      : missing ? "源文件缺失"
+        : file.policy === "DEFAULT" ? "默认" : "普通托管";
+  const filePath = pathCell(file.path);
+  indentTreeCell(filePath, depth);
+  const item = row([
+    control,
+    filePath,
+    policy,
+    file.size === null ? "--" : formatBytes(file.size)
+  ]);
+  item.className = "file-tree-file";
+  return item;
+}
+
+function updateForcedFileCount(visibleFiles = [], allFiles = forcedFileCandidates()) {
   const count = app.forcedFileSelection.size;
   byId("forced-file-count").textContent =
     count === 0
       ? "未单独强制任何文件"
       : `已选择 ${count} 个单独强制同步文件`;
+  byId("forced-file-visible-count").textContent = visibleFiles.length === allFiles.length
+    ? `${allFiles.length} 个文件，文件夹可整组选择`
+    : `显示 ${visibleFiles.length} / ${allFiles.length} 个文件`;
+  applyForcedSelectionState(byId("forced-file-select-all"), visibleFiles);
 }
 
 function renderReleases() {
@@ -501,7 +638,7 @@ function bindEvents() {
     button.addEventListener("click", async () => {
       const needsSourceFiles = button.dataset.view === "publish";
       if (needsSourceFiles && app.project && !app.sourceFiles) {
-        await runBusy("正在读取标准源目录", async () => {
+        await runBusy("正在读取整合包文件", async () => {
           await loadSourceFiles();
           showView(button.dataset.view);
         });
@@ -596,6 +733,21 @@ function bindDeployment() {
 
 function bindSourceFiles() {
   byId("source-file-search").addEventListener("input", renderSourceFiles);
+  byId("source-file-select-all").addEventListener("change", (event) => {
+    setPathsSelected(
+      app.sourceFileSelection,
+      visibleSourceFiles(),
+      event.target.checked
+    );
+    renderSourceFiles();
+  });
+  byId("clear-source-selection").addEventListener("click", () => {
+    app.sourceFileSelection.clear();
+    renderSourceFiles();
+  });
+  byId("remove-selected-source-files").addEventListener(
+    "click", removeSelectedSourceFiles
+  );
   byId("reload-source-files").addEventListener("click", () =>
     runBusy("正在刷新源文件", async () => {
       await loadSourceFiles();
@@ -718,7 +870,7 @@ async function uploadSelectedSources() {
     await loadSourceFiles();
     byId("source-add-dialog").close();
     showView("publish");
-    toast(`${files.length} 个文件已加入标准源目录`);
+    toast(`${files.length} 个文件已加入整合包目录`);
   } catch (error) {
     toast(error.message, true);
     try {
@@ -799,7 +951,7 @@ async function importServerSource() {
     await loadSourceFiles();
     byId("source-add-dialog").close();
     showView("publish");
-    toast("服务器文件已加入标准源目录");
+    toast("服务器文件已加入整合包目录");
   });
 }
 
@@ -822,6 +974,63 @@ async function removeSourceFile(file) {
   });
 }
 
+async function removeSelectedSourceFiles() {
+  if (!app.project || !app.sourceFiles) return;
+  const files = (app.sourceFiles.files || []).filter(
+    (file) => pathSelected(app.sourceFileSelection, file.path)
+  );
+  if (files.length === 0) {
+    toast("请先选择要移除的整合包文件", true);
+    return;
+  }
+  const action = await chooseBulkSourceRemoval(files);
+  if (!action) return;
+  await runBusy(`正在归档并移除 ${files.length} 个文件`, async () => {
+    await api(
+      `/api/projects/${encodeURIComponent(app.project.id)}/files/remove-batch`,
+      {
+        method: "POST",
+        body: {
+          paths: files.map((file) => file.path),
+          action
+        }
+      }
+    );
+    app.sourceFileSelection.clear();
+    await loadProject(app.project.id);
+    await loadSourceFiles();
+    showView("publish");
+    const playerResult = action === "RELEASE"
+      ? "玩家本地将保留这些文件"
+      : "玩家更新时将移除这些文件";
+    toast(`已移除 ${files.length} 个整合包文件；${playerResult}`);
+  });
+}
+
+function chooseBulkSourceRemoval(files) {
+  const dialog = byId("source-bulk-remove-dialog");
+  const release = byId("source-bulk-release-action");
+  const forcedCount = files.filter((file) => file.forcedByDirectory).length;
+  release.disabled = forcedCount > 0;
+  release.title = forcedCount > 0
+    ? `所选文件中有 ${forcedCount} 个位于强制同步目录，只能从玩家端删除`
+    : "玩家本地已有副本将退出管理并保留";
+  byId("source-bulk-remove-message").textContent =
+    `已选择 ${files.length} 个文件。\n\n`
+      + "所有源文件会先归档，再从整合包目录移出。"
+      + (forcedCount > 0
+        ? `其中 ${forcedCount} 个位于强制同步目录，不能选择“放弃管理并保留”。`
+        : "请选择玩家更新到下一版本时如何处理。");
+  dialog.returnValue = "cancel";
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      resolve(["DELETE", "RELEASE"].includes(dialog.returnValue)
+        ? dialog.returnValue : null);
+    }, { once: true });
+  });
+}
+
 function chooseSourceRemoval(file) {
   const dialog = byId("source-remove-dialog");
   const release = byId("source-release-action");
@@ -830,7 +1039,7 @@ function chooseSourceRemoval(file) {
     ? "强制同步目录中的文件只能从玩家端删除"
     : "玩家本地已有副本将退出管理并保留";
   byId("source-remove-message").textContent =
-    `${file.path}\n\n源文件会先归档，随后从标准源目录移出。`
+    `${file.path}\n\n文件会先归档，随后从整合包目录移出。`
       + (file.published
         ? "请选择玩家更新到下一版本时如何处理。"
         : "该文件尚未发布，选择仅用于保持操作流程一致。");
@@ -916,7 +1125,9 @@ function bindProjectCreate() {
       });
       dialog.close();
       await refreshState(created.id);
-      toast(`项目 ${created.displayName} 已创建`);
+      await loadSourceFiles();
+      showView("publish");
+      toast(`项目 ${created.displayName} 已创建，请添加文件并完成首次扫描`);
     });
   });
 }
@@ -964,6 +1175,14 @@ function bindPublish() {
     setAllRemovalActions("DELETE");
   });
   byId("forced-file-search").addEventListener("input", renderForcedFiles);
+  byId("forced-file-select-all").addEventListener("change", (event) => {
+    setPathsSelected(
+      app.forcedFileSelection,
+      visibleForcedFiles().filter(forcedFileSelectable),
+      event.target.checked
+    );
+    renderForcedFiles();
+  });
   byId("clear-forced-files").addEventListener("click", () => {
     app.forcedFileSelection.clear();
     renderForcedFiles();
@@ -992,7 +1211,9 @@ function bindPublish() {
       );
       await refreshState(app.project.id);
       showView("publish");
-      toast("扫描完成");
+      toast(app.project.preview?.changes.length === 0
+        ? "扫描完成，本次没有修改"
+        : "扫描完成");
     });
   });
   const form = byId("publish-form");
@@ -1358,6 +1579,197 @@ function directoryList(value) {
     .split(/[,，\n]/)
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function visibleSourceFiles() {
+  const query = byId("source-file-search").value
+    .trim().toLocaleLowerCase("zh-CN");
+  return (app.sourceFiles?.files || []).filter((file) =>
+    !query || file.path.toLocaleLowerCase("zh-CN").includes(query)
+  );
+}
+
+function visibleForcedFiles() {
+  const query = byId("forced-file-search").value
+    .trim().toLocaleLowerCase("zh-CN");
+  return forcedFileCandidates().filter((file) =>
+    !query || file.path.toLocaleLowerCase("zh-CN").includes(query)
+  );
+}
+
+function fileTreeRows(files, folderRenderer, fileRenderer) {
+  if (files.length === 0) return [];
+  const root = buildFileTree(files);
+  const rows = [];
+  const append = (node, depth) => {
+    rows.push(folderRenderer(node, depth));
+    [...node.folders.values()]
+      .sort((left, right) => left.name.localeCompare(
+        right.name, "zh-CN", { sensitivity: "base" }
+      ))
+      .forEach((folder) => append(folder, depth + 1));
+    node.files
+      .sort(compareFilePath)
+      .forEach((file) => rows.push(fileRenderer(file, depth + 1)));
+  };
+  append(root, 0);
+  return rows;
+}
+
+function buildFileTree(files) {
+  const root = {
+    name: "",
+    path: "",
+    entries: [],
+    files: [],
+    folders: new Map()
+  };
+  files.forEach((file) => {
+    const parts = String(file.path || "")
+      .replaceAll("\\", "/")
+      .split("/")
+      .filter(Boolean);
+    root.entries.push(file);
+    let node = root;
+    let currentPath = "";
+    parts.slice(0, -1).forEach((name) => {
+      currentPath = currentPath ? `${currentPath}/${name}` : name;
+      const key = name.toLocaleLowerCase("en-US");
+      if (!node.folders.has(key)) {
+        node.folders.set(key, {
+          name,
+          path: currentPath,
+          entries: [],
+          files: [],
+          folders: new Map()
+        });
+      }
+      node = node.folders.get(key);
+      node.entries.push(file);
+    });
+    node.files.push(file);
+  });
+  return root;
+}
+
+function folderPathCell(node, depth) {
+  const cell = document.createElement("td");
+  cell.className = "path-cell tree-path-cell";
+  indentTreeCell(cell, depth);
+  const label = document.createElement("span");
+  label.className = "tree-folder-name";
+  label.textContent = node.path ? `${node.name}/` : "全部文件";
+  const count = document.createElement("span");
+  count.className = "tree-folder-count";
+  count.textContent = `${node.entries.length} 个文件`;
+  cell.title = node.path ? `${node.path}/` : "当前列表中的全部文件";
+  cell.append(label, count);
+  return cell;
+}
+
+function indentTreeCell(cell, depth) {
+  cell.classList.add("tree-indented-cell");
+  cell.style.setProperty("--tree-depth", String(Math.max(0, depth)));
+}
+
+function treeSelectionCell(
+  files, isSelected, isSelectable, onChange, title
+) {
+  const cell = document.createElement("td");
+  const checkbox = selectionCheckbox(false, false, title);
+  applySelectionState(checkbox, files, isSelected, isSelectable);
+  checkbox.addEventListener("change", () => {
+    onChange(checkbox.checked, files.filter(isSelectable));
+  });
+  cell.append(checkbox);
+  return cell;
+}
+
+function forcedTreeSelectionCell(files, onChange, title) {
+  const cell = document.createElement("td");
+  const checkbox = selectionCheckbox(false, false, title);
+  const existing = files.filter((file) => file.policy !== "MISSING");
+  const selectable = files.filter(forcedFileSelectable);
+  const selected = existing.filter((file) =>
+    insideForcedDirectory(file.path)
+      || pathSelected(app.forcedFileSelection, file.path)
+  ).length;
+  checkbox.checked = existing.length > 0 && selected === existing.length;
+  checkbox.indeterminate = selected > 0 && selected < existing.length;
+  checkbox.disabled = selectable.length === 0;
+  checkbox.addEventListener("change", () => {
+    onChange(checkbox.checked, selectable);
+  });
+  cell.append(checkbox);
+  return cell;
+}
+
+function selectionCheckbox(checked, disabled, title) {
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "tree-selection-check";
+  checkbox.checked = checked;
+  checkbox.disabled = disabled;
+  checkbox.title = title;
+  checkbox.setAttribute("aria-label", title);
+  return checkbox;
+}
+
+function applySelectionState(
+  checkbox, files, isSelected, isSelectable
+) {
+  const selectable = files.filter(isSelectable);
+  const selected = selectable.filter(isSelected).length;
+  checkbox.checked = selectable.length > 0 && selected === selectable.length;
+  checkbox.indeterminate = selected > 0 && selected < selectable.length;
+  checkbox.disabled = selectable.length === 0;
+}
+
+function applyForcedSelectionState(checkbox, files) {
+  const existing = files.filter((file) => file.policy !== "MISSING");
+  const selected = existing.filter((file) =>
+    insideForcedDirectory(file.path)
+      || pathSelected(app.forcedFileSelection, file.path)
+  ).length;
+  checkbox.checked = existing.length > 0 && selected === existing.length;
+  checkbox.indeterminate = selected > 0 && selected < existing.length;
+  checkbox.disabled = !files.some(forcedFileSelectable);
+}
+
+function forcedFileSelectable(file) {
+  return file.policy !== "MISSING" && !insideForcedDirectory(file.path);
+}
+
+function pathSelected(selection, path) {
+  if (selection.has(path)) return true;
+  const folded = foldPath(path);
+  return [...selection].some((candidate) => foldPath(candidate) === folded);
+}
+
+function setPathSelected(selection, path, selected) {
+  const folded = foldPath(path);
+  [...selection]
+    .filter((candidate) => foldPath(candidate) === folded)
+    .forEach((candidate) => selection.delete(candidate));
+  if (selected) selection.add(path);
+}
+
+function setPathsSelected(selection, files, selected) {
+  const next = new Map(
+    [...selection].map((path) => [foldPath(path), path])
+  );
+  files.forEach((file) => {
+    if (selected) next.set(foldPath(file.path), file.path);
+    else next.delete(foldPath(file.path));
+  });
+  selection.clear();
+  next.forEach((path) => selection.add(path));
+}
+
+function compareFilePath(left, right) {
+  return left.path.localeCompare(
+    right.path, "zh-CN", { sensitivity: "base" }
+  );
 }
 
 function foldPath(value) {

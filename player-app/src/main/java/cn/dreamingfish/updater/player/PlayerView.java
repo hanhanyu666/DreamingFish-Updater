@@ -155,6 +155,7 @@ final class PlayerView {
     private final HBox actionRow = new HBox(10);
     private final Button retry = new Button("重试");
     private final Button openDirectory = new Button("打开目录");
+    private final Button continueLaunch = new Button("仍然启动");
     private final Button changelogToggle = new Button("更新记录  ›");
     private final Button logToggle = new Button("运行记录  ›");
     private final Button localFilesToggle = new Button("本地文件  ›");
@@ -235,6 +236,7 @@ final class PlayerView {
     private boolean launchNoticeShown;
     private Runnable closeAction = () -> { };
     private Runnable retryAction = () -> { };
+    private Runnable continueLaunchAction = () -> { };
     private Runnable openDirectoryAction = () -> { };
     private Runnable openArchiveAction = () -> { };
     private Runnable detailsOpenedAction = () -> { };
@@ -302,6 +304,10 @@ final class PlayerView {
     void showProgress(ProgressEvent event) {
         stage.setText(STAGE_NAMES.getOrDefault(event.stage(), "正在处理更新"));
         currentPath.setText(displayPath(event.currentPath(), event.message()));
+        actionRow.setVisible(false);
+        actionRow.setManaged(false);
+        continueLaunch.setVisible(false);
+        continueLaunch.setManaged(false);
         if (event.totalBytes() > 0) {
             progress.setProgress(event.fraction());
             percent.setText(Math.round(event.fraction() * 100) + "%");
@@ -336,6 +342,8 @@ final class PlayerView {
         setWorking(false);
         actionRow.setVisible(false);
         actionRow.setManaged(false);
+        continueLaunch.setVisible(false);
+        continueLaunch.setManaged(false);
     }
 
     void showUnverifiedOfflineLaunch() {
@@ -349,15 +357,38 @@ final class PlayerView {
         setWorking(false);
         actionRow.setVisible(false);
         actionRow.setManaged(false);
+        continueLaunch.setVisible(false);
+        continueLaunch.setManaged(false);
+    }
+
+    void showLocalContentOverrideLaunch() {
+        stage.setText("已忽略本地文件变更");
+        currentPath.setText("更新服务器不可用，Minecraft 将按当前本地文件继续启动");
+        progress.setProgress(0);
+        percent.setText("--");
+        byteSummary.setText("本次未修复本地托管文件");
+        unmanaged.setManaged(false);
+        unmanaged.setVisible(false);
+        setWorking(false);
+        actionRow.setVisible(false);
+        actionRow.setManaged(false);
+        continueLaunch.setVisible(false);
+        continueLaunch.setManaged(false);
     }
 
     void showError(String title, String detail) {
+        showError(title, detail, false);
+    }
+
+    void showError(String title, String detail, boolean allowContinue) {
         stage.setText(title);
         currentPath.setText(detail);
         progress.setProgress(0);
         percent.setText("!");
         byteSummary.setText("Minecraft 启动已暂停");
         setWorking(false);
+        continueLaunch.setVisible(allowContinue);
+        continueLaunch.setManaged(allowContinue);
         actionRow.setManaged(true);
         actionRow.setVisible(true);
     }
@@ -513,6 +544,10 @@ final class PlayerView {
 
     void setRetryAction(Runnable action) {
         retryAction = action;
+    }
+
+    void setContinueLaunchAction(Runnable action) {
+        continueLaunchAction = action == null ? () -> { } : action;
     }
 
     void setOpenDirectoryAction(Runnable action) {
@@ -730,6 +765,7 @@ final class PlayerView {
         close.setOnAction(event -> closeAction.run());
         music.setOnAction(event -> musicToggleAction.run());
         retry.setOnAction(event -> retryAction.run());
+        continueLaunch.setOnAction(event -> continueLaunchAction.run());
         openDirectory.setOnAction(event -> openDirectoryAction.run());
         openArchive.setOnAction(event -> openArchiveAction.run());
         changelogToggle.setOnAction(event -> toggleDrawer(DrawerMode.HISTORY));
@@ -937,9 +973,12 @@ final class PlayerView {
         openArchive.setManaged(false);
 
         actionRow.setAlignment(Pos.CENTER_RIGHT);
-        retry.getStyleClass().add("primary-button");
+        retry.getStyleClass().add("secondary-button");
         openDirectory.getStyleClass().add("secondary-button");
-        actionRow.getChildren().addAll(openDirectory, retry);
+        continueLaunch.getStyleClass().add("primary-button");
+        continueLaunch.setVisible(false);
+        continueLaunch.setManaged(false);
+        actionRow.getChildren().addAll(openDirectory, retry, continueLaunch);
         actionRow.setVisible(false);
         actionRow.setManaged(false);
 
