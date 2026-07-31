@@ -518,9 +518,9 @@ final class InteractiveConsole {
                 server.start();
                 root.out().println("Web 管理界面已启动：" + address);
                 root.out().println("请在浏览器中打开以上地址完成项目创建和发布管理。");
-                root.out().println("远程服务器可使用 SSH 隧道：ssh -L "
+                root.out().println("远程服务器可使用 SSH 隧道：ssh -N -L "
                         + settings.webPort() + ":127.0.0.1:" + settings.webPort()
-                        + " <用户>@<服务器>");
+                        + " 用户名@您的服务器地址");
                 root.out().println("建立隧道后，仍在本地浏览器打开：" + address);
                 waitForServiceStop();
             } finally {

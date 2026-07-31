@@ -52,6 +52,18 @@
 
       <main class="content">
         <section class="view active" id="view-dashboard">
+          <div class="view-guide">
+            <div class="guide-copy">
+              <span>本页说明</span>
+              <strong>先确认项目与发布状态，再开放玩家下载服务</strong>
+              <p>概览只负责查看运行状态和启停公共 HTTP 文件服务，不会扫描或发布文件。Web 管理页面与玩家下载服务相互独立。</p>
+            </div>
+            <ol class="guide-steps">
+              <li><b>1</b><div><strong>选择项目</strong><small>右上角切换当前管理的整合包项目。</small></div></li>
+              <li><b>2</b><div><strong>确认已发布</strong><small>至少需要一个玩家端程序版本和一个整合包版本。</small></div></li>
+              <li><b>3</b><div><strong>启动下载服务</strong><small>玩家更新期间保持 HTTP 服务在线，并检查显示的监听地址。</small></div></li>
+            </ol>
+          </div>
           <div class="service-band">
             <div class="service-state">
               <span class="service-indicator" id="service-indicator"></span>
@@ -112,6 +124,18 @@
         </section>
 
         <section class="view" id="view-project">
+          <div class="view-guide">
+            <div class="guide-copy">
+              <span>本页说明</span>
+              <strong>维护项目身份、文件来源和玩家看到的品牌信息</strong>
+              <p>保存设置不会自动扫描或发布。修改目录、公共地址或强制同步规则后，请前往“扫描与发布”检查预览，再创建新版本。</p>
+            </div>
+            <ol class="guide-steps">
+              <li><b>1</b><div><strong>指定文件目录</strong><small>填写管理服务器上的独立整合包目录，不是管理数据目录。</small></div></li>
+              <li><b>2</b><div><strong>填写公网地址</strong><small>必须是玩家电脑实际能够访问的 HTTP 地址。</small></div></li>
+              <li><b>3</b><div><strong>谨慎设置强制同步</strong><small>目录内玩家自行添加的文件也可能被归档或移除。</small></div></li>
+            </ol>
+          </div>
           <form class="panel form-panel" id="project-form">
             <div class="panel-header">
               <div>
@@ -124,6 +148,7 @@
               <label class="field span-2">
                 <span>项目显示名称（必填）</span>
                 <input name="displayName" maxlength="120" required>
+                <small class="field-help">显示在管理端项目列表中；修改后不会改变稳定的项目 ID 和签名身份。</small>
               </label>
               <label class="field span-2">
                 <span>整合包文件目录（必填）</span>
@@ -141,14 +166,17 @@
               <label class="field">
                 <span>界面产品名称（必填）</span>
                 <input name="productName" required>
+                <small class="field-help">显示在玩家端更新器窗口中，通常填写服务器或整合包名称。</small>
               </label>
               <label class="field">
                 <span>Minecraft 服务器地址</span>
                 <input name="serverAddress">
+                <small class="field-help">仅供玩家界面展示和复制，例如 play.example.com:25565；与更新下载地址无关。</small>
               </label>
               <label class="field span-2">
                 <span>副标题</span>
                 <input name="subtitle">
+                <small class="field-help">玩家端品牌说明，可填写玩法定位或服务器简介。</small>
               </label>
               <label class="field span-2">
                 <span>强制同步一级目录</span>
@@ -158,10 +186,12 @@
               <label class="field color-field">
                 <span>主强调色</span>
                 <div><input name="accentColor" type="color"><input name="accentColorText"></div>
+                <small class="field-help">用于玩家端主要按钮和状态强调。</small>
               </label>
               <label class="field color-field">
                 <span>次强调色</span>
                 <div><input name="secondaryAccentColor" type="color"><input name="secondaryAccentColorText"></div>
+                <small class="field-help">用于玩家端辅助强调，与主色保持足够区分。</small>
               </label>
               <label class="field span-2">
                 <span>服务器上的新封面文件路径</span>
@@ -169,6 +199,7 @@
                   <input name="coverPath">
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="image" data-path-name="coverPath" data-path-title="选择封面图片">浏览</button>
                 </div>
+                <small class="field-help">填写管理服务器本机上的图片路径；保存后会导入管理数据，不需要长期保留原文件。</small>
               </label>
               <label class="check-field span-2">
                 <input name="removeCover" type="checkbox">
@@ -179,6 +210,18 @@
         </section>
 
         <section class="view" id="view-publish">
+          <div class="view-guide">
+            <div class="guide-copy">
+              <span>推荐流程</span>
+              <strong>整理文件、设置策略、扫描预览，最后创建不可变发布</strong>
+              <p>扫描只生成本次变更预览，不会立刻影响玩家。正式发布后版本内容不可修改，后续修正必须创建新版本或回滚发布。</p>
+            </div>
+            <ol class="guide-steps">
+              <li><b>1</b><div><strong>整理整合包文件</strong><small>上传、导入或移除管理服务器源目录中的内容。</small></div></li>
+              <li><b>2</b><div><strong>确认同步策略</strong><small>普通托管允许额外文件；强制同步会收敛玩家本地内容。</small></div></li>
+              <li><b>3</b><div><strong>扫描并发布</strong><small>逐项检查新增、修改、删除和预计下载量后再填写版本号。</small></div></li>
+            </ol>
+          </div>
           <section class="panel">
             <div class="panel-header source-file-header">
               <div>
@@ -191,6 +234,7 @@
                 <button class="primary-button" id="open-source-add" type="button">＋ 添加文件</button>
               </div>
             </div>
+            <p class="panel-help"><strong>这里展示管理服务器“整合包文件目录”的真实内容。</strong>添加或移除会直接修改该目录，但只有扫描并发布新版本后才会影响玩家。文件夹勾选会递归选择其下全部文件。</p>
             <div class="source-file-summary">
               <div><span>托管文件</span><strong id="source-managed-count">--</strong></div>
               <div><span>总大小</span><strong id="source-total-size">--</strong></div>
@@ -226,6 +270,7 @@
                 <button class="primary-button" id="save-forced-files" type="button">保存设置</button>
               </div>
             </div>
+            <p class="panel-help"><strong>只对确实不能由玩家修改的单个文件启用。</strong>已选文件会覆盖玩家本地修改并忽略豁免；若整个一级目录都必须完全一致，请改到“项目设置”配置强制同步目录。</p>
             <div class="selection-toolbar">
               <label class="selection-check">
                 <input id="forced-file-select-all" type="checkbox">
@@ -255,6 +300,7 @@
                 <button class="secondary-button" id="scan-button" type="button">↻ 扫描整合包目录</button>
               </div>
             </div>
+            <p class="panel-help"><strong>每次调整文件或策略后都应重新扫描。</strong>重点检查“移除后的处理”：从玩家端删除会清理旧文件，放弃管理并保留则让玩家继续保有现有副本。</p>
             <div class="preview-summary" id="preview-summary">
               <div><span>托管文件</span><strong>--</strong></div>
               <div><span>变更</span><strong>--</strong></div>
@@ -278,14 +324,17 @@
               </div>
               <button class="primary-button" type="submit">发布整合包</button>
             </div>
+            <p class="panel-help"><strong>版本号用于玩家界面和发布历史，发布后不能复用。</strong>最低玩家端版本只在确实依赖新更新器能力时提高；更新记录会直接展示给玩家。</p>
             <div class="form-grid">
               <label class="field">
                 <span>本次显示版本（必填）</span>
                 <input name="displayVersion" placeholder="1.0.1" required>
+                <small class="field-help">建议使用清晰递增的版本，例如 1.0.1、2026.08.01；同一项目内不要重复。</small>
               </label>
               <label class="field">
                 <span>最低玩家端程序版本（必填）</span>
                 <input name="minimumPlayerVersion" value="0.1.14" required>
+                <small class="field-help">低于此版本的玩家端会先更新程序；不确定时保留当前默认值。</small>
               </label>
               <label class="field span-2">
                 <span>更新记录</span>
@@ -298,6 +347,7 @@
             <div class="panel-header">
               <div><h2>发布历史</h2><span id="release-count-label">0 条记录</span></div>
             </div>
+            <p class="panel-help"><strong>历史发布是签名后的只读记录。</strong>“回滚”不会覆盖旧版本，而是以所选历史内容创建一个新的、更高序号发布。</p>
             <div class="table-wrap">
               <table>
                 <thead><tr><th>序号</th><th>显示版本</th><th>发布时间</th><th>更新记录</th><th></th></tr></thead>
@@ -309,19 +359,34 @@
         </section>
 
         <section class="view" id="view-player">
+          <div class="view-guide">
+            <div class="guide-copy">
+              <span>本页说明</span>
+              <strong>发布玩家电脑上运行的 DreamingFish Updater 程序</strong>
+              <p>玩家端程序与 mods/config 整合包版本分开发布。只有更新器界面或更新逻辑发生变化时才需要发布新程序，普通模组更新请使用“扫描与发布”。</p>
+            </div>
+            <ol class="guide-steps">
+              <li><b>1</b><div><strong>先解压玩家端发行包</strong><small>把 ZIP 原样解压到管理服务器能够读取的独立目录。</small></div></li>
+              <li><b>2</b><div><strong>选择解压根目录</strong><small>应能在其下找到 DreamingFishUpdater 应用目录，而不是 Minecraft 实例。</small></div></li>
+              <li><b>3</b><div><strong>发布后再制包</strong><small>首次部署包和玩家实例会引用当前平台最新的已签名程序。</small></div></li>
+            </ol>
+          </div>
           <form class="panel form-panel" id="program-form">
             <div class="panel-header">
               <div><h2>发布玩家端程序</h2><span>自动读取版本并定位 app-image</span></div>
               <button class="primary-button" type="submit">发布玩家端</button>
             </div>
+            <p class="panel-help"><strong>发布过程会自动读取程序版本、定位 app-image、生成清单并签名。</strong>不要选择 ZIP 文件本身，也不要选择 app、runtime 或版本子目录；应选择发行包解压后的最外层目录。</p>
             <div class="form-grid">
               <label class="field">
                 <span>平台（必填）</span>
                 <input name="platform" value="windows-x64" required>
+                <small class="field-help">必须与玩家实际使用的平台一致；目前 Windows 玩家保持 windows-x64。</small>
               </label>
               <label class="field">
                 <span>最低 Bootstrap Agent 版本（必填）</span>
                 <input name="minimumBootstrapVersion" value="0.1.2" required>
+                <small class="field-help">整合包内 Java Agent 的最低兼容版本。只有重新分发了更高版本 Agent 时才提高。</small>
               </label>
               <label class="field span-2">
                 <span>玩家端发行包解压根目录（必填）</span>
@@ -329,6 +394,7 @@
                   <input name="sourceDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择玩家端发行包解压根目录">浏览</button>
                 </div>
+                <small class="field-help">这是管理服务器上的路径，例如 /srv/minecraft/updater/player-0.1.19；不是玩家电脑上的路径。</small>
               </label>
             </div>
           </form>
@@ -337,6 +403,7 @@
             <div class="panel-header">
               <div><h2>玩家端程序历史</h2><span id="program-count-label">0 个版本</span></div>
             </div>
+            <p class="panel-help"><strong>同一平台的最高版本会用于新生成的部署包和实例。</strong>已发布程序保持可验证历史，玩家可以从旧版安全切换到新版并在启动失败时回退。</p>
             <div class="table-wrap">
               <table>
                 <thead><tr><th>版本</th><th>平台</th><th>发布时间</th><th>清单哈希</th></tr></thead>
@@ -348,11 +415,24 @@
         </section>
 
         <section class="view" id="view-instance">
-          <form class="panel form-panel" id="deployment-form">
+          <div class="view-guide">
+            <div class="guide-copy">
+              <span>推荐方式</span>
+              <strong>绝大多数服主应使用“首次部署包”</strong>
+              <p>它不要求管理服务器保存完整 Minecraft，只生成更新器接入文件、项目绑定和签名基线。将生成目录下载到自己的电脑，再合并进已经能启动的 Forge/整合包实例即可。</p>
+            </div>
+            <ol class="guide-steps">
+              <li><b>1</b><div><strong>先完成两类发布</strong><small>至少发布一个玩家端程序版本和一个整合包版本。</small></div></li>
+              <li><b>2</b><div><strong>生成首次部署包</strong><small>输出路径位于管理服务器，生成后通过 SFTP 等方式下载。</small></div></li>
+              <li><b>3</b><div><strong>合并到玩家实例</strong><small>复制整个生成目录的内容，并按说明配置启动参数。</small></div></li>
+            </ol>
+          </div>
+          <form class="panel form-panel recommended-panel" id="deployment-form">
             <div class="panel-header">
-              <div><h2>生成首次部署包</h2><span>无需在管理端准备完整 Minecraft 实例</span></div>
+              <div><div class="panel-title-line"><h2>生成首次部署包</h2><small class="panel-tag recommended">推荐</small></div><span>适用于远程 Linux 管理端和绝大多数整合包发布流程</span></div>
               <button class="primary-button" type="submit">生成部署包</button>
             </div>
+            <p class="panel-help"><strong>部署包是轻量接入模板，不包含 Minecraft、Forge、mods 或 config。</strong>玩家首次在线启动时会根据已发布清单补齐缺失托管文件；服主只需维护一份可正常启动的基础 Forge 实例。</p>
             <div class="form-grid">
               <label class="field span-2">
                 <span>输出父目录（必填）</span>
@@ -360,24 +440,28 @@
                   <input name="outputDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="outputDirectory" data-path-title="选择首次部署包输出目录">浏览</button>
                 </div>
+                <small class="field-help">管理服务器上的父目录。系统会在其中新建带项目和版本名称的部署目录，不会写入玩家电脑。</small>
               </label>
               <label class="field">
                 <span>平台（必填）</span>
                 <input name="platform" value="windows-x64" required>
+                <small class="field-help">应与前面发布的玩家端程序平台一致；Windows 整合包保持 windows-x64。</small>
               </label>
               <label class="field">
                 <span>原整合包对应版本（必填）</span>
                 <select name="releaseId" required></select>
+                <small class="field-help">已有完整整合包时选择它实际包含的历史版本；全新最小 Forge 实例通常选择当前最新发布。</small>
               </label>
             </div>
-            <div class="notice-line">输出目录只包含更新器接入文件与签名基线；生成后把整个目录内容合并到本地 Minecraft 实例根目录。</div>
+            <div class="notice-line">生成后下载整个输出目录，把目录中的全部内容合并到 Minecraft 版本隔离实例根目录。不要把管理端 data、management-settings.json 或项目私钥发给玩家。</div>
           </form>
 
-          <form class="panel form-panel" id="instance-form">
+          <form class="panel form-panel advanced-panel" id="instance-form">
             <div class="panel-header">
-              <div><h2>制作玩家实例</h2><span>写入绑定、程序信任状态和整合包基线</span></div>
+              <div><div class="panel-title-line"><h2>直接制作玩家实例</h2><small class="panel-tag advanced">高级方式</small></div><span>仅适用于管理端能够直接访问实例目录的场景</span></div>
               <button class="primary-button" type="submit">制作实例</button>
             </div>
+            <p class="panel-help"><strong>此方式会直接修改所选 Minecraft 实例目录。</strong>只在管理端与目标实例位于同一台电脑、共享磁盘或已挂载目录时使用；远程 Linux 管理端制作本地 Windows 整合包时，请优先使用上方首次部署包。</p>
             <div class="form-grid">
               <label class="field span-2">
                 <span>Minecraft 版本隔离实例目录（必填）</span>
@@ -385,28 +469,45 @@
                   <input name="instanceDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="instanceDirectory" data-path-title="选择 Minecraft 实例目录">浏览</button>
                 </div>
+                <small class="field-help">必须是目标版本的隔离实例根目录。选择错误目录可能把更新器文件写到其它游戏实例。</small>
               </label>
               <label class="field">
                 <span>平台（必填）</span>
                 <input name="platform" value="windows-x64" required>
+                <small class="field-help">必须存在同平台的已发布玩家端程序。</small>
               </label>
               <label class="field">
                 <span>实例内玩家端目录（必填）</span>
                 <input name="playerHome" value="DreamingFishUpdater" required>
+                <small class="field-help">相对于实例根目录，通常保持 DreamingFishUpdater，不建议改为绝对路径。</small>
               </label>
               <label class="field span-2">
                 <span>整合包发布版本（必填）</span>
                 <select name="releaseId" required></select>
+                <small class="field-help">选择该实例当前包含文件所对应的发布版本，系统会写入该版本的签名基线。</small>
               </label>
               <label class="field span-2">
                 <span>实例内自定义封面相对路径</span>
                 <input name="bundledCover">
+                <small class="field-help">可留空使用项目封面；填写时必须是实例目录内的安全相对路径。</small>
               </label>
             </div>
           </form>
         </section>
 
         <section class="view" id="view-settings">
+          <div class="view-guide">
+            <div class="guide-copy">
+              <span>本页说明</span>
+              <strong>区分玩家下载监听、玩家公网地址和本机 Web 管理端口</strong>
+              <p>这里配置服务器实际监听地址；玩家访问的公网域名或映射端口在“项目设置”中填写。Web 管理端始终只允许本机或 SSH 隧道访问。</p>
+            </div>
+            <ol class="guide-steps">
+              <li><b>1</b><div><strong>HTTP 监听</strong><small>面向玩家文件下载，VPS 通常使用 0.0.0.0 和服务器内部端口。</small></div></li>
+              <li><b>2</b><div><strong>公网映射</strong><small>路由器、NAT 或反向代理应转发到这里配置的 HTTP 端口。</small></div></li>
+              <li><b>3</b><div><strong>Web 管理</strong><small>固定监听 127.0.0.1，远程访问必须建立 SSH 隧道。</small></div></li>
+            </ol>
+          </div>
           <form class="panel form-panel" id="settings-form">
             <div class="panel-header">
               <div><h2>服务监听设置</h2><span>Web 管理界面固定监听本机回环地址</span></div>
@@ -426,22 +527,25 @@
               <label class="field">
                 <span>Web 管理监听地址</span>
                 <input name="webHost" value="127.0.0.1" readonly>
+                <small class="field-help">安全限制固定为本机回环地址，不能改成 0.0.0.0 或公网网卡。</small>
               </label>
               <label class="field">
                 <span>Web 管理端口（必填）</span>
                 <input name="webPort" type="number" min="1" max="65535" required>
-                <small class="field-help">仅监听 127.0.0.1，远程管理请使用 SSH 隧道。</small>
+                <small class="field-help">不能与 HTTP 文件服务端口相同。远程管理请在自己的电脑建立 SSH 隧道。</small>
               </label>
               <label class="field span-2">
                 <span>管理数据目录</span>
                 <input name="dataDirectory" readonly>
+                <small class="field-help">保存数据库、签名私钥、发布清单和对象文件；必须定期备份，绝不能发给玩家。</small>
               </label>
               <label class="field span-2">
                 <span>设置文件</span>
                 <input name="settingsFile" readonly>
+                <small class="field-help">记录监听端口和管理数据位置，迁移管理端时应与 data 一起保留。</small>
               </label>
             </div>
-            <div class="notice-line">Web 端口修改会在下次启动管理界面时生效。</div>
+            <div class="notice-line command-notice"><strong>远程访问 Web：</strong><code>ssh -N -L 18080:127.0.0.1:18080 用户名@您的服务器地址</code><span>Web 端口修改会在下次启动管理界面时生效；如果修改了 18080，请同步替换命令两处端口。</span></div>
           </form>
         </section>
       </main>
@@ -452,7 +556,7 @@
     <form method="dialog" id="create-project-form">
       <div class="modal-header">
         <div><span>NEW PROJECT</span><h2>创建整合包项目</h2></div>
-        <button class="icon-button" value="cancel" aria-label="关闭">×</button>
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
       </div>
       <div class="form-grid">
         <label class="field">
@@ -490,7 +594,7 @@
         </label>
       </div>
       <div class="modal-actions">
-        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
         <button class="primary-button" id="create-project-submit" value="default">创建项目</button>
       </div>
     </form>
@@ -503,7 +607,7 @@
       <h2 id="confirm-title">确认继续吗？</h2>
       <p id="confirm-message"></p>
       <div class="modal-actions">
-        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
         <button class="primary-button" id="confirm-action" value="default">确认</button>
       </div>
     </form>
@@ -521,7 +625,7 @@
         <label class="field"><span>更新记录</span><textarea name="changelog" rows="4"></textarea></label>
       </div>
       <div class="modal-actions">
-        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
         <button class="danger-button" id="rollback-submit" value="default">确认回滚</button>
       </div>
     </form>
@@ -531,7 +635,7 @@
     <form method="dialog" id="source-add-form">
       <div class="modal-header">
         <div><span>SOURCE FILE</span><h2>添加托管文件</h2></div>
-        <button class="icon-button" value="cancel" aria-label="关闭">×</button>
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
       </div>
       <div class="form-grid one-column source-add-grid">
         <label class="field">
@@ -562,7 +666,7 @@
         </label>
       </div>
       <div class="modal-actions source-add-actions">
-        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
         <button class="secondary-button" id="import-server-source" type="button">导入服务器文件</button>
         <button class="primary-button" id="upload-source-files" type="button">上传所选文件</button>
       </div>
@@ -576,7 +680,7 @@
       <h2>移除托管文件</h2>
       <p id="source-remove-message"></p>
       <div class="modal-actions source-remove-actions">
-        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
         <button class="secondary-button" id="source-release-action" value="RELEASE">放弃管理并保留</button>
         <button class="danger-button" value="DELETE">从玩家端删除</button>
       </div>
@@ -590,7 +694,7 @@
       <h2>批量移除整合包文件</h2>
       <p id="source-bulk-remove-message"></p>
       <div class="modal-actions source-remove-actions">
-        <button class="secondary-button" value="cancel">取消</button>
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
         <button class="secondary-button" id="source-bulk-release-action" value="RELEASE">放弃管理并保留</button>
         <button class="danger-button" value="DELETE">从玩家端删除</button>
       </div>
