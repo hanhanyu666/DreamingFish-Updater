@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.21",
+    [string]$Version = "0.1.25",
     [string]$AdminVersion = "0.1.16",
     [string]$DistDirectory = "",
     [string]$JdkHome = "",
@@ -248,9 +248,14 @@ try {
         "The 1.2 distributable has the wrong bundled baseline"
 
     Verify-PlayerProgram $instanceOne $true
-    $programFile = Join-Path $instanceOne `
-        "DreamingFishUpdater\app\$Version\app\player-app.jar"
-    $savedProgramFile = Join-Path $workRoot "saved-player-app.jar"
+    $programRoot = Join-Path $instanceOne "DreamingFishUpdater\app\$Version"
+    $programFile = @(
+        (Join-Path $programRoot "player-sidecar.jar"),
+        (Join-Path $programRoot "app\player-app.jar")
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    Assert-True (-not [string]::IsNullOrWhiteSpace($programFile)) `
+        "Player distribution contains neither the Tauri sidecar nor the legacy player JAR"
+    $savedProgramFile = Join-Path $workRoot (Split-Path -Leaf $programFile)
     Copy-Item -Force -LiteralPath $programFile -Destination $savedProgramFile
     try {
         Copy-Item -Force -LiteralPath $smallAsset -Destination $programFile

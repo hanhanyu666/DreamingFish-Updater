@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.21",
+    [string]$Version = "0.1.25",
     [string]$AdminVersion = "0.1.16",
     [string]$JdkHome = "",
     [switch]$SkipTests,
@@ -185,6 +185,56 @@ function Expand-TarGzipMaterialized([string]$Archive, [string]$Destination) {
     }
 }
 
+function Assert-PlayerVersionConsistency([string]$ExpectedVersion) {
+    function Read-TopLevelJsonVersion([string]$RelativePath) {
+        $content = Get-Content -Raw -LiteralPath (Join-Path $repoRoot $RelativePath)
+        $match = [regex]::Match($content, '(?m)^\s{2}"version"\s*:\s*"([^"]+)"')
+        if (-not $match.Success) {
+            throw "Unable to read the top-level version from $RelativePath."
+        }
+        return $match.Groups[1].Value
+    }
+
+    # Do not parse package-lock.json with ConvertFrom-Json here. npm uses an
+    # empty-string key under `packages`, which PowerShell 7 rejects unless
+    # -AsHashtable is used (and that switch is unavailable in Windows
+    # PowerShell 5.1). Reading the top-level field keeps packaging compatible
+    # with both shells.
+    $packageVersion = Read-TopLevelJsonVersion "player-ui\package.json"
+    $packageLockVersion = Read-TopLevelJsonVersion "player-ui\package-lock.json"
+    $tauriVersion = Read-TopLevelJsonVersion "player-ui\src-tauri\tauri.conf.json"
+    $sources = [ordered]@{
+        "player-ui/package.json" = $packageVersion
+        "player-ui/package-lock.json" = $packageLockVersion
+        "player-ui/src-tauri/tauri.conf.json" = $tauriVersion
+    }
+    $patterns = [ordered]@{
+        "player-app/PlayerApplication.java" = @(
+            "player-app\src\main\java\cn\dreamingfish\updater\player\PlayerApplication.java",
+            'VERSION\s*=\s*"([^"]+)"')
+        "player-ui/src/App.vue" = @("player-ui\src\App.vue", 'Updater \{\{ "([^"]+)" \}\}')
+        "player-ui/src/components/ContentPages.vue" = @(
+            "player-ui\src\components\ContentPages.vue", 'VERSION\s*=\s*"([^"]+)"')
+        "player-ui/src-tauri/Cargo.toml" = @("player-ui\src-tauri\Cargo.toml", '(?m)^version\s*=\s*"([^"]+)"')
+        "player-ui/src-tauri/Cargo.lock" = @(
+            "player-ui\src-tauri\Cargo.lock", '(?ms)name\s*=\s*"dreamingfish-player"\s+version\s*=\s*"([^"]+)"')
+    }
+    foreach ($entry in $patterns.GetEnumerator()) {
+        $content = Get-Content -Raw -LiteralPath (Join-Path $repoRoot $entry.Value[0])
+        $match = [regex]::Match($content, $entry.Value[1])
+        if (-not $match.Success) {
+            throw "Unable to read the player version from $($entry.Key)."
+        }
+        $sources[$entry.Key] = $match.Groups[1].Value
+    }
+    $mismatches = @($sources.GetEnumerator() | Where-Object { $_.Value -ne $ExpectedVersion })
+    if ($mismatches.Count -gt 0) {
+        $details = ($mismatches | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ", "
+        throw "Player version mismatch: build requested $ExpectedVersion, but $details. Update every version source before packaging."
+    }
+}
+
+if (-not $AdminOnly) { Assert-PlayerVersionConsistency $Version }
 $resolvedJdk = Resolve-Jdk21 $JdkHome
 $jpackage = Join-Path $resolvedJdk "bin\jpackage.exe"
 $jlink = Join-Path $resolvedJdk "bin\jlink.exe"

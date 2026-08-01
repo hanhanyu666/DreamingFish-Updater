@@ -58,13 +58,14 @@ public final class PlayerController {
                 return thread;
             });
 
-    private BootstrapPermitClient permitClient;
+    private final BootstrapPermitClient permitClient;
     private ProjectBinding binding;
     private Path playerHome;
     private PlayerLog log;
     private volatile boolean working;
     private volatile boolean launchPermitted;
     private volatile boolean restartPending;
+    private volatile boolean initializationFailed;
     private volatile boolean autoCloseSuppressed;
     private Path lastArchiveDirectory;
     private LocalModManager localModManager;
@@ -82,10 +83,16 @@ public final class PlayerController {
         }
     }
 
+    @FunctionalInterface
+    interface CheckedAction {
+        void run() throws Exception;
+    }
+
     public PlayerController(PlayerArguments arguments, PlayerViewPort viewport, Runnable exitAction) {
         this.arguments = arguments;
         this.viewport = viewport;
         this.exitAction = exitAction == null ? () -> { } : exitAction;
+        this.permitClient = new BootstrapPermitClient(arguments);
     }
 
     public void start() {
@@ -96,6 +103,7 @@ public final class PlayerController {
             refreshLocalManagementAsync();
             startUpdate();
         } catch (Exception e) {
+            initializationFailed = true;
             showInitializationFailure(e);
         }
     }
@@ -103,6 +111,10 @@ public final class PlayerController {
     public void requestClose() {
         if (arguments.preview() || launchPermitted || restartPending) {
             exitApplication();
+            return;
+        }
+        if (initializationFailed) {
+            closeAndDeny("玩家在初始化失败后关闭了更新器");
             return;
         }
         if (working) {
@@ -117,7 +129,13 @@ public final class PlayerController {
         closeAndDeny("玩家关闭了更新器");
     }
 
-    public void retry() {
+    public synchronized void retry() {
+        if (initializationFailed) {
+            initializationFailed = false;
+            working = false;
+            start();
+            return;
+        }
         startUpdate();
     }
 
@@ -310,11 +328,16 @@ public final class PlayerController {
                     result.releasedPaths().forEach(path ->
                             log.info("Released managed file: " + path));
                 }
-                List<LocalModEntry> mods = localModManager.scan(result.release());
-                List<LocalFileEntry> files = localFileManager.scan(result.release());
-                viewport.setLocalMods(mods);
-                viewport.setLocalFiles(files);
-                finishSuccessfully(result);
+                UpdateResult completedResult = result;
+                runNonFatalPostLaunchRefresh(() -> {
+                    List<LocalModEntry> mods = localModManager.scan(completedResult.release());
+                    List<LocalFileEntry> files = localFileManager.scan(completedResult.release());
+                    viewport.setLocalMods(mods);
+                    viewport.setLocalFiles(files);
+                }, error -> log.warn(
+                        "Unable to refresh local management UI after launch permission was granted: "
+                                + error));
+                finishSuccessfully(completedResult);
                 refreshReleaseHistory();
             } catch (Exception e) {
                 working = false;
@@ -323,6 +346,17 @@ public final class PlayerController {
                 showFailure(errorTitle(e), e);
             }
         });
+    }
+
+    static boolean runNonFatalPostLaunchRefresh(CheckedAction refresh,
+                                                 java.util.function.Consumer<Exception> warning) {
+        try {
+            refresh.run();
+            return true;
+        } catch (Exception error) {
+            warning.accept(error);
+            return false;
+        }
     }
 
     private LocalSettingsSnapshot reconcileLocalState() throws IOException {
@@ -494,8 +528,11 @@ public final class PlayerController {
     }
 
     private void closeAndDeny(String reason) {
-        permitClient.deny(reason);
-        exitApplication();
+        try {
+            permitClient.deny(reason);
+        } finally {
+            exitApplication();
+        }
     }
 
     private void showRestartRequired(String restoredItem) {

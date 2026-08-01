@@ -8,10 +8,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.net.URI;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +62,66 @@ class PlayerControllerTest {
     }
 
     @Test
+    void closeAfterInitializationFailureDeniesLaunchAndAlwaysExits() throws Exception {
+        try (ServerSocket server = new ServerSocket()) {
+            server.bind(new InetSocketAddress(InetAddress.getByAddress(new byte[]{127, 0, 0, 1}), 0));
+            CompletableFuture<String> denial = CompletableFuture.supplyAsync(() -> {
+                try (Socket socket = server.accept();
+                     BufferedReader reader = new BufferedReader(new InputStreamReader(
+                             socket.getInputStream(), StandardCharsets.US_ASCII))) {
+                    return reader.readLine();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            RecordingViewPort viewport = new RecordingViewPort();
+            PlayerArguments arguments = PlayerArguments.parse(List.of(
+                    "--bootstrap-port", Integer.toString(server.getLocalPort()),
+                    "--bootstrap-token", "A".repeat(40),
+                    "--instance", temp.resolve("instance").toString(),
+                    "--binding", temp.resolve("missing-binding.json").toString(),
+                    "--player-name", "测试玩家"));
+            PlayerController controller = new PlayerController(
+                    arguments, viewport, () -> viewport.exited = true);
+
+            controller.start();
+            controller.requestClose();
+
+            assertTrue(viewport.exited);
+            assertTrue(denial.get(2, TimeUnit.SECONDS).startsWith("DFS1 DENY "));
+        }
+    }
+
+    @Test
+    void retryAfterInitializationFailureRepeatsInitializationInsteadOfStartingUpdate() {
+        RecordingViewPort viewport = new RecordingViewPort();
+        PlayerArguments arguments = PlayerArguments.parse(List.of(
+                "--bootstrap-port", "28080",
+                "--bootstrap-token", "A".repeat(40),
+                "--instance", temp.resolve("instance").toString(),
+                "--binding", temp.resolve("missing-binding.json").toString(),
+                "--player-name", "测试玩家"));
+        PlayerController controller = new PlayerController(arguments, viewport, () -> viewport.exited = true);
+
+        controller.start();
+        controller.retry();
+
+        assertEquals(2, viewport.errors.size());
+        assertEquals(0, viewport.progressCalls);
+    }
+
+    @Test
+    void postLaunchManagementRefreshFailureRemainsNonFatal() {
+        AtomicReference<Exception> warning = new AtomicReference<>();
+
+        boolean refreshed = PlayerController.runNonFatalPostLaunchRefresh(
+                () -> { throw new IOException("scan failed"); }, warning::set);
+
+        assertTrue(!refreshed);
+        assertEquals("scan failed", warning.get().getMessage());
+    }
+
+    @Test
     void keepsWindowOpenSuppressesAutoCloseNotice() {
         RecordingViewPort viewport = new RecordingViewPort();
         PlayerArguments arguments = PlayerArguments.parse(List.of("--preview"));
@@ -68,6 +139,7 @@ class PlayerControllerTest {
         boolean ready;
         boolean exited;
         int launchKeptOpenCalls;
+        int progressCalls;
         String identity;
 
         @Override
@@ -98,6 +170,7 @@ class PlayerControllerTest {
 
         @Override
         public void showProgress(ProgressEvent event) {
+            progressCalls++;
         }
 
         @Override

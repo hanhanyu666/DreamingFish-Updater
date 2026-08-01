@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { loadBundledNews } from "../news";
+import { loadBundledNews, selectRequestedArticle, type NewsArticle } from "../news";
 
 const originalFetch = globalThis.fetch;
 
@@ -79,5 +79,20 @@ describe("loadBundledNews", () => {
       },
     });
     await expect(loadBundledNews()).rejects.toThrow("新闻资源路径无效");
+  });
+});
+
+describe("selectRequestedArticle", () => {
+  const articles: NewsArticle[] = [
+    { id: "latest", title: "最新", summary: "", publishedOn: "2026-08-01", cover: "", markdown: "" },
+    { id: "target", title: "目标", summary: "", publishedOn: "2026-07-31", cover: "", markdown: "" },
+  ];
+
+  it("resolves a request that existed before the news page mounted", () => {
+    expect(selectRequestedArticle(articles, "target")?.id).toBe("target");
+  });
+
+  it("falls back to the latest article when the requested id is unavailable", () => {
+    expect(selectRequestedArticle(articles, "missing")?.id).toBe("latest");
   });
 });

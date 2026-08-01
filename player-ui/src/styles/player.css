@@ -30,7 +30,7 @@ body,
 
 body {
   font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Noto Sans SC", "Segoe UI", sans-serif;
-  font-weight: bold;
+  font-weight: 400;
   color: var(--dfs-text);
   user-select: none;
   -webkit-font-smoothing: antialiased;
@@ -42,6 +42,13 @@ button {
   background: none;
   color: inherit;
   cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dfs-accent), white 18%);
+  outline-offset: 3px;
 }
 
 input {
@@ -371,8 +378,12 @@ input {
   font-size: 65px;
   font-weight: 800;
   line-height: 1.1;
-  text-shadow: 0 12px 34px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 8px 26px rgba(0, 0, 0, 0.62);
   overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .subtitle {
@@ -452,7 +463,7 @@ input {
 
 .home-latest-news-meta {
   color: var(--dfs-accent);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -525,7 +536,7 @@ input {
 
 .update-summary-counts {
   color: rgba(255, 248, 220, 0.58);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .update-file-tooltip {
@@ -584,6 +595,16 @@ input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: text;
+}
+
+.current-path.error-detail {
+  max-height: 6.2em;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.55;
 }
 
 .update-progress-track {
@@ -663,7 +684,7 @@ input {
   right: 34px;
   bottom: 17px;
   color: rgba(255, 248, 226, 0.58);
-  font-size: 11px;
+  font-size: 12px;
   z-index: 10;
 }
 
@@ -908,6 +929,7 @@ input {
 }
 
 .markdown-body {
+  user-select: text;
   padding: 16px 0 46px;
   font-weight: 400;
 }
@@ -1259,6 +1281,7 @@ input {
 }
 
 .update-detail-path {
+  user-select: text;
   color: rgba(255, 248, 220, 0.72);
   font-size: 12px;
   word-break: break-all;
@@ -1341,6 +1364,7 @@ input {
   font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Cascadia Mono", "Consolas", monospace;
   font-size: 12px;
   font-weight: 400;
+  user-select: text;
 }
 
 .log-line:hover {
@@ -1453,6 +1477,7 @@ input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: text;
 }
 
 .mod-toggle {
@@ -1512,6 +1537,11 @@ input {
 
 .mod-toggle input[type="checkbox"]:disabled {
   cursor: default;
+}
+
+.mod-toggle input[type="checkbox"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dfs-accent), white 18%);
+  outline-offset: 3px;
 }
 
 .local-mode-bar {
@@ -1579,8 +1609,9 @@ input {
 }
 
 .tree-disclosure {
-  width: 16px;
-  height: 20px;
+  width: 30px;
+  height: 34px;
+  margin: -7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1624,11 +1655,12 @@ input {
 
 .local-file-detail {
   color: rgba(255, 248, 220, 0.42);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: text;
 }
 
 .local-file-empty {
@@ -1667,9 +1699,10 @@ input {
 }
 
 .dfs-dialog-pane {
-  width: min(560px, 48vw);
-  min-width: 480px;
-  padding: 30px 36px 26px;
+  width: min(590px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 23px;
   background:
@@ -1697,10 +1730,18 @@ input {
   }
 }
 
+.dfs-dialog-header {
+  position: relative;
+  padding: 27px 32px 18px 38px;
+}
+
 .dfs-dialog-accent {
-  height: 2px;
-  margin-bottom: 5px;
-  border-radius: 2px;
+  position: absolute;
+  left: 23px;
+  top: 29px;
+  bottom: 19px;
+  width: 3px;
+  border-radius: 3px;
   background: linear-gradient(to right, var(--dfs-accent), var(--dfs-secondary));
 }
 
@@ -1713,40 +1754,53 @@ input {
 }
 
 .dfs-dialog-title {
-  color: rgba(255, 248, 220, 0.5);
-  font-size: 11px;
+  margin-bottom: 6px;
+  color: rgba(255, 248, 220, 0.58);
+  font-size: 12px;
   font-weight: 800;
 }
 
 .dfs-dialog-heading {
   color: #fff8dc;
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 800;
   line-height: 1.4;
 }
 
 .dfs-dialog-message {
-  margin-top: 3px;
-  color: rgba(255, 248, 220, 0.72);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.7;
+  margin: 0 32px;
+  max-width: 66ch;
+  padding: 17px 18px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 248, 220, 0.76);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  user-select: text;
 }
 
 .dfs-dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 22px;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 0 32px 28px;
 }
 
 .dfs-dialog-actions .dfs-dialog-primary,
 .dfs-dialog-actions .dfs-dialog-secondary {
-  min-height: 38px;
-  padding: 8px 17px;
+  min-width: 104px;
+  min-height: 42px;
+  padding: 9px 18px;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 800;
+}
+
+.dfs-dialog-actions button:focus-visible {
+  outline-offset: 3px;
 }
 
 .dfs-dialog-secondary {
@@ -1897,5 +1951,39 @@ input {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (max-height: 600px) {
+  .dfs-dialog-header {
+    padding-top: 21px;
+    padding-bottom: 14px;
+  }
+
+  .dfs-dialog-accent {
+    top: 23px;
+    bottom: 15px;
+  }
+
+  .dfs-dialog-message {
+    padding-top: 13px;
+    padding-bottom: 13px;
+  }
+
+  .dfs-dialog-actions {
+    margin-top: 16px;
+    padding-bottom: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
   }
 }

@@ -7,10 +7,15 @@ import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.BufferedWriter;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,6 +23,66 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PlayerSidecarProtocolTest {
     private static final ObjectMapper TREES = new ObjectMapper();
     private static final JsonCodec JSON = new JsonCodec();
+
+    @Test
+    void previewSidecarCanBeClosedThroughItsCommandChannel() throws Exception {
+        Process process = new ProcessBuilder(
+                javaExecutable(),
+                "-Dfile.encoding=UTF-8",
+                "-cp", System.getProperty("java.class.path"),
+                PlayerSidecarMain.class.getName(),
+                "--preview")
+                .start();
+        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                process.getOutputStream(), StandardCharsets.UTF_8))) {
+            writer.write("{\"command\":\"close\"}\n");
+            writer.flush();
+            assertTrue(process.waitFor(3, TimeUnit.SECONDS),
+                    "preview sidecar did not process the close command");
+            assertEquals(0, process.exitValue());
+        } finally {
+            process.destroyForcibly();
+        }
+    }
+
+    @Test
+    void confirmationRepliesRemainReadableWhileControllerCommandWaits() throws Exception {
+        CompletableFuture<Boolean> confirmation = new CompletableFuture<>();
+        List<String> handled = java.util.Collections.synchronizedList(new ArrayList<>());
+        AtomicBoolean eofCalled = new AtomicBoolean();
+        List<RuntimeException> commandErrors = new ArrayList<>();
+        String input = String.join("\n",
+                "{\"command\":\"close\"}",
+                "not-json",
+                "{\"command\":\"confirm\",\"id\":42,\"accepted\":true}",
+                "{\"command\":\"boom\"}",
+                "{\"command\":\"retry\"}") + "\n";
+
+        PlayerSidecarMain.runCommandLoop(
+                new BufferedReader(new StringReader(input)),
+                (id, accepted) -> {
+                    if (id == 42) confirmation.complete(accepted);
+                },
+                command -> {
+                    if ("close".equals(command.path("command").asText())) {
+                        try {
+                            assertTrue(confirmation.get(1, TimeUnit.SECONDS));
+                        } catch (Exception e) {
+                            throw new AssertionError("confirmation reply was blocked by the command", e);
+                        }
+                    }
+                    if ("boom".equals(command.path("command").asText())) {
+                        throw new IllegalStateException("expected command failure");
+                    }
+                    handled.add(command.path("command").asText());
+                },
+                commandErrors::add,
+                () -> eofCalled.set(true));
+
+        assertEquals(List.of("close", "retry"), handled);
+        assertEquals(1, commandErrors.size());
+        assertTrue(eofCalled.get());
+    }
 
     @Test
     void previewEmitsTheFullProtocolSequence() throws Exception {

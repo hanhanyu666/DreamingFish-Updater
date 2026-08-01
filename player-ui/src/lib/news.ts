@@ -9,6 +9,13 @@ export interface NewsArticle {
   markdown: string;
 }
 
+export function selectRequestedArticle(
+  articles: readonly NewsArticle[],
+  articleId: string | null,
+): NewsArticle | null {
+  return articles.find((candidate) => candidate.id === articleId) ?? articles[0] ?? null;
+}
+
 interface NewsIndex {
   schemaVersion: number;
   articles: Array<{

@@ -70,5 +70,14 @@ describe("file entry helpers", () => {
     expect(defaultExpanded("mods/core.jar", true)).toBe(true);
     const remembered = new Map([["mods", false]]);
     expect(isPathExpanded(remembered, "mods", false)).toBe(false);
+    expect(isPathExpanded(remembered, "mods", true)).toBe(true);
+  });
+
+  it("forces collapsed ancestors open while searching for a descendant", () => {
+    const remembered = new Map([["config", false]]);
+    const visible = buildVisibleEntries(entries, "voice");
+
+    expect(visible.map((entry) => entry.path)).toEqual(["config", "config/voice.toml"]);
+    expect(isPathExpanded(remembered, "config", true)).toBe(true);
   });
 });

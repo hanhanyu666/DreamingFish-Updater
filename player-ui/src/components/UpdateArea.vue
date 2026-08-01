@@ -128,7 +128,9 @@ function openArchive(): void {
         <div class="progress-spacer"></div>
         <div class="percent-label">{{ percentText }}</div>
       </div>
-      <div class="current-path">{{ store.state.currentPathText }}</div>
+      <div class="current-path" :class="{ 'error-detail': store.state.error != null }">
+        {{ store.state.currentPathText }}
+      </div>
       <div class="update-progress-track">
         <div
           class="update-progress-bar"
@@ -169,7 +171,11 @@ function openArchive(): void {
         class="unmanaged-notice"
         :class="{ 'unmanaged-action': store.state.unmanaged.mods.length > 0 }"
         :title="store.state.unmanaged.contextLines.join('\n')"
+        :role="store.state.unmanaged.mods.length > 0 ? 'button' : undefined"
+        :tabindex="store.state.unmanaged.mods.length > 0 ? 0 : undefined"
         @click="store.openPlayerModPage()"
+        @keydown.enter="store.openPlayerModPage()"
+        @keydown.space.prevent="store.openPlayerModPage()"
       >
         {{ store.state.unmanaged.text }}
       </div>

@@ -35,7 +35,6 @@ onMounted(() => {
   bridge.window.onMaximizedChange((maximized) => setMaximized(maximized));
   void bridge.window.isMaximized().then((maximized) => setMaximized(maximized));
   window.addEventListener("resize", updateLatestNewsVisibility);
-  window.addEventListener("keydown", onKeydown);
   void store.loadNews();
 
   if (!bridge.isTauri) startPreview();
@@ -43,18 +42,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", updateLatestNewsVisibility);
-  window.removeEventListener("keydown", onKeydown);
   if (countdownTimer != null) window.clearInterval(countdownTimer);
 });
 
 function updateLatestNewsVisibility(): void {
   windowHeight.value = window.innerHeight;
-}
-
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === "Escape" && store.state.confirm != null) {
-    store.answerConfirm(false);
-  }
 }
 
 function openLatestNews(): void {
@@ -172,7 +164,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.1.21" }}
+        DreamingFish Updater {{ "0.1.25" }}
       </div>
 
       <ContentPages />

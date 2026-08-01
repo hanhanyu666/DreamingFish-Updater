@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   answerConfirm,
   handleSidecarMessage,
+  closeCommandForState,
+  confirmDisableMod,
   showPage,
   toggleDrawer,
   usePlayerStore,
@@ -39,6 +41,12 @@ describe("player store", () => {
     expect(store.state.percent).toBe("50%");
     expect(store.state.byteSummary).toContain("/");
     expect(store.state.currentPathText).toBe("mods/core.jar");
+  });
+
+  it("delegates pre-launch close confirmation to the Java side", () => {
+    expect(closeCommandForState(false, false, false)).toBe("close");
+    expect(closeCommandForState(false, true, false)).toBe("quit");
+    expect(closeCommandForState(true, false, false)).toBe("quit");
   });
 
   it("applies result state and permits launch", () => {
@@ -96,6 +104,41 @@ describe("player store", () => {
       },
     });
     expect(store.state.confirm?.id).toBe(7);
+    answerConfirm(false);
+    expect(store.state.confirm).toBeNull();
+  });
+
+  it("queues a sidecar confirmation without abandoning a local promise", async () => {
+    const localResult = confirmDisableMod({
+      key: "component:test",
+      displayName: "Test Mod",
+      path: "mods/test.jar",
+      componentId: "test",
+      managed: true,
+      disabled: false,
+      active: true,
+      forced: false,
+    });
+    expect(store.state.confirm?.id).toBe(-1);
+
+    handleSidecarMessage({
+      type: "confirm-request",
+      request: {
+        id: 77,
+        tone: "DANGER",
+        title: "取消更新",
+        heading: "关闭更新器？",
+        message: "说明",
+        actionText: "关闭",
+        cancelText: "继续",
+      },
+    });
+    expect(store.state.confirm?.id).toBe(-1);
+
+    answerConfirm(false);
+    await expect(localResult).resolves.toBe(false);
+    expect(store.state.confirm?.id).toBe(77);
+
     answerConfirm(false);
     expect(store.state.confirm).toBeNull();
   });

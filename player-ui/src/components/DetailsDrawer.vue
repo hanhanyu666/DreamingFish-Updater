@@ -117,7 +117,7 @@ const playerModEmptyText = computed(() =>
 );
 
 watch(
-  () => store.state.logs.length,
+  [() => store.state.logs.length, () => store.state.drawerMode],
   async () => {
     await nextTick();
     if (logsElement.value != null) {
@@ -178,7 +178,7 @@ function expand(): void {
       </button>
     </div>
     <div class="drawer-content">
-      <div v-show="store.state.drawerMode === 'UPDATE'" class="update-details-page">
+      <div v-if="store.state.drawerMode === 'UPDATE'" class="update-details-page">
         <div class="update-detail-version">
           {{ result == null ? "尚未完成更新" : "版本 " + result.displayVersion }}
         </div>
@@ -201,7 +201,7 @@ function expand(): void {
         <div v-else class="drawer-empty">本次没有修改本地文件</div>
       </div>
 
-      <div v-show="store.state.drawerMode === 'HISTORY'" class="history-scroll">
+      <div v-if="store.state.drawerMode === 'HISTORY'" class="history-scroll">
         <div v-if="historyReleases.length === 0" class="drawer-empty">
           还没有可显示的发布记录
         </div>
@@ -227,7 +227,7 @@ function expand(): void {
         </template>
       </div>
 
-      <div v-show="store.state.drawerMode === 'LOGS'" ref="logsElement" class="log-list">
+      <div v-if="store.state.drawerMode === 'LOGS'" ref="logsElement" class="log-list">
         <div v-if="store.state.logs.length === 0" class="drawer-empty">
           本次运行还没有日志
         </div>
@@ -236,7 +236,7 @@ function expand(): void {
         </div>
       </div>
 
-      <div v-show="store.state.drawerMode === 'FILES'" class="local-management-page">
+      <div v-if="store.state.drawerMode === 'FILES'" class="local-management-page">
         <div class="local-mode-bar">
           <button
             type="button"
@@ -276,7 +276,7 @@ function expand(): void {
         </div>
       </div>
 
-      <div v-show="store.state.drawerMode === 'PLAYER_MODS'" class="player-mod-page">
+      <div v-if="store.state.drawerMode === 'PLAYER_MODS'" class="player-mod-page">
         <div class="file-tools">
           <input
             v-model="playerModSearch"

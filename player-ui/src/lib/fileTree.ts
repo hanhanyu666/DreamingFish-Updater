@@ -116,6 +116,7 @@ export function isPathExpanded(
   path: string,
   queryActive: boolean,
 ): boolean {
+  if (queryActive) return true;
   const folded = foldPath(path);
   const remembered = expanded.get(folded);
   return remembered != null ? remembered : defaultExpanded(path, queryActive);

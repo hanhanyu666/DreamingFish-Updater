@@ -10,7 +10,7 @@ export interface PlayerBridge {
   sendCommand(command: SidecarCommand): void;
   openExternal(uri: string): void;
   openPath(path: string): void;
-  assetUrl(path: string | null): string | null;
+  assetUrl(path: string | null): Promise<string | null>;
   window: {
     minimize(): void;
     toggleMaximize(): void;
@@ -55,15 +55,8 @@ class TauriBridge implements PlayerBridge {
         // Event listening is best-effort; sidecar startup continues.
       }
       try {
-        await listen<string>("sidecar-error", (event) => {
-          this.handler?.({ type: "error", title: "更新器进程异常", detail: event.payload, allowContinue: false });
-        });
-      } catch {
-        // ignore
-      }
-      try {
-        await listen("sidecar-exited", () => {
-          getCurrentWindow().close();
+        await listen<string>("sidecar-crashed", (event) => {
+          this.handler?.(sidecarCrashMessage(event.payload));
         });
       } catch {
         // ignore
@@ -81,17 +74,45 @@ class TauriBridge implements PlayerBridge {
     } catch {
       // Maximized-state sync is cosmetic; do not block sidecar startup.
     }
-    void import("@tauri-apps/api/core")
-      .then(({ invoke }) => invoke("spawn_sidecar"))
+    void this.spawnSidecar()
       .catch((error) => {
         this.handler?.({ type: "error", title: "无法启动更新引擎", detail: String(error), allowContinue: false });
       });
   }
 
+  private async spawnSidecar(): Promise<unknown> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke("spawn_sidecar");
+  }
+
   sendCommand(command: SidecarCommand): void {
-    void import("@tauri-apps/api/core").then(({ invoke }) =>
-      invoke("send_command", { line: JSON.stringify(command) }).catch(() => undefined),
-    );
+    void import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke("send_command", { line: JSON.stringify(command) }))
+      .catch((error) => {
+        if (shouldRespawnAfterCommandFailure(command)) {
+          void this.spawnSidecar().catch((spawnError) => {
+            this.handler?.({
+              type: "error",
+              title: "无法重新启动更新引擎",
+              detail: String(spawnError),
+              allowContinue: false,
+            });
+          });
+          return;
+        }
+        if (command.command === "close" || command.command === "quit") {
+          this.handler?.({
+            type: "error",
+            title: "无法关闭更新器",
+            detail: `关闭指令未能发送：${String(error)}`,
+            allowContinue: false,
+          });
+          // The sidecar cannot authorize or deny launch when its IPC channel is
+          // gone. Never trap the user in the shell; Rust teardown kills/waits
+          // any surviving child and the Bootstrap Agent applies its fallback.
+          this.window.close();
+        }
+      });
   }
 
   openExternal(uri: string): void {
@@ -106,9 +127,10 @@ class TauriBridge implements PlayerBridge {
     );
   }
 
-  assetUrl(path: string | null): string | null {
+  async assetUrl(path: string | null): Promise<string | null> {
     if (!path) return null;
-    return convertFileSrc(path);
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string>("read_local_image", { path });
   }
 
   window = {
@@ -119,7 +141,7 @@ class TauriBridge implements PlayerBridge {
       void import("@tauri-apps/api/core").then(({ invoke }) => invoke("window_toggle_maximize"));
     },
     close(): void {
-      void import("@tauri-apps/api/core").then(({ invoke }) => invoke("window_close"));
+      void import("@tauri-apps/api/core").then(({ invoke }) => invoke("quit_application"));
     },
     async isMaximized(): Promise<boolean> {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -150,19 +172,6 @@ declare global {
   }
 }
 
-// Tauri's convertFileSrc is available from @tauri-apps/api/core.
-let convertFileSrc: (path: string) => string;
-void import("@tauri-apps/api/core")
-  .then((module) => {
-    convertFileSrc = module.convertFileSrc;
-  })
-  .catch(() => undefined);
-
-function lazyConvertFileSrc(path: string): string {
-  if (convertFileSrc != null) return convertFileSrc(path);
-  return "asset://localhost/" + encodeURIComponent(path);
-}
-
 class MockBridge implements PlayerBridge {
   readonly isTauri = false;
   private handler: ((message: SidecarMessage) => void) | null = null;
@@ -184,7 +193,7 @@ class MockBridge implements PlayerBridge {
     // Browser mock cannot open local directories.
   }
 
-  assetUrl(path: string | null): string | null {
+  async assetUrl(path: string | null): Promise<string | null> {
     return path;
   }
 
@@ -435,4 +444,17 @@ function toggleMockFile(
 
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+export function shouldRespawnAfterCommandFailure(command: SidecarCommand): boolean {
+  return command.command === "retry";
+}
+
+export function sidecarCrashMessage(detail: string): SidecarMessage {
+  return {
+    type: "error",
+    title: "更新引擎意外退出",
+    detail: detail.trim().length > 0 ? detail : "没有收到错误详情。可以点击“重试”重新启动更新引擎。",
+    allowContinue: false,
+  };
 }

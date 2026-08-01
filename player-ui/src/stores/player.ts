@@ -139,6 +139,15 @@ const state = reactive<PlayerState>({
 
 const bridge = getBridge();
 
+interface PendingConfirmation {
+  request: ConfirmRequest;
+  source: "local" | "sidecar";
+  resolve?: (accepted: boolean) => void;
+}
+
+const confirmationQueue: PendingConfirmation[] = [];
+let activeConfirmation: PendingConfirmation | null = null;
+
 export function handleSidecarMessage(message: SidecarMessage): void {
   switch (message.type) {
     case "branding":
@@ -146,7 +155,14 @@ export function handleSidecarMessage(message: SidecarMessage): void {
       break;
     case "background":
       state.background = message.path;
-      state.backgroundUrl = bridge.assetUrl(message.path);
+      state.backgroundUrl = null;
+      void bridge.assetUrl(message.path)
+        .then((url) => {
+          if (state.background === message.path) state.backgroundUrl = url;
+        })
+        .catch(() => {
+          if (state.background === message.path) state.backgroundUrl = null;
+        });
       break;
     case "identity":
       state.playerName = message.name && message.name.trim().length > 0
@@ -213,7 +229,7 @@ export function handleSidecarMessage(message: SidecarMessage): void {
       });
       break;
     case "confirm-request":
-      state.confirm = message.request;
+      enqueueConfirmation({ request: message.request, source: "sidecar" });
       break;
     case "open-request":
       if (message.kind === "external" && message.value) bridge.openExternal(message.value);
@@ -442,25 +458,21 @@ export function keepWindowOpen(): void {
 }
 
 export function requestClose(): void {
-  if (state.preview || state.launchPermitted || state.restartPending) {
+  if (closeCommandForState(state.preview, state.launchPermitted, state.restartPending) === "quit") {
     quit();
     return;
   }
-  if (state.working) {
-    void confirmLocal({
-      id: -1,
-      tone: "DANGER",
-      title: "取消更新",
-      heading: "确定要关闭更新器吗？",
-      message: "关闭更新器会取消本次更新，并停止 Minecraft 启动。",
-      actionText: "取消更新",
-      cancelText: "继续更新",
-    }).then((accepted) => {
-      if (accepted) sendCommand({ command: "close" });
-    });
-    return;
-  }
+  // Java owns the update/launch state and is the single source of business
+  // confirmations. Sending close directly avoids showing a second local dialog.
   sendCommand({ command: "close" });
+}
+
+export function closeCommandForState(
+  preview: boolean,
+  launchPermitted: boolean,
+  restartPending: boolean,
+): "close" | "quit" {
+  return preview || launchPermitted || restartPending ? "quit" : "close";
 }
 
 function quit(): void {
@@ -473,29 +485,35 @@ export function sendCommand(command: SidecarCommand): void {
 }
 
 export function answerConfirm(accepted: boolean): void {
-  const request = state.confirm;
-  if (request == null) return;
+  const pending = activeConfirmation;
+  if (pending == null) return;
+  activeConfirmation = null;
   state.confirm = null;
-  if (bridge.isTauri && request.id > 0) {
-    sendCommand({ command: "confirm", id: request.id, accepted });
+  if (pending.source === "sidecar") {
+    if (bridge.isTauri) {
+      sendCommand({ command: "confirm", id: pending.request.id, accepted });
+    }
   } else {
-    resolveLocalConfirm(accepted);
+    pending.resolve?.(accepted);
   }
+  showNextConfirmation();
 }
 
-let localConfirmResolver: ((accepted: boolean) => void) | null = null;
-
 function confirmLocal(request: ConfirmRequest): Promise<boolean> {
-  state.confirm = request;
   return new Promise((resolve) => {
-    localConfirmResolver = resolve;
+    enqueueConfirmation({ request, source: "local", resolve });
   });
 }
 
-function resolveLocalConfirm(accepted: boolean): void {
-  const resolver = localConfirmResolver;
-  localConfirmResolver = null;
-  resolver?.(accepted);
+function enqueueConfirmation(pending: PendingConfirmation): void {
+  confirmationQueue.push(pending);
+  showNextConfirmation();
+}
+
+function showNextConfirmation(): void {
+  if (activeConfirmation != null) return;
+  activeConfirmation = confirmationQueue.shift() ?? null;
+  state.confirm = activeConfirmation?.request ?? null;
 }
 
 export function openDrawer(mode: DrawerMode): void {

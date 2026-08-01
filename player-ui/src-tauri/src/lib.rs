@@ -1,9 +1,14 @@
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::Mutex;
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
+use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, State};
+
+const ALLOW_DEVELOPMENT_OVERRIDES: bool = cfg!(debug_assertions);
 
 struct Sidecar {
     child: Child,
@@ -12,6 +17,9 @@ struct Sidecar {
 
 #[derive(Default)]
 struct SidecarState(Mutex<Option<Sidecar>>);
+
+#[derive(Default)]
+struct NativeCloseState(AtomicU64);
 
 fn debug_log(message: &str) {
     use std::io::Write;
@@ -24,6 +32,59 @@ fn debug_log(message: &str) {
     }
 }
 
+fn redacted_argument_names(arguments: &[String]) -> String {
+    arguments
+        .iter()
+        .filter(|value| value.starts_with("--"))
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn is_explicit_exit_message(line: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(line)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("type")
+                .and_then(|kind| kind.as_str())
+                .map(str::to_owned)
+        })
+        .is_some_and(|kind| kind == "exit")
+}
+
+fn append_stderr_line(lines: &Arc<Mutex<VecDeque<String>>>, line: String) {
+    if let Ok(mut guard) = lines.lock() {
+        guard.push_back(line);
+        while guard.len() > 40 {
+            guard.pop_front();
+        }
+    }
+}
+
+fn format_sidecar_crash(status: Option<ExitStatus>, lines: &VecDeque<String>) -> String {
+    let status_text = status
+        .map(|value| format!("更新引擎退出状态：{value}"))
+        .unwrap_or_else(|| "更新引擎的输出通道意外关闭".to_string());
+    let stderr = lines.iter().cloned().collect::<Vec<_>>().join("\n");
+    if stderr.is_empty() {
+        return format!("{status_text}\n没有收到错误输出。可以点击“重试”重新启动更新引擎。");
+    }
+    let mut detail = format!("{status_text}\n\n{stderr}");
+    if detail.chars().count() > 8_000 {
+        detail = detail
+            .chars()
+            .rev()
+            .take(8_000)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        detail.insert_str(0, "…错误输出过长，仅保留末尾内容…\n");
+    }
+    detail
+}
+
 fn exe_dir() -> Result<PathBuf, String> {
     std::env::current_exe()
         .map_err(|error| format!("无法定位程序目录: {error}"))?
@@ -33,9 +94,22 @@ fn exe_dir() -> Result<PathBuf, String> {
 }
 
 fn java_executable(base: &Path) -> Result<PathBuf, String> {
-    if let Ok(value) = std::env::var("DFS_JAVA") {
-        if !value.is_empty() && Path::new(&value).is_file() {
-            return Ok(PathBuf::from(value));
+    let development_override = development_override("DFS_JAVA");
+    resolve_java_executable(
+        base,
+        development_override.as_deref(),
+        ALLOW_DEVELOPMENT_OVERRIDES,
+    )
+}
+
+fn resolve_java_executable(
+    base: &Path,
+    development_override: Option<&Path>,
+    allow_development_override: bool,
+) -> Result<PathBuf, String> {
+    if allow_development_override {
+        if let Some(value) = development_override.filter(|value| value.is_file()) {
+            return Ok(value.to_path_buf());
         }
     }
     let name = if cfg!(windows) { "java.exe" } else { "java" };
@@ -51,15 +125,79 @@ fn java_executable(base: &Path) -> Result<PathBuf, String> {
 }
 
 fn sidecar_jar(base: &Path) -> Result<PathBuf, String> {
-    if let Ok(value) = std::env::var("DFS_SIDECAR_JAR") {
-        if !value.is_empty() && Path::new(&value).is_file() {
-            return Ok(PathBuf::from(value));
+    let development_override = development_override("DFS_SIDECAR_JAR");
+    resolve_sidecar_jar(
+        base,
+        development_override.as_deref(),
+        ALLOW_DEVELOPMENT_OVERRIDES,
+    )
+}
+
+fn instance_root_from_args() -> Result<PathBuf, String> {
+    let args: Vec<String> = std::env::args().collect();
+    let value = args
+        .windows(2)
+        .find(|pair| pair[0] == "--instance")
+        .map(|pair| PathBuf::from(&pair[1]))
+        .ok_or_else(|| "启动参数中没有 Minecraft 实例目录".to_string())?;
+    value
+        .canonicalize()
+        .map_err(|error| format!("无法读取 Minecraft 实例目录: {error}"))
+}
+
+#[tauri::command]
+fn read_local_image(path: String) -> Result<String, String> {
+    let instance_root = instance_root_from_args()?;
+    read_local_image_from_root(Path::new(&path), &instance_root)
+}
+
+fn read_local_image_from_root(path: &Path, instance_root: &Path) -> Result<String, String> {
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| format!("无法读取背景图片: {error}"))?;
+    let canonical_root = instance_root
+        .canonicalize()
+        .map_err(|error| format!("无法读取 Minecraft 实例目录: {error}"))?;
+    if !canonical.starts_with(&canonical_root) || !canonical.is_file() {
+        return Err("背景图片必须位于当前 Minecraft 实例目录内".to_string());
+    }
+    let mime = match canonical
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        _ => return Err("背景图片格式仅支持 PNG、JPEG 或 WebP".to_string()),
+    };
+    let metadata =
+        std::fs::metadata(&canonical).map_err(|error| format!("无法读取背景图片: {error}"))?;
+    if metadata.len() > 20 * 1024 * 1024 {
+        return Err("背景图片不能超过 20 MiB".to_string());
+    }
+    let bytes = std::fs::read(&canonical).map_err(|error| format!("无法读取背景图片: {error}"))?;
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+fn resolve_sidecar_jar(
+    base: &Path,
+    development_override: Option<&Path>,
+    allow_development_override: bool,
+) -> Result<PathBuf, String> {
+    if allow_development_override {
+        if let Some(value) = development_override.filter(|value| value.is_file()) {
+            return Ok(value.to_path_buf());
         }
     }
-    let candidates = [
-        base.join("player-sidecar.jar"),
-        base.join("app").join("player-sidecar.jar"),
-    ];
+    let mut candidates = vec![base.join("player-sidecar.jar")];
+    if allow_development_override {
+        candidates.push(base.join("app").join("player-sidecar.jar"));
+    }
     for candidate in candidates {
         if candidate.is_file() {
             return Ok(candidate);
@@ -71,14 +209,24 @@ fn sidecar_jar(base: &Path) -> Result<PathBuf, String> {
     ))
 }
 
+fn development_override(name: &str) -> Option<PathBuf> {
+    if !ALLOW_DEVELOPMENT_OVERRIDES {
+        return None;
+    }
+    std::env::var_os(name)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
 #[tauri::command]
 fn spawn_sidecar(app: AppHandle, state: State<'_, SidecarState>) -> Result<(), String> {
     debug_log("spawn_sidecar invoked");
     {
         let mut guard = state.0.lock().map_err(|_| "更新引擎状态锁定失败")?;
-        if guard.as_mut().is_some_and(|sidecar| {
-            sidecar.child.try_wait().ok().flatten().is_none()
-        }) {
+        if guard
+            .as_mut()
+            .is_some_and(|sidecar| sidecar.child.try_wait().ok().flatten().is_none())
+        {
             return Ok(());
         }
         *guard = None;
@@ -92,10 +240,8 @@ fn spawn_sidecar(app: AppHandle, state: State<'_, SidecarState>) -> Result<(), S
         raw_args.push("--preview".to_string());
     }
     debug_log(&format!(
-        "java={} jar={} args={:?}",
-        java.display(),
-        jar.display(),
-        raw_args
+        "sidecar command prepared; arg_names={}",
+        redacted_argument_names(&raw_args)
     ));
 
     let mut command = Command::new(&java);
@@ -120,10 +266,7 @@ fn spawn_sidecar(app: AppHandle, state: State<'_, SidecarState>) -> Result<(), S
 
     let mut child = command.spawn().map_err(|error| {
         debug_log(&format!("spawn failed: {error}"));
-        format!(
-            "无法启动更新引擎 {}: {error}",
-            java.to_string_lossy()
-        )
+        format!("无法启动更新引擎 {}: {error}", java.to_string_lossy())
     })?;
     debug_log(&format!("sidecar pid={}", child.id()));
     let stdin = child.stdin.take().ok_or_else(|| "更新引擎输入通道不可用")?;
@@ -141,32 +284,60 @@ fn spawn_sidecar(app: AppHandle, state: State<'_, SidecarState>) -> Result<(), S
         *guard = Some(Sidecar { child, stdin });
     }
 
+    let stderr_lines = Arc::new(Mutex::new(VecDeque::new()));
+    let stderr_capture = Arc::clone(&stderr_lines);
+    let stderr_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => append_stderr_line(&stderr_capture, line),
+                Err(_) => break,
+            }
+        }
+    });
+
     let out_app = app.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
+        let mut explicit_exit = false;
         for line in reader.lines() {
             match line {
                 Ok(line) => {
+                    explicit_exit |= is_explicit_exit_message(&line);
                     let _ = out_app.emit("sidecar-line", line);
                 }
                 Err(_) => break,
             }
         }
-        let _ = debug_log("sidecar stdout closed");
-        let _ = out_app.emit("sidecar-exited", ());
-        out_app.exit(0);
-    });
-
-    std::thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        for line in reader.lines() {
-            match line {
-                Ok(line) => {
-                    let _ = app.emit("sidecar-error", line);
-                }
-                Err(_) => break,
+        let status = if let Some(state) = out_app.try_state::<SidecarState>() {
+            if let Ok(mut guard) = state.0.lock() {
+                guard
+                    .take()
+                    .and_then(|mut sidecar| match sidecar.child.try_wait() {
+                        Ok(Some(status)) => Some(status),
+                        _ => {
+                            let _ = sidecar.child.kill();
+                            sidecar.child.wait().ok()
+                        }
+                    })
+            } else {
+                None
             }
+        } else {
+            None
+        };
+        let _ = stderr_thread.join();
+        if explicit_exit {
+            debug_log("sidecar exited after explicit exit message");
+            return;
         }
+        debug_log("sidecar stdout closed unexpectedly");
+        let detail = stderr_lines
+            .lock()
+            .ok()
+            .map(|lines| format_sidecar_crash(status, &lines))
+            .unwrap_or_else(|| "更新引擎异常退出。可以点击“重试”重新启动。".to_string());
+        let _ = out_app.emit("sidecar-crashed", detail);
     });
 
     Ok(())
@@ -175,15 +346,42 @@ fn spawn_sidecar(app: AppHandle, state: State<'_, SidecarState>) -> Result<(), S
 #[tauri::command]
 fn send_command(state: State<'_, SidecarState>, line: String) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|_| "更新引擎状态锁定失败")?;
-    let sidecar = guard
-        .as_mut()
-        .ok_or_else(|| "更新引擎尚未启动")?;
+    let sidecar = guard.as_mut().ok_or_else(|| "更新引擎尚未启动")?;
     sidecar
         .stdin
         .write_all(line.as_bytes())
         .and_then(|_| sidecar.stdin.write_all(b"\n"))
         .and_then(|_| sidecar.stdin.flush())
         .map_err(|error| format!("无法写入更新引擎: {error}"))
+}
+
+fn write_close_command(mut writer: impl Write) -> std::io::Result<()> {
+    writer.write_all(b"{\"command\":\"close\"}\n")?;
+    writer.flush()
+}
+
+fn forward_native_close(app: &AppHandle) -> bool {
+    let Some(state) = app.try_state::<SidecarState>() else {
+        return false;
+    };
+    let Ok(mut guard) = state.0.lock() else {
+        return false;
+    };
+    let Some(sidecar) = guard.as_mut() else {
+        return false;
+    };
+    write_close_command(&mut sidecar.stdin).is_ok()
+}
+
+fn unix_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn should_force_native_close(previous_millis: u64, current_millis: u64) -> bool {
+    previous_millis != 0 && current_millis.saturating_sub(previous_millis) <= 3_000
 }
 
 #[tauri::command]
@@ -240,6 +438,7 @@ fn quit_application(app: AppHandle) {
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(SidecarState::default())
+        .manage(NativeCloseState::default())
         .invoke_handler(tauri::generate_handler![
             spawn_sidecar,
             send_command,
@@ -249,13 +448,37 @@ pub fn run() {
             window_start_drag,
             open_path,
             open_external,
+            read_local_image,
             quit_application
         ])
         .build(tauri::generate_context!())
         .expect("error while building DreamingFish Updater");
 
-    app.run(|app_handle, event| {
-        if let tauri::RunEvent::Exit = event {
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } if label == "main" => {
+            // Alt+F4 and OS close requests must follow the same Java decision
+            // path as the custom title-bar button. Otherwise the shell would
+            // kill the sidecar and Bootstrap might incorrectly take fallback.
+            // Only hold the native close when Java actually received the
+            // request. With no sidecar or broken stdin, allow the OS close to
+            // proceed so a damaged shell can never trap the user.
+            let close_state = app_handle.state::<NativeCloseState>();
+            let now = unix_millis();
+            let previous = close_state.0.swap(now, Ordering::SeqCst);
+            if should_force_native_close(previous, now) {
+                return;
+            }
+            if forward_native_close(app_handle) {
+                api.prevent_close();
+            } else {
+                close_state.0.store(0, Ordering::SeqCst);
+            }
+        }
+        tauri::RunEvent::Exit => {
             if let Some(state) = app_handle.try_state::<SidecarState>() {
                 if let Ok(mut guard) = state.0.lock() {
                     if let Some(sidecar) = guard.as_mut() {
@@ -265,5 +488,131 @@ pub fn run() {
                 }
             }
         }
+        _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        format_sidecar_crash, is_explicit_exit_message, read_local_image_from_root,
+        redacted_argument_names, resolve_java_executable, resolve_sidecar_jar,
+        should_force_native_close, write_close_command,
+    };
+    use std::collections::VecDeque;
+    use std::io::Cursor;
+    use std::path::PathBuf;
+
+    fn fixture() -> (PathBuf, PathBuf) {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "dfs-sidecar-path-test-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        let base = root.join("signed-program");
+        let external = root.join("untrusted");
+        let java_name = if cfg!(windows) { "java.exe" } else { "java" };
+        std::fs::create_dir_all(base.join("runtime").join("bin")).unwrap();
+        std::fs::create_dir_all(&external).unwrap();
+        std::fs::write(base.join("runtime").join("bin").join(java_name), b"signed").unwrap();
+        std::fs::write(base.join("player-sidecar.jar"), b"signed").unwrap();
+        std::fs::write(external.join(java_name), b"untrusted").unwrap();
+        std::fs::write(external.join("player-sidecar.jar"), b"untrusted").unwrap();
+        (base, external)
+    }
+
+    #[test]
+    fn release_resolution_ignores_external_overrides() {
+        let (base, external) = fixture();
+        let java_name = if cfg!(windows) { "java.exe" } else { "java" };
+
+        assert_eq!(
+            resolve_java_executable(&base, Some(&external.join(java_name)), false).unwrap(),
+            base.join("runtime").join("bin").join(java_name)
+        );
+        assert_eq!(
+            resolve_sidecar_jar(&base, Some(&external.join("player-sidecar.jar")), false).unwrap(),
+            base.join("player-sidecar.jar")
+        );
+
+        let _ = std::fs::remove_dir_all(base.parent().unwrap());
+    }
+
+    #[test]
+    fn debug_resolution_keeps_explicit_overrides() {
+        let (base, external) = fixture();
+        let java_name = if cfg!(windows) { "java.exe" } else { "java" };
+
+        assert_eq!(
+            resolve_java_executable(&base, Some(&external.join(java_name)), true).unwrap(),
+            external.join(java_name)
+        );
+        assert_eq!(
+            resolve_sidecar_jar(&base, Some(&external.join("player-sidecar.jar")), true).unwrap(),
+            external.join("player-sidecar.jar")
+        );
+
+        let _ = std::fs::remove_dir_all(base.parent().unwrap());
+    }
+
+    #[test]
+    fn local_image_reader_rejects_files_outside_the_instance() {
+        let (base, external) = fixture();
+        let inside = base.join("cover.png");
+        let outside = external.join("cover.png");
+        std::fs::write(&inside, b"image").unwrap();
+        std::fs::write(&outside, b"image").unwrap();
+
+        assert!(read_local_image_from_root(&inside, &base)
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+        assert!(read_local_image_from_root(&outside, &base).is_err());
+
+        let _ = std::fs::remove_dir_all(base.parent().unwrap());
+    }
+
+    #[test]
+    fn native_close_writes_one_complete_json_command() {
+        let mut output = Cursor::new(Vec::new());
+        write_close_command(&mut output).unwrap();
+        assert_eq!(output.into_inner(), b"{\"command\":\"close\"}\n");
+    }
+
+    #[test]
+    fn second_native_close_within_three_seconds_forces_exit() {
+        assert!(!should_force_native_close(0, 10_000));
+        assert!(should_force_native_close(10_000, 12_000));
+        assert!(!should_force_native_close(10_000, 14_001));
+    }
+
+    #[test]
+    fn explicit_exit_and_abnormal_eof_are_distinguishable() {
+        assert!(is_explicit_exit_message(r#"{"type":"exit"}"#));
+        assert!(!is_explicit_exit_message(
+            r#"{"type":"error","detail":"exit"}"#
+        ));
+        let detail = format_sidecar_crash(None, &VecDeque::from(["fatal JVM error".to_string()]));
+        assert!(detail.contains("fatal JVM error"));
+        assert!(detail.contains("意外关闭"));
+    }
+
+    #[test]
+    fn release_debug_summary_never_contains_argument_values() {
+        let arguments = vec![
+            "--bootstrap-token".to_string(),
+            "super-secret-token".to_string(),
+            "--instance".to_string(),
+            "C:\\Users\\name\\instance".to_string(),
+            "--player-name".to_string(),
+            "PrivatePlayer".to_string(),
+        ];
+        let summary = redacted_argument_names(&arguments);
+        assert_eq!(summary, "--bootstrap-token,--instance,--player-name");
+        assert!(!summary.contains("super-secret-token"));
+        assert!(!summary.contains("PrivatePlayer"));
+    }
 }

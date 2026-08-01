@@ -641,8 +641,9 @@ dependencies = [
 
 [[package]]
 name = "dreamingfish-player"
-version = "0.1.21"
+version = "0.1.25"
 dependencies = [
+ "base64 0.22.1",
  "open",
  "serde",
  "serde_json",

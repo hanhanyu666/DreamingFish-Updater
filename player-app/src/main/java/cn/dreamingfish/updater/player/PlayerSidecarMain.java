@@ -24,10 +24,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /** Headless JSON-lines sidecar used by the Tauri player window; keeps the same orchestration as the JavaFX app. */
 public final class PlayerSidecarMain {
@@ -40,12 +44,13 @@ public final class PlayerSidecarMain {
     public static void main(String[] args) throws Exception {
         PlayerArguments arguments = PlayerArguments.parse(List.of(args));
         JsonViewPort viewport = new JsonViewPort();
+        PlayerController controller = new PlayerController(
+                arguments, viewport, viewport::exitProcess);
+        Thread.ofPlatform().daemon().name("sidecar-stdin")
+                .start(() -> commandLoop(viewport, controller));
         if (arguments.preview()) {
             viewport.startPreview();
         } else {
-            PlayerController controller = new PlayerController(
-                    arguments, viewport, () -> System.exit(0));
-            Thread.ofPlatform().daemon().name("sidecar-stdin").start(() -> commandLoop(viewport, controller));
             controller.start();
         }
         try {
@@ -58,23 +63,73 @@ public final class PlayerSidecarMain {
     private static void commandLoop(JsonViewPort viewport, PlayerController controller) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 System.in, StandardCharsets.UTF_8))) {
+            runCommandLoop(reader, viewport::completeConfirm,
+                    root -> handleControllerCommand(root, controller),
+                    viewport::showCommandFailure, controller::exitApplication);
+        } catch (IOException ignored) {
+            // runCommandLoop owns EOF/error cleanup once the reader is created.
+        }
+    }
+
+    /**
+     * Keeps stdin responsive while a controller command is waiting for a UI confirmation.
+     * Confirm replies are completed on the reader thread; all business commands run in a
+     * single ordered executor because {@link PlayerController} is intentionally stateful.
+     */
+    static void runCommandLoop(BufferedReader reader,
+                               BiConsumer<Integer, Boolean> confirmHandler,
+                               Consumer<JsonNode> controllerHandler,
+                               Consumer<RuntimeException> commandErrorHandler,
+                               Runnable eofAction) throws IOException {
+        ExecutorService commands = Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "sidecar-commands");
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.isBlank()) continue;
                 try {
-                    handleCommand(line, viewport, controller);
-                } catch (RuntimeException ignored) {
-                    // A malformed command must not kill the update flow.
+                    JsonNode root = TREES.readTree(line);
+                    if ("confirm".equals(root.path("command").asText(""))) {
+                        confirmHandler.accept(root.path("id").asInt(-1),
+                                root.path("accepted").asBoolean(false));
+                    } else {
+                        commands.execute(() -> {
+                            try {
+                                controllerHandler.accept(root);
+                            } catch (RuntimeException error) {
+                                // Report the failed action but keep later ordered commands alive.
+                                try {
+                                    commandErrorHandler.accept(error);
+                                } catch (RuntimeException ignored) {
+                                    // A broken error reporter must not terminate command dispatch.
+                                }
+                            }
+                        });
+                    }
+                } catch (IOException | RuntimeException ignored) {
+                    // A malformed JSON line must not kill the command reader.
                 }
             }
-        } catch (IOException ignored) {
+        } finally {
+            commands.shutdown();
+            try {
+                if (!commands.awaitTermination(2, TimeUnit.SECONDS)) {
+                    commands.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                commands.shutdownNow();
+                Thread.currentThread().interrupt();
+            } finally {
+                eofAction.run();
+            }
         }
-        controller.exitApplication();
     }
 
-    private static void handleCommand(String line, JsonViewPort viewport,
-                                      PlayerController controller) throws IOException {
-        JsonNode root = TREES.readTree(line);
+    private static void handleControllerCommand(JsonNode root,
+                                                PlayerController controller) {
         String command = root.path("command").asText("");
         switch (command) {
             case "retry" -> controller.retry();
@@ -92,8 +147,6 @@ public final class PlayerSidecarMain {
             case "open-directory" -> controller.openPlayerDirectory();
             case "open-archive" -> controller.openArchiveDirectory();
             case "keep-open" -> controller.keepWindowOpen();
-            case "confirm" -> viewport.completeConfirm(
-                    root.path("id").asInt(-1), root.path("accepted").asBoolean(false));
             case "close" -> controller.requestClose();
             case "quit" -> controller.exitApplication();
             default -> {
@@ -102,7 +155,7 @@ public final class PlayerSidecarMain {
         }
     }
 
-    private static <T> T decode(JsonNode node, Class<T> type) throws IOException {
+    private static <T> T decode(JsonNode node, Class<T> type) {
         return JSON.read(node.toString().getBytes(StandardCharsets.UTF_8), type);
     }
 
@@ -178,6 +231,7 @@ public final class PlayerSidecarMain {
                 System.out, StandardCharsets.UTF_8));
         private final Map<Integer, CompletableFuture<Boolean>> pending = new ConcurrentHashMap<>();
         private final AtomicInteger confirmIds = new AtomicInteger(1);
+        private final AtomicBoolean exitEmitted = new AtomicBoolean();
         private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
                 runnable -> {
                     Thread thread = new Thread(runnable, "sidecar-preview");
@@ -401,6 +455,13 @@ public final class PlayerSidecarMain {
             if (future != null) future.complete(accepted);
         }
 
+        void showCommandFailure(RuntimeException error) {
+            String detail = error.getMessage();
+            if (detail == null || detail.isBlank()) detail = error.getClass().getSimpleName();
+            System.err.println("Player sidecar command failed: " + detail);
+            emit(new ErrorMessage("error", "操作未能完成", detail, false));
+        }
+
         @Override
         public void openPlayerDirectory(Path playerHome) {
             emit(new OpenRequestMessage("open-request", "directory", playerHome.toString()));
@@ -419,9 +480,20 @@ public final class PlayerSidecarMain {
         @Override
         public void fadeOut(long durationMillis, Runnable finished) {
             scheduler.schedule(() -> {
-                emit(new ExitMessage("exit"));
+                emitExit();
                 finished.run();
             }, durationMillis, TimeUnit.MILLISECONDS);
+        }
+
+        void exitProcess() {
+            emitExit();
+            System.exit(0);
+        }
+
+        private void emitExit() {
+            if (exitEmitted.compareAndSet(false, true)) {
+                emit(new ExitMessage("exit"));
+            }
         }
 
         @Override

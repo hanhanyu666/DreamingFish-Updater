@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { getBridge } from "../lib/bridge";
-import { newsDateLabel, type NewsArticle } from "../lib/news";
+import { newsDateLabel, selectRequestedArticle, type NewsArticle } from "../lib/news";
 import { usePlayerStore } from "../stores/player";
 import MarkdownBody from "./MarkdownBody.vue";
 
@@ -12,8 +12,6 @@ const loadError = computed(() => store.state.newsLoadError);
 const showingArticle = ref(false);
 const selected = ref<NewsArticle | null>(null);
 
-const latestArticle = computed(() => articles.value[0] ?? null);
-
 watch(
   () => store.state.newsRequest.seq,
   () => {
@@ -21,11 +19,11 @@ watch(
     if (request.kind === "list") {
       showList();
     } else {
-      const article = articles.value.find((candidate) => candidate.id === request.articleId)
-        ?? latestArticle.value;
+      const article = selectRequestedArticle(articles.value, request.articleId);
       if (article != null) showArticle(article);
     }
   },
+  { immediate: true },
 );
 
 function showList(): void {
