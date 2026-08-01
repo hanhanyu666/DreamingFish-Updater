@@ -72,7 +72,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 final class PlayerView {
-    private static final PseudoClass MUSIC_PLAYING = PseudoClass.getPseudoClass("playing");
     private static final PseudoClass NAV_SELECTED = PseudoClass.getPseudoClass("selected");
     private static final PseudoClass DRAWER_SELECTED = PseudoClass.getPseudoClass("selected");
     private static final PseudoClass WINDOW_MAXIMIZED = PseudoClass.getPseudoClass("maximized");
@@ -214,7 +213,6 @@ final class PlayerView {
     private final Button close = new Button();
     private final Button minimize = new Button();
     private final Button maximize = new Button();
-    private final Button music = new Button();
     private final Button expandDrawer = new Button();
     private HBox titleBar;
     private VBox identityPane;
@@ -240,7 +238,6 @@ final class PlayerView {
     private Runnable openDirectoryAction = () -> { };
     private Runnable openArchiveAction = () -> { };
     private Runnable detailsOpenedAction = () -> { };
-    private Runnable musicToggleAction = () -> { };
     private Consumer<URI> openExternalLinkAction = ignored -> { };
     private BiConsumer<LocalModEntry, Boolean> localModToggleAction = (entry, disabled) -> { };
     private Runnable restoreModsAction = () -> { };
@@ -562,10 +559,6 @@ final class PlayerView {
         detailsOpenedAction = action;
     }
 
-    void setMusicToggleAction(Runnable action) {
-        musicToggleAction = action;
-    }
-
     void setOpenExternalLinkAction(Consumer<URI> action) {
         openExternalLinkAction = action == null ? ignored -> { } : action;
         newsPage.setOpenExternalLink(uri -> openExternalLinkAction.accept(uri));
@@ -585,19 +578,6 @@ final class PlayerView {
 
     void setRestoreFilesAction(Runnable action) {
         restoreFilesAction = action == null ? () -> { } : action;
-    }
-
-    void setMusicState(BackgroundMusic.State state) {
-        boolean available = state != BackgroundMusic.State.UNAVAILABLE;
-        boolean playing = state == BackgroundMusic.State.PLAYING;
-        music.setDisable(!available);
-        installMusicGlyph(music, playing);
-        music.pseudoClassStateChanged(MUSIC_PLAYING, playing);
-        String description = available
-                ? (playing ? "暂停背景音乐" : "播放背景音乐")
-                : "背景音乐不可用";
-        music.setTooltip(new Tooltip(description));
-        music.setAccessibleText(description);
     }
 
     void fadeOut(Duration duration, Runnable finished) {
@@ -763,7 +743,6 @@ final class PlayerView {
         minimize.setOnAction(event -> stageWindow.setIconified(true));
         maximize.setOnAction(event -> stageWindow.setMaximized(!stageWindow.isMaximized()));
         close.setOnAction(event -> closeAction.run());
-        music.setOnAction(event -> musicToggleAction.run());
         retry.setOnAction(event -> retryAction.run());
         continueLaunch.setOnAction(event -> continueLaunchAction.run());
         openDirectory.setOnAction(event -> openDirectoryAction.run());
@@ -809,14 +788,9 @@ final class PlayerView {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        music.getStyleClass().addAll("window-button", "music-button");
-        installMusicGlyph(music, false);
         minimize.getStyleClass().addAll("window-button", "minimize-button");
         maximize.getStyleClass().addAll("window-button", "maximize-button");
         close.getStyleClass().addAll("window-button", "close-button");
-        music.setDisable(true);
-        music.setTooltip(new Tooltip("正在载入背景音乐"));
-        music.setAccessibleText("正在载入背景音乐");
         installMinimizeGlyph(minimize);
         installMaximizeGlyph(maximize, false);
         installCloseGlyph(close);
@@ -826,7 +800,7 @@ final class PlayerView {
         minimize.setAccessibleText("最小化");
         maximize.setAccessibleText("最大化");
         close.setAccessibleText("关闭");
-        bar.getChildren().addAll(brand, navigation, spacer, music, minimize, maximize, close);
+        bar.getChildren().addAll(brand, navigation, spacer, minimize, maximize, close);
         installWindowDrag(stageWindow, bar);
         return bar;
     }
@@ -2264,32 +2238,6 @@ final class PlayerView {
         glyph.setMinSize(14, 14);
         glyph.setPrefSize(14, 14);
         glyph.setMaxSize(14, 14);
-        glyph.setMouseTransparent(true);
-        button.setGraphic(glyph);
-    }
-
-    private static void installMusicGlyph(Button button, boolean playing) {
-        if (!playing) {
-            Label note = new Label("♪");
-            note.getStyleClass().add("music-note-glyph");
-            note.setMouseTransparent(true);
-            button.setGraphic(note);
-            return;
-        }
-        Region left = new Region();
-        Region right = new Region();
-        for (Region line : List.of(left, right)) {
-            line.getStyleClass().add("music-pause-line");
-            line.setMinSize(3, 14);
-            line.setPrefSize(3, 14);
-            line.setMaxSize(3, 14);
-            line.setMouseTransparent(true);
-        }
-        HBox glyph = new HBox(4, left, right);
-        glyph.setAlignment(Pos.CENTER);
-        glyph.setMinSize(10, 14);
-        glyph.setPrefSize(10, 14);
-        glyph.setMaxSize(10, 14);
         glyph.setMouseTransparent(true);
         button.setGraphic(glyph);
     }

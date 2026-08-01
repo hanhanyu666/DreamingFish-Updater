@@ -82,11 +82,7 @@ final class ManifestFetcher {
     }
 
     static HttpClient client(UpdateRequest request) {
-        if (request.httpClient() != null) return request.httpClient();
-        return HttpClient.newBuilder()
-                .connectTimeout(request.connectTimeout())
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
+        return request.httpClient();
     }
 
     private void validateIdentityAndVersion(ReleaseManifest manifest, UpdateRequest request) {

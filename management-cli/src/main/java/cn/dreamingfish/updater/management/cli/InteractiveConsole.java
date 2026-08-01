@@ -42,11 +42,14 @@ final class InteractiveConsole {
                 root.out().println();
                 root.out().println("还没有整合包项目。推荐在 Web 管理界面中完成首次创建，"
                         + "每个必填项都带有用途和示例。");
-                if (confirm("是否现在启动 Web 管理界面并创建第一个项目？", true)) {
-                    serveWeb(false);
-                }
-                if (root.services().projects().list().isEmpty()
-                        && confirm("仍未创建项目，是否改用命令行创建？", true)) {
+                root.out().println("  按 Y 进入 Web 管理界面创建，按 N 使用命令行创建。");
+                boolean useWeb = confirm(
+                        "是否现在启动 Web 管理界面并创建第一个项目？", true);
+                if (!useWeb) {
+                    createProject();
+                } else if (!serveWeb(false)
+                        && root.services().projects().list().isEmpty()) {
+                    root.out().println("Web 管理界面未能启动，将改用命令行创建第一个项目。");
                     createProject();
                 }
             }
@@ -59,25 +62,48 @@ final class InteractiveConsole {
 
     private void configureFirstRun() {
         root.out().println();
-        root.out().println("首次运行配置");
-        root.out().println("管理数据会自动保存在管理端根目录的 data 文件夹中。");
-        root.out().println("这里配置的是服务器本机监听方式，不是玩家访问的公网地址。");
-        root.out().println("玩家访问地址会在创建每个整合包项目时单独填写。");
+        root.out().println("首次使用引导");
+        root.out().println("================");
+        root.out().println("欢迎使用 DreamingFish Updater！");
+        root.out().println("请跟随引导完成设置。如果不确定怎么填，直接按回车使用默认值即可。");
 
         ManagementSettings current = root.settings();
         Path data = root.dataDirectory.toAbsolutePath().normalize();
-        root.out().println("管理数据目录：" + data);
+
         root.out().println();
-        root.out().println("HTTP 文件服务监听地址：玩家更新器下载文件时，服务在本机绑定的地址。");
-        root.out().println("  公网/VPS 部署通常保留 0.0.0.0；只允许本机访问时填写 127.0.0.1。");
-        String host = prompt("HTTP 文件服务监听地址（必填）", current.httpHost());
-        root.out().println("HTTP 文件服务端口：服务器内部实际监听端口；NAT 或端口转发需指向这里。");
-        root.out().println("  示例：公网 39988 映射到服务器 8080 时，此处填写 8080。");
-        int port = promptPort("HTTP 文件服务端口（必填）", current.httpPort());
-        root.out().println("Web 管理端口：仅供管理员使用，固定监听 127.0.0.1，可通过 SSH 隧道访问。");
-        root.out().println("  该端口不会写入玩家端，也不应直接暴露到公网。");
+        root.out().println("[1/3] 管理端数据保存位置");
+        root.out().println("管理端会把项目设置、发布记录和签名密钥自动保存在下面这个文件夹：");
+        root.out().println("  " + data);
+        root.out().println("这个 data 文件夹位于管理端根目录中，非常重要，请勿删除！");
+        root.out().println();
+        root.out().println("升级管理端的方法：");
+        root.out().println("  1. 把旧管理端根目录中的 data 文件夹和 management-settings.json");
+        root.out().println("     移动或复制到新版管理端根目录。");
+        root.out().println("  2. 启动新版管理端，程序会自动读取原有数据。");
+
+        root.out().println();
+        root.out().println("[2/3] 配置玩家下载服务");
+        root.out().println("玩家更新器会通过这项服务下载模组和配置文件。");
+        root.out().println("请设置服务监听地址和端口。");
+        root.out().println();
+        root.out().println("监听地址决定哪些电脑可以连接：");
+        root.out().println("  0.0.0.0   = 允许其他电脑连接，部署在服务器或 VPS 时使用（推荐）。");
+        root.out().println("  127.0.0.1 = 只有当前电脑能连接，仅在内部测试时使用。");
+        root.out().println("这里填写的不是公网 IP。玩家访问的公网地址会在创建项目时填写。");
+        String host = prompt("下载服务监听地址（一般直接按回车）", current.httpHost());
+        root.out().println();
+        root.out().println("监听端口通常使用默认值 8080。只有端口冲突或服务商有要求时才修改。");
+        root.out().println("如果使用端口映射，这里填写服务器内部端口。");
+        int port = promptPort("下载服务端口（一般直接按回车）", current.httpPort());
+
+        root.out().println();
+        root.out().println("[3/3] Web 管理页面");
+        root.out().println("这个页面只给管理员使用，不要提供给玩家。");
+        root.out().println("  默认端口是 18080，通常直接按回车。");
+        root.out().println("  如果管理端运行在远程服务器，需要通过 SSH 隧道访问。");
+        root.out().println("  为了安全，Web 管理页面只允许本机连接，不能使用服务器公网 IP 直接打开。");
         int webPort = promptWebPort(
-                "Web 管理界面端口（必填）", current.webPort(), port);
+                "Web 管理端口（一般直接按回车）", current.webPort(), port);
         root.saveSettings(new ManagementSettings(
                 ManagementSettings.CURRENT_SCHEMA,
                 data.toString(),
@@ -87,10 +113,14 @@ final class InteractiveConsole {
                 webPort
         ));
         root.services();
-        root.out().println("配置已保存到：" + root.settingsFile());
-        root.out().println("管理数据目录已初始化：" + root.dataDirectory);
-        root.out().println("Web 管理界面：http://127.0.0.1:"
+        root.out().println();
+        root.out().println("首次设置已完成");
+        root.out().println("================");
+        root.out().println("  管理端数据：" + root.dataDirectory);
+        root.out().println("  下载服务：" + host + ":" + port);
+        root.out().println("  Web 管理页面：http://127.0.0.1:"
                 + webPort + "/");
+        root.out().println("  设置文件：" + root.settingsFile());
     }
 
     private void mainMenu() {
@@ -456,10 +486,11 @@ final class InteractiveConsole {
         ManagementSettings current = root.settings();
         root.out().println("设置文件：" + root.settingsFile());
         root.out().println("管理数据目录：" + Path.of(current.dataDirectory()));
-        root.out().println("HTTP 设置用于玩家下载；Web 管理界面固定只监听 127.0.0.1。");
-        root.out().println("这里不修改玩家公网地址；公网地址在各项目设置中单独维护。");
-        String host = prompt("HTTP 文件服务监听地址（必填）", current.httpHost());
-        int port = promptPort("HTTP 文件服务端口（必填）", current.httpPort());
+        root.out().println("下载服务监听地址决定哪些电脑可以连接：");
+        root.out().println("  0.0.0.0 允许其他电脑连接；127.0.0.1 只允许当前电脑连接。");
+        root.out().println("这里不填写玩家公网地址；公网地址在各项目设置中单独维护。");
+        String host = prompt("下载服务监听地址（必填）", current.httpHost());
+        int port = promptPort("下载服务端口（必填）", current.httpPort());
         int webPort = promptWebPort(
                 "Web 管理端口（必填；仅监听 127.0.0.1）",
                 current.webPort(), port);
@@ -507,21 +538,31 @@ final class InteractiveConsole {
         serveWeb(true);
     }
 
-    private void serveWeb(boolean askBeforeStart) {
+    private boolean serveWeb(boolean askBeforeStart) {
         ManagementSettings settings = root.settings();
         String address = "http://127.0.0.1:" + settings.webPort() + "/";
-        if (askBeforeStart && !confirm("启动 Web 管理界面 " + address + "？", true)) return;
+        if (askBeforeStart && !confirm("启动 Web 管理界面 " + address + "？", true)) {
+            return false;
+        }
         try (AdminWebServer server = new AdminWebServer(root)) {
             Thread shutdown = new Thread(server::close, "dfs-admin-web-shutdown");
             try {
                 Runtime.getRuntime().addShutdownHook(shutdown);
                 server.start();
                 root.out().println("Web 管理界面已启动：" + address);
-                root.out().println("请在浏览器中打开以上地址完成项目创建和发布管理。");
-                root.out().println("远程服务器可使用 SSH 隧道：ssh -N -L "
+                root.out().println();
+                root.out().println("如果管理端运行在当前电脑：");
+                root.out().println("  请直接在浏览器打开：" + address);
+                root.out().println();
+                root.out().println("如果管理端运行在远程服务器：");
+                root.out().println("  1. 在您自己的电脑上打开终端，运行以下 SSH 隧道命令：");
+                root.out().println("     ssh -N -L "
                         + settings.webPort() + ":127.0.0.1:" + settings.webPort()
                         + " 用户名@您的服务器地址");
-                root.out().println("建立隧道后，仍在本地浏览器打开：" + address);
+                root.out().println("  2. 保持 SSH 窗口运行，再在自己电脑的浏览器打开：");
+                root.out().println("     " + address);
+                root.out().println("  注意：Web 管理页面不能使用服务器公网 IP 直接访问。");
+                root.out().println();
                 waitForServiceStop();
             } finally {
                 server.close();
@@ -532,6 +573,11 @@ final class InteractiveConsole {
                 }
                 root.out().println("Web 管理界面已停止，正在返回主菜单。");
             }
+            return true;
+        } catch (ManagementException e) {
+            root.err().println("Web 管理界面启动失败：" + usefulMessage(e));
+            root.out().println("请关闭占用 Web 管理端口的程序，或在主菜单 [8] 修改 Web 管理端口。");
+            return false;
         }
     }
 

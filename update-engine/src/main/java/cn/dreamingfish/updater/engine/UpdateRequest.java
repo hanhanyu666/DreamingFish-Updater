@@ -25,6 +25,12 @@ public record UpdateRequest(
         supportedCapabilities = supportedCapabilities == null ? Set.of() : Set.copyOf(supportedCapabilities);
         connectTimeout = connectTimeout == null ? Duration.ofSeconds(5) : connectTimeout;
         requestTimeout = requestTimeout == null ? Duration.ofSeconds(30) : requestTimeout;
+        httpClient = httpClient == null
+                ? HttpClient.newBuilder()
+                .connectTimeout(connectTimeout)
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build()
+                : httpClient;
         cancellationToken = cancellationToken == null ? CancellationToken.NEVER : cancellationToken;
         localFileOverrides = localFileOverrides == null ? LocalFileOverrides.NONE : localFileOverrides;
     }

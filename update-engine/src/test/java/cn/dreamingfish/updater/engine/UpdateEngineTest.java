@@ -130,6 +130,38 @@ class UpdateEngineTest {
     }
 
     @Test
+    void downloadsIndependentObjectsInParallelWithABoundedSharedClient() throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(temporary.resolve("parallel-instance"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            List<TestUpdateServer.TestFile> files = new ArrayList<>();
+            for (int index = 0; index < 8; index++) {
+                files.add(server.file("mods/parallel-" + index + ".jar",
+                        "parallel-object-" + index, FilePolicy.ENFORCED));
+            }
+            ReleaseManifest release = server.release(
+                    1, "parallel-release", files.toArray(TestUpdateServer.TestFile[]::new));
+            server.serve(release);
+            server.bundle(instance, release, false);
+            server.objectDelayMillis = 100;
+
+            UpdateRequest request = request(instance, playerHome, server.binding());
+            assertTrue(request.httpClient() != null);
+            UpdateResult result = new UpdateEngine().update(request, null);
+
+            assertEquals(UpdateOutcome.UPDATED, result.outcome());
+            assertTrue(server.maximumConcurrentObjectRequests.get() >= 2,
+                    "Expected at least two simultaneous object requests");
+            assertTrue(server.maximumConcurrentObjectRequests.get() <= 4,
+                    "Default parallelism must remain bounded at four requests");
+            for (int index = 0; index < 8; index++) {
+                assertEquals("parallel-object-" + index,
+                        Files.readString(instance.resolve("mods/parallel-" + index + ".jar")));
+            }
+        }
+    }
+
+    @Test
     void restoresThePreviousInstallationAfterAnInterruptedCommit() throws Exception {
         try (TestUpdateServer server = new TestUpdateServer()) {
             Path instance = Files.createDirectories(temporary.resolve("crash-instance"));

@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,6 +78,36 @@ class SourceFileServiceTest {
     }
 
     @Test
+    void interruptedUploadRemovesPartialFileAndPreservesExistingTarget() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(
+                temporary.resolve("interrupted-upload"));
+        fixture.createProject();
+        SourceFileService service = new SourceFileService(
+                fixture.paths, fixture.database, fixture.json);
+        byte[] content = "browser connection was interrupted"
+                .getBytes(StandardCharsets.UTF_8);
+
+        ManagementException newFileFailure = assertThrows(
+                ManagementException.class,
+                () -> service.upload(
+                        "demo", "mods/interrupted.jar",
+                        interrupted(content, 7), content.length, false, false));
+        assertTrue(newFileFailure.getMessage().contains("Unable to store"));
+        assertFalse(Files.exists(fixture.source.resolve("mods/interrupted.jar")));
+        assertNoUploadParts(fixture.source);
+
+        Path existing = fixture.source.resolve("mods/existing.jar");
+        Files.createDirectories(existing.getParent());
+        Files.writeString(existing, "original-file");
+        assertThrows(ManagementException.class,
+                () -> service.upload(
+                        "demo", "mods/existing.jar",
+                        interrupted(content, 7), content.length, true, false));
+        assertEquals("original-file", Files.readString(existing));
+        assertNoUploadParts(fixture.source);
+    }
+
+    @Test
     void forcedDirectoryFileCannotBeReleasedFromManagement() throws Exception {
         ManagementFixture fixture = new ManagementFixture(temporary.resolve("forced"));
         ProjectRecord project = fixture.createProject();
@@ -131,5 +163,39 @@ class SourceFileServiceTest {
                 .count());
         assertTrue(fixture.database.requireProject("demo")
                 .rules().forcedSyncFiles().isEmpty());
+    }
+
+    private static InputStream interrupted(byte[] content, int failAfter) {
+        return new InputStream() {
+            private int offset;
+
+            @Override
+            public int read() throws IOException {
+                byte[] single = new byte[1];
+                int read = read(single, 0, 1);
+                return read < 0 ? -1 : Byte.toUnsignedInt(single[0]);
+            }
+
+            @Override
+            public int read(byte[] buffer, int start, int length) throws IOException {
+                if (offset >= failAfter) {
+                    throw new IOException("simulated browser disconnect");
+                }
+                if (offset >= content.length) return -1;
+                int count = Math.min(length,
+                        Math.min(failAfter - offset, content.length - offset));
+                System.arraycopy(content, offset, buffer, start, count);
+                offset += count;
+                return count;
+            }
+        };
+    }
+
+    private static void assertNoUploadParts(Path source) throws IOException {
+        try (var files = Files.walk(source)) {
+            assertFalse(files.anyMatch(path ->
+                    path.getFileName().toString().startsWith(".dfs-upload-")
+                            && path.getFileName().toString().endsWith(".part")));
+        }
     }
 }

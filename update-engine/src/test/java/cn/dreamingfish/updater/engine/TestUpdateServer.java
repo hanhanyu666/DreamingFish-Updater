@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 final class TestUpdateServer implements AutoCloseable {
     private final JsonCodec json = new JsonCodec();
@@ -44,6 +45,9 @@ final class TestUpdateServer implements AutoCloseable {
     volatile boolean invalidSignature;
     volatile boolean unavailable;
     volatile String lastRange;
+    volatile long objectDelayMillis;
+    final AtomicInteger activeObjectRequests = new AtomicInteger();
+    final AtomicInteger maximumConcurrentObjectRequests = new AtomicInteger();
 
     TestUpdateServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 16);
@@ -117,6 +121,8 @@ final class TestUpdateServer implements AutoCloseable {
         invalidSignature = false;
         unavailable = false;
         lastRange = null;
+        activeObjectRequests.set(0);
+        maximumConcurrentObjectRequests.set(0);
     }
 
     void bundle(Path instance, ReleaseManifest manifest, boolean materializeFiles) throws IOException {
@@ -165,6 +171,8 @@ final class TestUpdateServer implements AutoCloseable {
         invalidSignature = false;
         unavailable = false;
         lastRange = null;
+        activeObjectRequests.set(0);
+        maximumConcurrentObjectRequests.set(0);
     }
 
     void tamperObject(String hash, String replacement) {
@@ -198,32 +206,50 @@ final class TestUpdateServer implements AutoCloseable {
             }
             String prefix = "/v1/objects/sha256/";
             if (path.startsWith(prefix)) {
-                byte[] object = objects.get(path.substring(prefix.length()));
-                if (object == null) {
-                    send(exchange, 404, new byte[0]);
-                    return;
-                }
-                String range = exchange.getRequestHeaders().getFirst("Range");
-                lastRange = range;
-                if (range != null && range.matches("bytes=\\d+-")) {
-                    int offset = Integer.parseInt(range.substring(6, range.length() - 1));
-                    if (offset >= object.length) {
-                        exchange.getResponseHeaders().set("Content-Range", "bytes */" + object.length);
-                        send(exchange, 416, new byte[0]);
-                        return;
-                    }
-                    byte[] remainder = java.util.Arrays.copyOfRange(object, offset, object.length);
-                    exchange.getResponseHeaders().set("Content-Range",
-                            "bytes " + offset + "-" + (object.length - 1) + "/" + object.length);
-                    send(exchange, 206, remainder);
-                    return;
-                }
-                send(exchange, 200, object);
+                serveObject(exchange, path.substring(prefix.length()));
                 return;
             }
             send(exchange, 404, new byte[0]);
         } finally {
             exchange.close();
+        }
+    }
+
+    private void serveObject(HttpExchange exchange, String hash) throws IOException {
+        int active = activeObjectRequests.incrementAndGet();
+        maximumConcurrentObjectRequests.accumulateAndGet(active, Math::max);
+        try {
+            if (objectDelayMillis > 0) {
+                try {
+                    Thread.sleep(objectDelayMillis);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Test object response was interrupted", e);
+                }
+            }
+            byte[] object = objects.get(hash);
+            if (object == null) {
+                send(exchange, 404, new byte[0]);
+                return;
+            }
+            String range = exchange.getRequestHeaders().getFirst("Range");
+            lastRange = range;
+            if (range != null && range.matches("bytes=\\d+-")) {
+                int offset = Integer.parseInt(range.substring(6, range.length() - 1));
+                if (offset >= object.length) {
+                    exchange.getResponseHeaders().set("Content-Range", "bytes */" + object.length);
+                    send(exchange, 416, new byte[0]);
+                    return;
+                }
+                byte[] remainder = java.util.Arrays.copyOfRange(object, offset, object.length);
+                exchange.getResponseHeaders().set("Content-Range",
+                        "bytes " + offset + "-" + (object.length - 1) + "/" + object.length);
+                send(exchange, 206, remainder);
+                return;
+            }
+            send(exchange, 200, object);
+        } finally {
+            activeObjectRequests.decrementAndGet();
         }
     }
 

@@ -19,6 +19,7 @@ public final class UpdateEngine {
     private final UpdatePlanner planner;
     private final ObjectDownloader downloader;
     private final TransactionInstaller installer;
+    private final PlayerStorageMaintenance storageMaintenance;
 
     public UpdateEngine() {
         this(TransactionFaultInjector.NONE);
@@ -30,6 +31,7 @@ public final class UpdateEngine {
         planner = new UpdatePlanner();
         downloader = new ObjectDownloader();
         installer = new TransactionInstaller(localStore, faultInjector);
+        storageMaintenance = new PlayerStorageMaintenance();
     }
 
     public UpdateResult update(UpdateRequest request, ProgressListener listener) {
@@ -45,6 +47,7 @@ public final class UpdateEngine {
 
         try (InstanceUpdateLock ignored = InstanceUpdateLock.acquire(paths.instanceLock());
              GameUpdateLock gameUpdateLock = GameUpdateLock.tryAcquire(paths.gameLock())) {
+            storageMaintenance.cleanExpiredStaging(paths);
             if (gameUpdateLock == null && installer.hasPendingTransactions(paths)) {
                 throw gameRunning();
             }
@@ -74,6 +77,7 @@ public final class UpdateEngine {
             boolean sameRelease = local != null && local.release().sha256().equals(target.sha256());
             if (sameRelease && plan.operations().isEmpty()) {
                 persistBundledBaseline(paths, local);
+                storageMaintenance.cleanObjectCache(paths);
                 progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
                         "Installation is up to date", null, 1, 1));
                 return new UpdateResult(UpdateOutcome.UP_TO_DATE, target.manifest(),
@@ -89,6 +93,7 @@ public final class UpdateEngine {
             InstallResult installResult = installer.install(
                     paths, plan, progress, effectiveOverrides,
                     request.cancellationToken());
+            storageMaintenance.cleanObjectCache(paths);
             progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
                     "Update installed", null, 1, 1));
             return new UpdateResult(UpdateOutcome.UPDATED, target.manifest(),

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.19",
+    [string]$Version = "0.1.20",
     [string]$AdminVersion = "0.1.16",
     [string]$JdkHome = "",
     [switch]$SkipTests,
@@ -65,9 +65,36 @@ function Copy-DirectoryContents([string]$Source, [string]$Destination) {
     }
 }
 
+function Clear-ReadOnlyFiles([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    Get-ChildItem -Recurse -Force -LiteralPath $Path -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.IsReadOnly } |
+        ForEach-Object { $_.IsReadOnly = $false }
+}
+
 function New-Zip([string]$Source, [string]$Destination) {
     if (Test-Path -LiteralPath $Destination) { Remove-Item -Force -LiteralPath $Destination }
     Compress-Archive -Path (Join-Path $Source "*") -DestinationPath $Destination -CompressionLevel Optimal
+}
+
+function Copy-PlatformAdminJar(
+        [string]$Source,
+        [string]$Destination,
+        [string]$SqlitePlatform) {
+    Copy-Item -Force -LiteralPath $Source -Destination $Destination
+    $nativeRoot = "org/sqlite/native/"
+    $retainedRoot = "$nativeRoot$($SqlitePlatform.Trim('/'))/"
+    $archive = [System.IO.Compression.ZipFile]::Open(
+        $Destination, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        $unusedEntries = @($archive.Entries | Where-Object {
+            $_.FullName.StartsWith($nativeRoot, [System.StringComparison]::Ordinal) -and
+            -not $_.FullName.StartsWith($retainedRoot, [System.StringComparison]::Ordinal)
+        })
+        foreach ($entry in $unusedEntries) { $entry.Delete() }
+    } finally {
+        $archive.Dispose()
+    }
 }
 
 function Get-LinuxRuntimeArchive {
@@ -168,6 +195,7 @@ if ($PlayerOnly) {
     $playerOutput = Join-Path $distRoot "dreamingfish-player-windows-x64"
     $playerArchive = Join-Path $distRoot "dreamingfish-player-windows-x64-$Version.zip"
     if (Test-Path -LiteralPath $playerOutput) {
+        Clear-ReadOnlyFiles $playerOutput
         Remove-Item -Recurse -Force -LiteralPath $playerOutput
     }
     if (Test-Path -LiteralPath $playerArchive) {
@@ -183,13 +211,18 @@ if ($PlayerOnly) {
     )
     foreach ($adminOutput in $adminOutputs) {
         if (Test-Path -LiteralPath $adminOutput) {
+            Clear-ReadOnlyFiles $adminOutput
             Remove-Item -Recurse -Force -LiteralPath $adminOutput
         }
     }
 } elseif (Test-Path -LiteralPath $distRoot) {
+    Clear-ReadOnlyFiles $distRoot
     Remove-Item -Recurse -Force -LiteralPath $distRoot
 }
-if (Test-Path -LiteralPath $buildRoot) { Remove-Item -Recurse -Force -LiteralPath $buildRoot }
+if (Test-Path -LiteralPath $buildRoot) {
+    Clear-ReadOnlyFiles $buildRoot
+    Remove-Item -Recurse -Force -LiteralPath $buildRoot
+}
 New-Item -ItemType Directory -Force -Path $distRoot, $buildRoot | Out-Null
 
 $mavenArguments = @("clean", "package")
@@ -272,7 +305,7 @@ New-Item -ItemType Directory -Force -Path $adminWindows | Out-Null
 $adminInput = Join-Path $buildRoot "admin-input"
 $adminImageRoot = Join-Path $buildRoot "admin-image"
 New-Item -ItemType Directory -Force -Path $adminInput, $adminImageRoot | Out-Null
-Copy-Item -LiteralPath $adminJar -Destination (Join-Path $adminInput "dfs-admin.jar")
+Copy-PlatformAdminJar $adminJar (Join-Path $adminInput "dfs-admin.jar") "Windows/x86_64"
 Invoke-Checked $jpackage @(
     "--type", "app-image",
     "--name", "DreamingFishAdmin",
@@ -284,7 +317,7 @@ Invoke-Checked $jpackage @(
     "--vendor", "DreamingFish",
     "--description", "DreamingFish modpack update management",
     "--win-console",
-    "--add-modules", "java.se,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
+    "--add-modules", "java.desktop,java.naming,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
     "--java-options", "-Dfile.encoding=UTF-8",
     "--java-options", '-Ddfs.home=$APPDIR/..'
 )
@@ -317,7 +350,12 @@ if (-not $SkipLinux) {
         Select-Object -First 1
     if ($null -eq $linuxRuntimeSource) { throw "The Linux runtime archive has an unexpected layout." }
     Copy-DirectoryContents $linuxRuntimeSource.FullName (Join-Path $adminLinux "runtime")
-    Copy-Item -LiteralPath $adminJar -Destination (Join-Path $adminLinux "app\dfs-admin.jar")
+    # The pre-generated CDS archives only improve startup time and add about 27 MB raw.
+    # The JVM safely starts without them and builds no persistent user cache here.
+    Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath `
+        (Join-Path $adminLinux "runtime\lib\server\classes.jsa"), `
+        (Join-Path $adminLinux "runtime\lib\server\classes_nocoops.jsa")
+    Copy-PlatformAdminJar $adminJar (Join-Path $adminLinux "app\dfs-admin.jar") "Linux/x86_64"
     New-Item -ItemType Directory -Force -Path (Join-Path $adminLinux "support") | Out-Null
     Copy-Item -LiteralPath $agentJar.FullName -Destination `
         (Join-Path $adminLinux "support\bootstrap-agent.jar")

@@ -46,7 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.19";
+    static final String VERSION = "0.1.20";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
@@ -66,7 +66,6 @@ public final class PlayerApplication extends Application {
     private volatile boolean restartPending;
     private volatile boolean autoCloseSuppressed;
     private Timeline autoCloseCountdown;
-    private BackgroundMusic backgroundMusic;
     private Path lastArchiveDirectory;
     private LocalModManager localModManager;
     private LocalFileManager localFileManager;
@@ -120,7 +119,6 @@ public final class PlayerApplication extends Application {
             openArchiveDirectory();
         });
         view.setDetailsOpenedAction(this::keepWindowOpen);
-        view.setMusicToggleAction(this::toggleBackgroundMusic);
         view.setOpenExternalLinkAction(this::openExternalLink);
         view.setLocalModToggleAction(this::changeLocalModPreference);
         view.setRestoreModsAction(this::restoreLocalModDefaults);
@@ -140,7 +138,6 @@ public final class PlayerApplication extends Application {
         try {
             loadConfiguration();
             permitClient.ready();
-            startBackgroundMusic(playerHome.resolve("state/background-music-muted"));
             stage.show();
             stage.centerOnScreen();
             view.playEntrance();
@@ -164,7 +161,6 @@ public final class PlayerApplication extends Application {
         view.setBackground(null);
         view.showPreview();
         view.showLaunchCountdown(AUTO_CLOSE_SECONDS);
-        startBackgroundMusic(null);
         view.appendLog("12:08:41  INFO  已连接到守望梦屿更新服务");
         view.appendLog("12:08:42  INFO  正在下载 mods/dreamingfish-core.jar");
         stage.show();
@@ -551,9 +547,6 @@ public final class PlayerApplication extends Application {
         view.showError(error instanceof BootstrapPermitClient.PermitException
                         ? "启动许可已失效" : "更新器无法启动",
                 error.getMessage());
-        startBackgroundMusic(playerHome == null
-                ? null
-                : playerHome.resolve("state/background-music-muted"));
         stage.show();
         stage.centerOnScreen();
         view.playEntrance();
@@ -578,37 +571,9 @@ public final class PlayerApplication extends Application {
 
     private void exitApplication() {
         if (autoCloseCountdown != null) autoCloseCountdown.stop();
-        stopBackgroundMusic();
         stage.close();
         Platform.exit();
         System.exit(0);
-    }
-
-    @Override
-    public void stop() {
-        stopBackgroundMusic();
-    }
-
-    private void startBackgroundMusic(Path mutedMarker) {
-        stopBackgroundMusic();
-        backgroundMusic = new BackgroundMusic(
-                mutedMarker,
-                state -> Platform.runLater(() -> view.setMusicState(state)),
-                error -> {
-                    if (log != null) log.error("Background music playback failed", error);
-                }
-        );
-        backgroundMusic.start();
-    }
-
-    private void toggleBackgroundMusic() {
-        if (backgroundMusic != null) backgroundMusic.toggle();
-    }
-
-    private void stopBackgroundMusic() {
-        BackgroundMusic current = backgroundMusic;
-        backgroundMusic = null;
-        if (current != null) current.close();
     }
 
     private void openPlayerDirectory() {

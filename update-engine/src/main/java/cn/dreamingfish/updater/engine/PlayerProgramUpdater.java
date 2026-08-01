@@ -35,6 +35,7 @@ import java.util.UUID;
 public final class PlayerProgramUpdater {
     private static final int MAX_MANIFEST_BYTES = 32 * 1024 * 1024;
     private final JsonCodec json = new JsonCodec();
+    private final PlayerStorageMaintenance storageMaintenance = new PlayerStorageMaintenance();
 
     public PlayerProgramUpdateResult checkAndInstall(UpdateRequest request, String bootstrapVersion,
                                                      String platform, ProgressListener listener) {
@@ -70,6 +71,7 @@ public final class PlayerProgramUpdater {
                     "Unable to create player program directories", e);
         }
         try (InstanceUpdateLock ignored = InstanceUpdateLock.acquire(paths.instanceLock())) {
+            storageMaintenance.cleanExpiredStaging(paths);
             ActivePlayerState accepted = ActivePlayerState.load(paths.playerHome()).orElse(null);
             if (accepted != null) {
                 SemanticVersion acceptedVersion = SemanticVersion.parse(accepted.version());
@@ -100,6 +102,8 @@ public final class PlayerProgramUpdater {
                                 "Unable to record the verified player program", e);
                     }
                 }
+                storageMaintenance.cleanSupersededPrograms(paths);
+                storageMaintenance.cleanObjectCache(paths);
                 return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.CURRENT,
                         latest.manifest(), 0);
             }
@@ -121,6 +125,8 @@ public final class PlayerProgramUpdater {
                 throw new UpdateException(UpdateErrorCode.TRANSACTION_FAILED,
                         "Unable to activate the new player program", e);
             }
+            storageMaintenance.cleanSupersededPrograms(paths);
+            storageMaintenance.cleanObjectCache(paths);
             return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.INSTALLED_RESTART_REQUIRED,
                     latest.manifest(), downloaded);
         }

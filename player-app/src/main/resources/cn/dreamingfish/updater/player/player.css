@@ -162,29 +162,6 @@
     -fx-background-color: white;
 }
 
-.music-button {
-    -fx-font-family: "Segoe UI Symbol", "HarmonyOS Sans SC", "Microsoft YaHei UI";
-    -fx-font-size: 19px;
-    -fx-font-weight: 700;
-}
-
-.music-button:playing {
-    -fx-background-color: rgba(46, 232, 223, 0.12);
-    -fx-text-fill: -dfs-accent;
-}
-
-.music-note-glyph {
-    -fx-text-fill: rgba(255, 248, 220, 0.86);
-    -fx-font-family: "Segoe UI Symbol", "HarmonyOS Sans SC", "Microsoft YaHei UI";
-    -fx-font-size: 20px;
-    -fx-font-weight: 700;
-}
-
-.music-pause-line {
-    -fx-background-color: -dfs-accent;
-    -fx-background-radius: 2;
-}
-
 .close-button:hover {
     -fx-background-color: #c9424d;
     -fx-text-fill: white;

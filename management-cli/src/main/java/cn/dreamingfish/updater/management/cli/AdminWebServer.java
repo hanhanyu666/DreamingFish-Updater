@@ -19,17 +19,22 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Callable;
@@ -64,7 +69,13 @@ final class AdminWebServer implements AutoCloseable {
         try {
             server = HttpServer.create(address, 0);
         } catch (IOException e) {
-            throw new ManagementException("无法启动 Web 管理界面", e);
+            if (e instanceof BindException) {
+                throw new ManagementException("端口 " + address.getPort()
+                        + " 已被占用，无法启动 Web 管理界面", e);
+            }
+            String detail = e.getMessage();
+            throw new ManagementException("无法启动 Web 管理界面"
+                    + (detail == null || detail.isBlank() ? "" : "：" + detail), e);
         }
         executor = Executors.newFixedThreadPool(4,
                 Thread.ofPlatform().daemon().name("dfs-admin-web-", 0).factory());
@@ -146,17 +157,11 @@ final class AdminWebServer implements AutoCloseable {
             sendJson(exchange, 200, mutate(() -> updateSettings(request)));
             return;
         }
-        if (path.equals("/api/system/select-path")
+        if (path.equals("/api/system/browse-path")
                 && exchange.getRequestMethod().equals("POST")) {
-            PathPickerRequest request = readJson(exchange, PathPickerRequest.class);
-            sendJson(exchange, 200, mutate(() -> {
-                String selected = WindowsPathPicker.select(
-                        request.kind, request.title, request.initialPath);
-                Map<String, Object> result = new LinkedHashMap<>();
-                result.put("selected", selected != null);
-                if (selected != null) result.put("path", selected);
-                return result;
-            }));
+            PathBrowseRequest request = readJson(
+                    exchange, PathBrowseRequest.class);
+            sendJson(exchange, 200, browsePath(request));
             return;
         }
         if (path.equals("/api/public-service/start")
@@ -287,6 +292,12 @@ final class AdminWebServer implements AutoCloseable {
                         exchange, ForcedFilesRequest.class);
                 sendJson(exchange, 200, mutate(() ->
                         updateForcedFiles(projectId, request)));
+            }
+            case "forced-directories" -> {
+                ForcedDirectoriesRequest request = readJson(
+                        exchange, ForcedDirectoriesRequest.class);
+                sendJson(exchange, 200, mutate(() ->
+                        updateForcedDirectories(projectId, request)));
             }
             case "rollback" -> {
                 RollbackRequest request = readJson(exchange, RollbackRequest.class);
@@ -442,6 +453,23 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
+    private Map<String, Object> updateForcedDirectories(
+            String projectId, ForcedDirectoriesRequest request) {
+        ManagementCli.Services services = root.services();
+        ProjectRecord current = services.database().requireProject(projectId);
+        ProjectRules rules = current.rules().withForcedSyncDirectories(
+                request.directories == null ? List.of() : request.directories);
+        ProjectRecord updated = services.projects().configure(
+                projectId, current.sourceDirectory(), current.publicBaseUrl(),
+                current.branding(), rules);
+        PublishPreview preview = services.scanner().createPreview(projectId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("forcedSyncDirectories",
+                updated.rules().forcedSyncDirectories());
+        result.put("preview", previewView(preview));
+        return result;
+    }
+
     private Map<String, Object> updateSettings(SettingsRequest request) {
         if (publicService.running()) {
             throw new WebApiException(
@@ -462,6 +490,113 @@ final class AdminWebServer implements AutoCloseable {
                 webPort
         ));
         return settingsView(root.settings());
+    }
+
+    private Map<String, Object> browsePath(PathBrowseRequest request) {
+        String kind = switch (request.kind == null ? "" : request.kind) {
+            case "directory", "file", "image" -> request.kind;
+            default -> throw new WebApiException(
+                    400, "invalid_path_kind", "不支持的路径选择类型");
+        };
+        String rawPath = request.path == null ? "" : request.path.trim();
+        Path requested;
+        try {
+            requested = rawPath.isEmpty()
+                    ? Path.of(System.getProperty("user.home", "."))
+                    : Path.of(rawPath);
+            if (!requested.isAbsolute()) {
+                requested = Path.of(System.getProperty("user.dir", "."))
+                        .resolve(requested);
+            }
+            requested = requested.toAbsolutePath().normalize();
+        } catch (RuntimeException e) {
+            throw new WebApiException(
+                    400, "invalid_path", "路径格式无效");
+        }
+
+        Path selectedFile = null;
+        Path directory = requested;
+        if (Files.isRegularFile(requested)) {
+            selectedFile = requested;
+            directory = requested.getParent();
+        }
+        if (directory == null || !Files.exists(directory)) {
+            throw new WebApiException(
+                    400, "path_not_found", "路径不存在：" + requested);
+        }
+        if (!Files.isDirectory(directory)) {
+            throw new WebApiException(
+                    400, "not_a_directory", "该路径不是文件夹：" + directory);
+        }
+
+        List<Path> children;
+        try (var stream = Files.list(directory)) {
+            children = stream.limit(5001).toList();
+        } catch (IOException | SecurityException e) {
+            throw new ManagementException("无法读取文件夹：" + directory, e);
+        }
+        boolean truncated = children.size() > 5000;
+        if (truncated) children = children.subList(0, 5000);
+        children = new ArrayList<>(children);
+        children.sort(Comparator
+                .comparing((Path child) -> !Files.isDirectory(child))
+                .thenComparing(child -> fileName(child)
+                        .toLowerCase(Locale.ROOT)));
+
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (Path child : children) {
+            boolean directoryEntry = Files.isDirectory(child);
+            boolean regularFile = Files.isRegularFile(child);
+            boolean selectable = directoryEntry
+                    ? kind.equals("directory")
+                    : regularFile && (!kind.equals("image")
+                    || isImagePath(child));
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", fileName(child));
+            entry.put("path", child.toAbsolutePath().normalize().toString());
+            entry.put("directory", directoryEntry);
+            entry.put("regularFile", regularFile);
+            entry.put("selectable", selectable);
+            entry.put("size", regularFile ? safeFileSize(child) : 0L);
+            entries.add(entry);
+        }
+
+        List<String> roots = new ArrayList<>();
+        for (Path root : FileSystems.getDefault().getRootDirectories()) {
+            roots.add(root.toAbsolutePath().normalize().toString());
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("kind", kind);
+        result.put("currentPath", directory.toString());
+        result.put("parentPath", directory.getParent() == null
+                ? null : directory.getParent().toString());
+        result.put("selectedPath", selectedFile != null
+                && (kind.equals("file") || isImagePath(selectedFile))
+                ? selectedFile.toString() : null);
+        result.put("roots", roots);
+        result.put("entries", entries);
+        result.put("truncated", truncated);
+        return result;
+    }
+
+    private static String fileName(Path path) {
+        Path name = path.getFileName();
+        return name == null ? path.toString() : name.toString();
+    }
+
+    private static boolean isImagePath(Path path) {
+        String name = fileName(path).toLowerCase(Locale.ROOT);
+        return name.endsWith(".png") || name.endsWith(".jpg")
+                || name.endsWith(".jpeg") || name.endsWith(".webp")
+                || name.endsWith(".bmp");
+    }
+
+    private static long safeFileSize(Path path) {
+        try {
+            return Files.size(path);
+        } catch (IOException | SecurityException ignored) {
+            return 0L;
+        }
     }
 
     private Map<String, Object> sourceFilesView(String projectId) {
@@ -912,11 +1047,10 @@ final class AdminWebServer implements AutoCloseable {
     private record ForcedFilesRequest(List<String> files) {
     }
 
-    private record PathPickerRequest(
-            String kind,
-            String title,
-            String initialPath
-    ) {
+    private record ForcedDirectoriesRequest(List<String> directories) {
+    }
+
+    private record PathBrowseRequest(String kind, String path) {
     }
 
     private record SourceImportRequest(

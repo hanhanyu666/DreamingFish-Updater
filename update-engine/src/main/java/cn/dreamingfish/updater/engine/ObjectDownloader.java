@@ -11,43 +11,84 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 final class ObjectDownloader {
     private static final int BUFFER_SIZE = 128 * 1024;
+    private static final int DEFAULT_PARALLELISM = 4;
+    private static final int MAX_PARALLELISM = 8;
 
     long download(UpdateRequest request, EnginePaths paths, Map<String, Long> objects,
                   ProgressListener listener) {
+        if (objects.isEmpty()) return 0;
+        request.cancellationToken().throwIfCancelled();
         long total = objects.values().stream().mapToLong(Long::longValue).sum();
-        long alreadyAvailable = 0;
-        long transferred = 0;
-        for (Map.Entry<String, Long> object : objects.entrySet()) {
-            request.cancellationToken().throwIfCancelled();
-            String hash = object.getKey();
-            long size = object.getValue();
-            Path cached = paths.cacheObject(hash);
-            if (isValid(cached, hash, size)) {
-                alreadyAvailable += size;
-                listener.onProgress(new ProgressEvent(UpdateStage.DOWNLOADING,
-                        "Using verified cache", hash, alreadyAvailable, total));
-                continue;
+        ProgressTracker tracker = new ProgressTracker(total, listener);
+        int workerCount = Math.min(objects.size(), configuredParallelism());
+        ExecutorService executor = Executors.newFixedThreadPool(workerCount, workerFactory());
+        CompletionService<Long> completed = new ExecutorCompletionService<>(executor);
+        List<Future<Long>> futures = new ArrayList<>(objects.size());
+        try {
+            for (Map.Entry<String, Long> object : objects.entrySet()) {
+                String hash = object.getKey();
+                long size = object.getValue();
+                futures.add(completed.submit(() -> downloadOrUseCache(
+                        request, paths, hash, size, tracker)));
             }
-            try {
-                Files.deleteIfExists(cached);
-            } catch (IOException e) {
-                throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,
-                        "Unable to replace corrupt cached object " + hash, e);
+            long transferred = 0;
+            for (int index = 0; index < objects.size(); index++) {
+                request.cancellationToken().throwIfCancelled();
+                try {
+                    transferred += completed.take().get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new UpdateException(UpdateErrorCode.CANCELLED,
+                            "Object downloads were interrupted", e);
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof UpdateException updateException) throw updateException;
+                    throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,
+                            "Unable to download update objects", cause);
+                }
             }
-            long base = alreadyAvailable;
-            transferred += downloadOne(request, paths, hash, size, total, base, listener);
-            alreadyAvailable += size;
+            return transferred;
+        } finally {
+            for (Future<Long> future : futures) future.cancel(true);
+            executor.shutdownNow();
         }
-        return transferred;
+    }
+
+    private long downloadOrUseCache(UpdateRequest request, EnginePaths paths, String hash, long size,
+                                    ProgressTracker tracker) {
+        request.cancellationToken().throwIfCancelled();
+        Path cached = paths.cacheObject(hash);
+        if (isValid(cached, hash, size)) {
+            tracker.set(hash, size, "Using verified cache");
+            return 0;
+        }
+        try {
+            Files.deleteIfExists(cached);
+        } catch (IOException e) {
+            throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,
+                    "Unable to replace corrupt cached object " + hash, e);
+        }
+        return downloadOne(request, paths, hash, size, tracker);
     }
 
     private long downloadOne(UpdateRequest request, EnginePaths paths, String hash, long expectedSize,
-                             long total, long completedBefore, ProgressListener listener) {
+                             ProgressTracker tracker) {
         Path partial = paths.partialObject(hash);
         try {
             Files.createDirectories(partial.getParent());
@@ -57,15 +98,18 @@ final class ObjectDownloader {
             }
             long offset = Files.isRegularFile(partial, LinkOption.NOFOLLOW_LINKS)
                     ? Files.size(partial) : 0;
-            if (offset > expectedSize || (offset == expectedSize && !isValid(partial, hash, expectedSize))) {
+            if (offset > expectedSize
+                    || (offset == expectedSize && !isValid(partial, hash, expectedSize))) {
                 Files.deleteIfExists(partial);
                 offset = 0;
             }
+            tracker.set(hash, offset, offset > 0 ? "Resuming download" : "Downloading files");
             if (offset == expectedSize && isValid(partial, hash, expectedSize)) {
                 promote(partial, paths.cacheObject(hash));
+                tracker.set(hash, expectedSize, "Using completed download");
                 return 0;
             }
-            return performRequest(request, paths, hash, expectedSize, offset, total, completedBefore, listener, false);
+            return performRequest(request, paths, hash, expectedSize, offset, tracker, false);
         } catch (UpdateException e) {
             throw e;
         } catch (IOException e) {
@@ -75,8 +119,8 @@ final class ObjectDownloader {
     }
 
     private long performRequest(UpdateRequest request, EnginePaths paths, String hash, long expectedSize,
-                                long requestedOffset, long total, long completedBefore,
-                                ProgressListener listener, boolean retried) {
+                                long requestedOffset, ProgressTracker tracker, boolean retried) {
+        request.cancellationToken().throwIfCancelled();
         URI uri = ManifestFetcher.endpoint(request.binding(), "v1/objects/sha256/" + hash);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .GET()
@@ -85,10 +129,12 @@ final class ObjectDownloader {
         if (requestedOffset > 0) builder.header("Range", "bytes=" + requestedOffset + "-");
         HttpResponse<InputStream> response;
         try {
-            response = ManifestFetcher.client(request).send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+            response = ManifestFetcher.client(request).send(
+                    builder.build(), HttpResponse.BodyHandlers.ofInputStream());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new UpdateException(UpdateErrorCode.CANCELLED, "Object download was interrupted", e);
+            throw new UpdateException(UpdateErrorCode.CANCELLED,
+                    "Object download was interrupted", e);
         } catch (IOException e) {
             throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,
                     "Unable to download object " + hash, e);
@@ -98,18 +144,20 @@ final class ObjectDownloader {
             int status = response.statusCode();
             long actualOffset;
             StandardOpenOption[] options;
-            if (status == 206 && requestedOffset > 0 && validContentRange(response, requestedOffset, expectedSize)) {
+            if (status == 206 && requestedOffset > 0
+                    && validContentRange(response, requestedOffset, expectedSize)) {
                 actualOffset = requestedOffset;
                 options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.WRITE,
                         StandardOpenOption.APPEND};
             } else if (status == 200) {
                 actualOffset = 0;
+                tracker.set(hash, 0, "Restarting download");
                 options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.WRITE,
                         StandardOpenOption.TRUNCATE_EXISTING};
             } else if (status == 416 && requestedOffset > 0 && !retried) {
                 Files.deleteIfExists(paths.partialObject(hash));
-                return performRequest(request, paths, hash, expectedSize, 0, total,
-                        completedBefore, listener, true);
+                tracker.set(hash, 0, "Restarting download");
+                return performRequest(request, paths, hash, expectedSize, 0, tracker, true);
             } else {
                 throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,
                         "Object request failed with HTTP " + status + " for " + hash);
@@ -123,6 +171,10 @@ final class ObjectDownloader {
                 int read;
                 while ((read = input.read(buffer)) >= 0) {
                     if (read == 0) continue;
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new UpdateException(UpdateErrorCode.CANCELLED,
+                                "Object download was interrupted");
+                    }
                     request.cancellationToken().throwIfCancelled();
                     if (written + read > expectedSize) {
                         throw new UpdateException(UpdateErrorCode.HASH_MISMATCH,
@@ -131,8 +183,7 @@ final class ObjectDownloader {
                     output.write(buffer, 0, read);
                     written += read;
                     networkBytes += read;
-                    listener.onProgress(new ProgressEvent(UpdateStage.DOWNLOADING,
-                            "Downloading files", hash, completedBefore + written, total));
+                    tracker.set(hash, written, "Downloading files");
                 }
             }
             AtomicFileSupport.force(partial);
@@ -141,6 +192,7 @@ final class ObjectDownloader {
                         "Downloaded object failed SHA-256 verification: " + hash);
             }
             promote(partial, paths.cacheObject(hash));
+            tracker.set(hash, expectedSize, "Downloading files");
             return networkBytes;
         } catch (UpdateException e) {
             throw e;
@@ -148,6 +200,21 @@ final class ObjectDownloader {
             throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,
                     "Unable to store object " + hash, e);
         }
+    }
+
+    private int configuredParallelism() {
+        int configured = Integer.getInteger("dfs.download.parallelism", DEFAULT_PARALLELISM);
+        return Math.max(1, Math.min(configured, MAX_PARALLELISM));
+    }
+
+    private ThreadFactory workerFactory() {
+        AtomicInteger sequence = new AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable,
+                    "dreamingfish-download-" + sequence.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
     }
 
     private boolean validContentRange(HttpResponse<?> response, long offset, long total) {
@@ -171,5 +238,26 @@ final class ObjectDownloader {
         Files.createDirectories(cached.getParent());
         AtomicFileSupport.moveReplace(partial, cached);
         AtomicFileSupport.forceDirectory(cached.getParent());
+    }
+
+    private static final class ProgressTracker {
+        private final long total;
+        private final ProgressListener listener;
+        private final Map<String, Long> byObject = new HashMap<>();
+        private long completed;
+
+        private ProgressTracker(long total, ProgressListener listener) {
+            this.total = total;
+            this.listener = listener;
+        }
+
+        synchronized void set(String hash, long bytes, String message) {
+            long normalized = Math.max(0, bytes);
+            long previous = byObject.getOrDefault(hash, 0L);
+            byObject.put(hash, normalized);
+            completed += normalized - previous;
+            listener.onProgress(new ProgressEvent(UpdateStage.DOWNLOADING,
+                    message, hash, Math.max(0, Math.min(completed, total)), total));
+        }
     }
 }

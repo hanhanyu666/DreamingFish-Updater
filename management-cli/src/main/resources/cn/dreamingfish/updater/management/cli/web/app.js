@@ -7,16 +7,35 @@ const app = {
   selectedProjectId: "",
   view: "dashboard",
   busy: false,
+  forcedDirectorySelection: new Set(),
   forcedFileSelection: new Set(),
   sourceFileSelection: new Set(),
+  sourceExpandedFolders: new Set(),
+  forcedDirectoryExpandedFolders: new Set(),
+  forcedFileExpandedFolders: new Set(),
   sourceFiles: null,
-  pendingUploads: []
+  pendingUploads: [],
+  uploadTargetDirectory: null,
+  uploadTargetExpandedFolders: new Set(),
+  activeUploads: new Set(),
+  sourceUploadCancelled: false,
+  pathBrowser: {
+    targetInput: null,
+    kind: "directory",
+    title: "选择服务器路径",
+    currentPath: "",
+    parentPath: null,
+    selectedPath: "",
+    roots: [],
+    entries: [],
+    truncated: false
+  }
 };
 
 const titles = {
   dashboard: "运行概览",
   project: "项目设置",
-  publish: "扫描与发布",
+  publish: "管理文件",
   player: "玩家端程序",
   instance: "玩家实例",
   settings: "服务设置"
@@ -55,6 +74,7 @@ async function api(path, options = {}) {
 }
 
 async function initialize() {
+  initializeTheme();
   bindEvents();
   try {
     const session = await api("/api/session");
@@ -96,6 +116,7 @@ async function refreshState(preferredProjectId = app.selectedProjectId) {
 }
 
 async function loadProject(projectId, platform) {
+  const projectChanged = app.project?.id !== projectId;
   const requestedPlatform = platform
     || app.project?.platform
     || "windows-x64";
@@ -104,9 +125,19 @@ async function loadProject(projectId, platform) {
     `/api/projects/${encodeURIComponent(projectId)}`
       + `?platform=${encodeURIComponent(requestedPlatform)}`
   );
+  app.forcedDirectorySelection = new Set(
+    app.project.forcedSyncDirectories || []
+  );
   app.forcedFileSelection = new Set(app.project.forcedSyncFiles || []);
   app.sourceFileSelection = new Set();
   app.sourceFiles = null;
+  if (projectChanged) {
+    app.sourceExpandedFolders.clear();
+    app.forcedDirectoryExpandedFolders.clear();
+    app.forcedFileExpandedFolders.clear();
+    app.uploadTargetExpandedFolders.clear();
+    app.uploadTargetDirectory = null;
+  }
   renderProjectOptions();
   renderProjectDependentViews();
 }
@@ -190,6 +221,7 @@ function renderProjectDependentViews() {
   renderProjectForm();
   renderSourceFiles();
   renderPreview();
+  renderForcedDirectories();
   renderForcedFiles();
   renderReleases();
   renderPrograms();
@@ -208,6 +240,7 @@ async function loadSourceFiles() {
       .map((file) => file.path)
   );
   renderSourceFiles();
+  renderForcedDirectories();
   renderForcedFiles();
 }
 
@@ -247,13 +280,18 @@ function renderSourceFiles() {
   const rows = fileTreeRows(
     files,
     sourceFolderRow,
-    sourceFileRow
+    sourceFileRow,
+    {
+      expandedFolders: app.sourceExpandedFolders,
+      expandAll: Boolean(query),
+      onToggle: renderSourceFiles
+    }
   );
   setRows("source-file-table", "source-file-empty", rows);
   updateSourceFileSelection(files);
 }
 
-function sourceFolderRow(node, depth) {
+function sourceFolderRow(node, depth, treeState) {
   const control = treeSelectionCell(
     node.entries,
     (file) => pathSelected(app.sourceFileSelection, file.path),
@@ -267,7 +305,7 @@ function sourceFolderRow(node, depth) {
   const status = document.createElement("span");
   status.className = "source-status folder-status";
   status.textContent = node.path ? "文件夹" : "全部";
-  const folder = folderPathCell(node, depth);
+  const folder = folderPathCell(node, depth, treeState);
   const totalBytes = node.entries.reduce(
     (sum, file) => sum + Number(file.size || 0), 0
   );
@@ -304,8 +342,7 @@ function sourceFileRow(file, depth) {
   } else {
     status.textContent = file.policy === "DEFAULT" ? "默认文件" : "普通托管";
   }
-  const filePath = pathCell(file.path);
-  indentTreeCell(filePath, depth);
+  const filePath = treeFilePathCell(file.path, depth);
   const remove = actionButton("移除", () => removeSourceFile(file));
   const item = row([
     control,
@@ -456,6 +493,177 @@ function renderRemovalStatus() {
         : "");
 }
 
+function renderForcedDirectories() {
+  const directories = forcedDirectoryCandidates();
+  const rows = [];
+  directories.forEach((directory) => {
+    const selected = pathSelected(
+      app.forcedDirectorySelection, directory.path
+    );
+    const control = document.createElement("td");
+    const checkbox = selectionCheckbox(
+      selected,
+      directory.missing && !selected,
+      selected
+        ? `取消强制同步 ${directory.path}/`
+        : directory.missing
+          ? `${directory.path}/ 当前不存在`
+          : `强制同步 ${directory.path}/`
+    );
+    checkbox.addEventListener("change", () => {
+      setPathSelected(
+        app.forcedDirectorySelection,
+        directory.path,
+        checkbox.checked
+      );
+      renderForcedDirectories();
+    });
+    control.append(checkbox);
+    const effect = directory.missing
+      ? "目录不存在，请取消选择后保存"
+      : selected
+        ? "整个目录保持一致，禁止玩家豁免"
+        : "普通管理，不处理玩家额外文件";
+    const node = forcedDirectoryTreeNode(directory);
+    const treeState = folderExpansionState(node, {
+      expandedFolders: app.forcedDirectoryExpandedFolders,
+      onToggle: renderForcedDirectories
+    });
+    const item = row([
+      control,
+      folderPathCell(node, 0, treeState),
+      effect,
+      directory.missing ? "--" : String(directory.fileCount)
+    ]);
+    item.className = "file-tree-folder";
+    rows.push(item);
+    if (treeState.expanded) {
+      rows.push(...forcedDirectoryContentRows(node, directory.path));
+    }
+  });
+  setRows("forced-directory-table", "forced-directory-empty", rows);
+
+  const selectedCount = directories.filter((directory) =>
+    pathSelected(app.forcedDirectorySelection, directory.path)
+  ).length;
+  byId("forced-directory-count").textContent = selectedCount === 0
+    ? "未设置强制同步目录"
+    : `已选择 ${selectedCount} 个强制同步目录`;
+  byId("forced-directory-visible-count").textContent = directories.length === 0
+    ? "当前没有可管理的一级目录"
+    : `${directories.filter((directory) => !directory.missing).length} 个现有一级目录`;
+  applySelectionState(
+    byId("forced-directory-select-all"),
+    directories,
+    (directory) => pathSelected(
+      app.forcedDirectorySelection, directory.path
+    ),
+    (directory) => !directory.missing
+  );
+}
+
+function forcedDirectoryCandidates() {
+  const known = new Map();
+  (app.sourceFiles?.files || []).forEach((file) => {
+    const normalized = String(file.path || "").replaceAll("\\", "/");
+    const slash = normalized.indexOf("/");
+    if (slash <= 0) return;
+    const path = normalized.slice(0, slash);
+    const key = foldPath(path);
+    const current = known.get(key);
+    if (current) {
+      current.fileCount += 1;
+      current.entries.push(file);
+    } else {
+      known.set(key, {
+        path,
+        fileCount: 1,
+        missing: false,
+        entries: [file]
+      });
+    }
+  });
+  const configured = new Set([
+    ...(app.project?.forcedSyncDirectories || []),
+    ...app.forcedDirectorySelection
+  ]);
+  configured.forEach((path) => {
+    const key = foldPath(path);
+    if (!known.has(key)) {
+      known.set(key, {
+        path,
+        fileCount: 0,
+        missing: true,
+        entries: []
+      });
+    }
+  });
+  return [...known.values()].sort((left, right) =>
+    left.path.localeCompare(
+      right.path, "zh-CN", { sensitivity: "base" }
+    )
+  );
+}
+
+function forcedDirectoryTreeNode(directory) {
+  if (!directory.entries.length) {
+    return {
+      name: directory.path,
+      path: directory.path,
+      entries: [],
+      files: [],
+      folders: new Map()
+    };
+  }
+  const root = buildFileTree(directory.entries);
+  return [...root.folders.values()].find(
+    (folder) => foldPath(folder.path) === foldPath(directory.path)
+  ) || {
+    name: directory.path,
+    path: directory.path,
+    entries: directory.entries,
+    files: [],
+    folders: new Map()
+  };
+}
+
+function forcedDirectoryContentRows(node, topLevelDirectory) {
+  const rows = [];
+  const appendContents = (parent, depth) => {
+    [...parent.folders.values()]
+      .sort((left, right) => left.name.localeCompare(
+        right.name, "zh-CN", { sensitivity: "base" }
+      ))
+      .forEach((folder) => {
+        const state = folderExpansionState(folder, {
+          expandedFolders: app.forcedDirectoryExpandedFolders,
+          onToggle: renderForcedDirectories
+        });
+        const item = row([
+          document.createElement("td"),
+          folderPathCell(folder, depth, state),
+          `随 ${topLevelDirectory}/ 一起强制同步`,
+          String(folder.entries.length)
+        ]);
+        item.className = "file-tree-folder file-tree-child";
+        rows.push(item);
+        if (state.expanded) appendContents(folder, depth + 1);
+      });
+    parent.files.sort(compareFilePath).forEach((file) => {
+      const item = row([
+        document.createElement("td"),
+        treeFilePathCell(file.path, depth),
+        "随一级目录强制同步",
+        "1"
+      ]);
+      item.className = "file-tree-file file-tree-child";
+      rows.push(item);
+    });
+  };
+  appendContents(node, 1);
+  return rows;
+}
+
 function renderForcedFiles() {
   const allFiles = forcedFileCandidates();
   const query = byId("forced-file-search").value.trim().toLocaleLowerCase("zh-CN");
@@ -469,7 +677,12 @@ function renderForcedFiles() {
   const rows = fileTreeRows(
     files,
     forcedFolderRow,
-    forcedFileRow
+    forcedFileRow,
+    {
+      expandedFolders: app.forcedFileExpandedFolders,
+      expandAll: Boolean(query),
+      onToggle: renderForcedFiles
+    }
   );
   setRows("forced-file-table", "forced-file-empty", rows);
   updateForcedFileCount(files, allFiles);
@@ -494,7 +707,7 @@ function forcedFileCandidates() {
   return [...known.values()].sort(compareFilePath);
 }
 
-function forcedFolderRow(node, depth) {
+function forcedFolderRow(node, depth, treeState) {
   const control = forcedTreeSelectionCell(node.entries, (checked, files) => {
     setPathsSelected(app.forcedFileSelection, files, checked);
     renderForcedFiles();
@@ -515,7 +728,7 @@ function forcedFolderRow(node, depth) {
       : `已选 ${selected}/${available.length}`;
   const item = row([
     control,
-    folderPathCell(node, depth),
+    folderPathCell(node, depth, treeState),
     policy,
     formatBytes(node.entries.reduce(
       (sum, file) => sum + Number(file.size || 0), 0
@@ -551,8 +764,7 @@ function forcedFileRow(file, depth) {
     : fileForced ? "单文件强制"
       : missing ? "源文件缺失"
         : file.policy === "DEFAULT" ? "默认" : "普通托管";
-  const filePath = pathCell(file.path);
-  indentTreeCell(filePath, depth);
+  const filePath = treeFilePathCell(file.path, depth);
   const item = row([
     control,
     filePath,
@@ -634,6 +846,12 @@ function renderSettings() {
 }
 
 function bindEvents() {
+  byId("theme-toggle").addEventListener("click", () => {
+    const current = document.documentElement.dataset.theme === "light"
+      ? "light"
+      : "dark";
+    applyTheme(current === "light" ? "dark" : "light", true);
+  });
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", async () => {
       const needsSourceFiles = button.dataset.view === "publish";
@@ -689,6 +907,7 @@ function bindEvents() {
   });
 
   bindProjectCreate();
+  bindErrorDialog();
   bindProjectForm();
   bindPathPickers();
   bindSourceFiles();
@@ -698,6 +917,50 @@ function bindEvents() {
   bindInstance();
   bindSettings();
   bindRollback();
+}
+
+function initializeTheme() {
+  let theme = document.documentElement.dataset.theme === "light"
+    ? "light"
+    : "dark";
+  try {
+    theme = localStorage.getItem("dfs-admin-theme") === "light"
+      ? "light"
+      : "dark";
+  } catch (_) {
+    // Local storage may be unavailable in hardened browsers; dark remains safe.
+  }
+  applyTheme(theme, false);
+}
+
+function applyTheme(theme, persist) {
+  const normalized = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = normalized;
+  const toggle = byId("theme-toggle");
+  const light = normalized === "light";
+  toggle.textContent = light ? "☾ 夜间模式" : "☀ 白天模式";
+  toggle.title = light ? "切换到夜间模式" : "切换到白天模式";
+  toggle.setAttribute("aria-label", toggle.title);
+  toggle.setAttribute("aria-pressed", String(light));
+  if (!persist) return;
+  try {
+    localStorage.setItem("dfs-admin-theme", normalized);
+  } catch (_) {
+    // The current page can still switch themes even when persistence is blocked.
+  }
+}
+
+function bindErrorDialog() {
+  const dialog = byId("error-dialog");
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    dialog.close("cancel");
+  });
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    dialog.close("cancel");
+  });
 }
 
 function bindDeployment() {
@@ -759,22 +1022,55 @@ function bindSourceFiles() {
   const form = byId("source-add-form");
   const fileInput = byId("source-upload-input");
   const dropzone = byId("source-dropzone");
-  byId("open-source-add").addEventListener("click", () => {
-    form.reset();
-    app.pendingUploads = [];
-    updateUploadSelection();
-    resetUploadProgress();
-    dialog.showModal();
+  const serverSourceInput = form.elements.serverSourcePath;
+  byId("open-source-add").addEventListener("click", async () => {
+    try {
+      if (!app.sourceFiles) await loadSourceFiles();
+      form.reset();
+      app.pendingUploads = [];
+      app.uploadTargetDirectory = null;
+      app.uploadTargetExpandedFolders.clear();
+      app.sourceUploadCancelled = false;
+      renderUploadTargetTree();
+      updateUploadSelection();
+      resetUploadProgress();
+      dialog.showModal();
+    } catch (error) {
+      toast(error.message, true);
+    }
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (event.submitter?.value === "cancel") dialog.close();
+    if (event.submitter?.value === "cancel") {
+      app.sourceUploadCancelled = true;
+      abortActiveUploads();
+      dialog.close();
+    }
+  });
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    app.sourceUploadCancelled = true;
+    abortActiveUploads();
+    dialog.close();
+  });
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    app.sourceUploadCancelled = true;
+    abortActiveUploads();
+    dialog.close();
+  });
+  dialog.addEventListener("close", () => {
+    if (app.activeUploads.size === 0) return;
+    app.sourceUploadCancelled = true;
+    abortActiveUploads();
   });
   byId("choose-source-upload").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => {
     app.pendingUploads = [...fileInput.files];
     updateUploadSelection();
   });
+  serverSourceInput.addEventListener("input", updateSourceAddActions);
   dropzone.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -811,6 +1107,114 @@ function updateUploadSelection() {
       : `已选择 ${files.length} 个文件 · ${formatBytes(
         files.reduce((sum, file) => sum + file.size, 0)
       )}`;
+  updateSourceAddActions();
+}
+
+function renderUploadTargetTree() {
+  const container = byId("source-target-tree");
+  container.replaceChildren();
+  const files = app.sourceFiles?.files || [];
+  const root = buildFileTree(files);
+  container.append(uploadTargetRow({
+    path: "",
+    name: "要管理的文件目录（根目录）",
+    count: files.length,
+    depth: 0,
+    root: true
+  }));
+
+  const appendFolder = (folder, depth) => {
+    const expanded = pathSelected(
+      app.uploadTargetExpandedFolders, folder.path
+    );
+    const nested = [...folder.folders.values()].sort(
+      (left, right) => left.name.localeCompare(
+        right.name, "zh-CN", { sensitivity: "base" }
+      )
+    );
+    container.append(uploadTargetRow({
+      path: folder.path,
+      name: `${folder.name}/`,
+      count: folder.entries.length,
+      depth,
+      expanded,
+      hasChildren: nested.length > 0,
+      onToggle() {
+        setPathSelected(
+          app.uploadTargetExpandedFolders, folder.path, !expanded
+        );
+        renderUploadTargetTree();
+      }
+    }));
+    if (expanded) nested.forEach((child) => appendFolder(child, depth + 1));
+  };
+  [...root.folders.values()]
+    .sort((left, right) => left.name.localeCompare(
+      right.name, "zh-CN", { sensitivity: "base" }
+    ))
+    .forEach((folder) => appendFolder(folder, 1));
+
+  byId("source-target-selection").textContent =
+    app.uploadTargetDirectory === null
+      ? "尚未选择"
+      : app.uploadTargetDirectory
+        ? `保存到 ${app.uploadTargetDirectory}/`
+        : "保存到根目录";
+  updateSourceAddActions();
+}
+
+function uploadTargetRow({
+  path, name, count, depth, root = false,
+  expanded = false, hasChildren = false, onToggle = null
+}) {
+  const item = document.createElement("div");
+  item.className = "source-target-row";
+  item.style.setProperty("--tree-depth", String(depth));
+  item.setAttribute("role", "treeitem");
+  item.setAttribute("aria-selected", String(
+    app.uploadTargetDirectory !== null
+      && foldPath(app.uploadTargetDirectory) === foldPath(path)
+  ));
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "source-target-toggle";
+  toggle.textContent = hasChildren ? (expanded ? "▾" : "▸") : "";
+  toggle.disabled = !hasChildren;
+  toggle.setAttribute("aria-label", expanded ? "收起子目录" : "展开子目录");
+  toggle.setAttribute("aria-expanded", String(expanded));
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onToggle?.();
+  });
+
+  const icon = document.createElement("span");
+  icon.className = `tree-entry-icon ${root ? "root" : "folder"}`;
+  icon.setAttribute("aria-hidden", "true");
+  const label = document.createElement("strong");
+  label.textContent = name;
+  const details = document.createElement("span");
+  details.textContent = `${count} 个文件`;
+  item.append(toggle, icon, label, details);
+  item.addEventListener("click", () => {
+    app.uploadTargetDirectory = path;
+    renderUploadTargetTree();
+  });
+  return item;
+}
+
+function updateSourceAddActions() {
+  const uploading = app.activeUploads.size > 0;
+  const targetSelected = app.uploadTargetDirectory !== null;
+  byId("upload-source-files").disabled = uploading
+    || !targetSelected
+    || app.pendingUploads.length === 0;
+  const serverPath = String(
+    byId("source-add-form").elements.serverSourcePath?.value || ""
+  ).trim();
+  byId("import-server-source").disabled = uploading
+    || !targetSelected
+    || !serverPath;
 }
 
 function resetUploadProgress() {
@@ -825,17 +1229,12 @@ async function uploadSelectedSources() {
     toast("请先选择要上传的文件", true);
     return;
   }
-  const form = byId("source-add-form");
-  const data = new FormData(form);
-  let targetDirectory;
-  try {
-    targetDirectory = normalizeSourceDirectory(
-      textValue(data, "targetDirectory")
-    );
-  } catch (error) {
-    toast(error.message, true);
+  if (app.uploadTargetDirectory === null) {
+    toast("请先在目录树中选择文件保存位置", true);
     return;
   }
+  const form = byId("source-add-form");
+  const targetDirectory = app.uploadTargetDirectory;
   const overwrite = form.elements.overwrite.checked;
   const files = [...app.pendingUploads];
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
@@ -846,6 +1245,7 @@ async function uploadSelectedSources() {
   progress.hidden = false;
   uploadButton.disabled = true;
   importButton.disabled = true;
+  app.sourceUploadCancelled = false;
   try {
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
@@ -872,7 +1272,7 @@ async function uploadSelectedSources() {
     showView("publish");
     toast(`${files.length} 个文件已加入整合包目录`);
   } catch (error) {
-    toast(error.message, true);
+    if (!app.sourceUploadCancelled) toast(error.message, true);
     try {
       await api(
         `/api/projects/${encodeURIComponent(app.project.id)}/scan`,
@@ -884,14 +1284,23 @@ async function uploadSelectedSources() {
     await loadProject(app.project.id);
     await loadSourceFiles();
   } finally {
-    uploadButton.disabled = false;
-    importButton.disabled = false;
+    updateSourceAddActions();
   }
 }
 
 function uploadSourceFile(file, targetPath, overwrite, refreshPreview, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
+    app.activeUploads.add(request);
+    updateSourceAddActions();
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      app.activeUploads.delete(request);
+      updateSourceAddActions();
+      callback(value);
+    };
     request.open("PUT",
       `/api/projects/${encodeURIComponent(app.project.id)}/files/upload`
         + `?path=${encodeURIComponent(targetPath)}`
@@ -910,13 +1319,20 @@ function uploadSourceFile(file, targetPath, overwrite, refreshPreview, onProgres
       } catch (_ignored) {
         // The status fallback below is more useful than a JSON parser error.
       }
-      if (request.status >= 200 && request.status < 300) resolve(result);
-      else reject(new Error(result?.message || `上传失败：HTTP ${request.status}`));
+      if (request.status >= 200 && request.status < 300) finish(resolve, result);
+      else finish(reject,
+        new Error(result?.message || `上传失败：HTTP ${request.status}`));
     });
-    request.addEventListener("error", () => reject(new Error("上传连接中断")));
-    request.addEventListener("abort", () => reject(new Error("上传已取消")));
+    request.addEventListener("error", () =>
+      finish(reject, new Error("上传连接中断")));
+    request.addEventListener("abort", () =>
+      finish(reject, new Error("上传已取消")));
     request.send(file);
   });
+}
+
+function abortActiveUploads() {
+  [...app.activeUploads].forEach((request) => request.abort());
 }
 
 async function importServerSource() {
@@ -928,18 +1344,13 @@ async function importServerSource() {
     toast("请先选择服务器上的文件", true);
     return;
   }
-  let targetDirectory;
-  try {
-    targetDirectory = normalizeSourceDirectory(
-      textValue(data, "targetDirectory")
-    );
-  } catch (error) {
-    toast(error.message, true);
+  if (app.uploadTargetDirectory === null) {
+    toast("请先在目录树中选择文件保存位置", true);
     return;
   }
   const payload = {
     sourcePath,
-    targetDirectory,
+    targetDirectory: app.uploadTargetDirectory,
     overwrite: form.elements.overwrite.checked
   };
   await runBusy("正在导入并扫描源文件", async () => {
@@ -959,6 +1370,7 @@ async function removeSourceFile(file) {
   if (!app.project) return;
   const action = await chooseSourceRemoval(file);
   if (!action) return;
+  const position = capturePublishPosition();
   await runBusy("正在归档并移除源文件", async () => {
     const result = await api(
       `/api/projects/${encodeURIComponent(app.project.id)}/files/remove`,
@@ -967,6 +1379,7 @@ async function removeSourceFile(file) {
     await loadProject(app.project.id);
     await loadSourceFiles();
     showView("publish");
+    restorePublishPosition(position);
     const playerResult = action === "RELEASE"
       ? "玩家本地将保留该文件"
       : "玩家更新时将移除该文件";
@@ -985,6 +1398,7 @@ async function removeSelectedSourceFiles() {
   }
   const action = await chooseBulkSourceRemoval(files);
   if (!action) return;
+  const position = capturePublishPosition();
   await runBusy(`正在归档并移除 ${files.length} 个文件`, async () => {
     await api(
       `/api/projects/${encodeURIComponent(app.project.id)}/files/remove-batch`,
@@ -1000,6 +1414,7 @@ async function removeSelectedSourceFiles() {
     await loadProject(app.project.id);
     await loadSourceFiles();
     showView("publish");
+    restorePublishPosition(position);
     const playerResult = action === "RELEASE"
       ? "玩家本地将保留这些文件"
       : "玩家更新时将移除这些文件";
@@ -1053,15 +1468,6 @@ function chooseSourceRemoval(file) {
   });
 }
 
-function normalizeSourceDirectory(value) {
-  const normalized = String(value || "").trim()
-    .replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
-  if (normalized.split("/").some((part) => part === "." || part === "..")) {
-    throw new Error("目标目录不能包含 . 或 ..");
-  }
-  return normalized;
-}
-
 function joinSourcePath(directory, fileName) {
   const name = String(fileName || "").replaceAll("\\", "/");
   if (!name || name.includes("/")) throw new Error("上传文件名无效");
@@ -1069,27 +1475,188 @@ function joinSourcePath(directory, fileName) {
 }
 
 function bindPathPickers() {
+  const dialog = byId("path-browser-dialog");
+  const form = byId("path-browser-form");
   document.querySelectorAll(".path-picker-button").forEach((button) => {
     button.addEventListener("click", async () => {
       const form = button.closest("form");
       const input = form?.elements.namedItem(button.dataset.pathName);
       if (!(input instanceof HTMLInputElement)) return;
-      await runBusy("请在管理端所在电脑完成路径选择", async () => {
-        const result = await api("/api/system/select-path", {
-          method: "POST",
-          body: {
-            kind: button.dataset.pathKind,
-            title: button.dataset.pathTitle,
-            initialPath: input.value
-          }
-        });
-        if (result.selected) {
-          input.value = result.path;
-          input.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-      });
+      app.pathBrowser.targetInput = input;
+      app.pathBrowser.kind = button.dataset.pathKind || "directory";
+      app.pathBrowser.title = button.dataset.pathTitle || "选择服务器路径";
+      app.pathBrowser.selectedPath = "";
+      byId("path-browser-title").textContent = app.pathBrowser.title;
+      byId("path-browser-confirm").textContent =
+        app.pathBrowser.kind === "directory" ? "选择当前文件夹" : "选择文件";
+      dialog.showModal();
+      await loadPathBrowser(input.value);
     });
   });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      dialog.close("cancel");
+      return;
+    }
+    await loadPathBrowser(byId("path-browser-address").value);
+  });
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    dialog.close("cancel");
+  });
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    dialog.close("cancel");
+  });
+  byId("path-browser-up").addEventListener("click", async () => {
+    if (app.pathBrowser.parentPath) {
+      await loadPathBrowser(app.pathBrowser.parentPath);
+    }
+  });
+  byId("path-browser-refresh").addEventListener("click", async () => {
+    await loadPathBrowser(app.pathBrowser.currentPath);
+  });
+  byId("path-browser-root").addEventListener("change", async (event) => {
+    if (event.target.value) await loadPathBrowser(event.target.value);
+  });
+  byId("path-browser-confirm").addEventListener("click", () => {
+    const selected = app.pathBrowser.kind === "directory"
+      ? app.pathBrowser.currentPath
+      : app.pathBrowser.selectedPath;
+    if (!selected || !(app.pathBrowser.targetInput instanceof HTMLInputElement)) {
+      toast("请先选择一个文件", true);
+      return;
+    }
+    app.pathBrowser.targetInput.value = selected;
+    app.pathBrowser.targetInput.dispatchEvent(
+      new Event("change", { bubbles: true })
+    );
+    dialog.close("selected");
+  });
+  dialog.addEventListener("close", () => {
+    app.pathBrowser.targetInput = null;
+  });
+}
+
+async function loadPathBrowser(path) {
+  const controls = [
+    byId("path-browser-go"),
+    byId("path-browser-up"),
+    byId("path-browser-refresh"),
+    byId("path-browser-confirm")
+  ];
+  controls.forEach((control) => { control.disabled = true; });
+  byId("path-browser-summary").textContent = "正在读取服务器目录…";
+  try {
+    const result = await api("/api/system/browse-path", {
+      method: "POST",
+      body: { kind: app.pathBrowser.kind, path: String(path || "") }
+    });
+    app.pathBrowser.currentPath = result.currentPath;
+    app.pathBrowser.parentPath = result.parentPath;
+    app.pathBrowser.selectedPath = result.selectedPath || "";
+    app.pathBrowser.roots = result.roots || [];
+    app.pathBrowser.entries = result.entries || [];
+    app.pathBrowser.truncated = Boolean(result.truncated);
+    renderPathBrowser();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    byId("path-browser-go").disabled = false;
+    byId("path-browser-refresh").disabled = false;
+    byId("path-browser-up").disabled = !app.pathBrowser.parentPath;
+    byId("path-browser-confirm").disabled =
+      app.pathBrowser.kind !== "directory" && !app.pathBrowser.selectedPath;
+  }
+}
+
+function renderPathBrowser() {
+  const browser = app.pathBrowser;
+  byId("path-browser-address").value = browser.currentPath;
+  byId("path-browser-up").disabled = !browser.parentPath;
+
+  const rootSelect = byId("path-browser-root");
+  rootSelect.replaceChildren();
+  browser.roots.forEach((root) => {
+    const option = document.createElement("option");
+    option.value = root;
+    option.textContent = root;
+    if (foldPath(browser.currentPath).startsWith(foldPath(root))) {
+      option.selected = true;
+    }
+    rootSelect.append(option);
+  });
+
+  const rows = browser.entries.map((entry) => {
+    const tableRow = document.createElement("tr");
+    if (!entry.directory && entry.path === browser.selectedPath) {
+      tableRow.classList.add("selected");
+    }
+    const name = document.createElement("td");
+    const entryButton = document.createElement("button");
+    entryButton.type = "button";
+    entryButton.className = "path-browser-entry";
+    entryButton.title = `${entry.directory ? "文件夹" : "文件"}：${entry.name}`;
+    const entryIcon = document.createElement("span");
+    entryIcon.className = `path-entry-icon ${entry.directory ? "folder" : "file"}`;
+    entryIcon.setAttribute("aria-hidden", "true");
+    const entryName = document.createElement("span");
+    entryName.textContent = entry.name;
+    entryButton.append(entryIcon, entryName);
+    if (entry.directory) {
+      entryButton.addEventListener("click", () => loadPathBrowser(entry.path));
+    } else if (entry.selectable) {
+      entryButton.addEventListener("click", () => {
+        browser.selectedPath = entry.path;
+        renderPathBrowser();
+      });
+    } else {
+      entryButton.classList.add("file-unavailable");
+      entryButton.disabled = true;
+    }
+    name.append(entryButton);
+
+    const type = document.createElement("td");
+    type.textContent = entry.directory
+      ? "文件夹"
+      : entry.regularFile
+        ? (entry.selectable || browser.kind !== "image" ? "文件" : "非图片文件")
+        : "其他";
+    const size = document.createElement("td");
+    size.textContent = entry.directory ? "--" : formatBytes(entry.size);
+    const action = document.createElement("td");
+    if (entry.directory || entry.selectable) {
+      const actionButton = document.createElement("button");
+      actionButton.type = "button";
+      actionButton.className = "table-button";
+      actionButton.textContent = entry.directory ? "进入" : "选择";
+      actionButton.addEventListener("click", () => {
+        if (entry.directory) loadPathBrowser(entry.path);
+        else {
+          browser.selectedPath = entry.path;
+          renderPathBrowser();
+        }
+      });
+      action.append(actionButton);
+    }
+    tableRow.append(name, type, size, action);
+    return tableRow;
+  });
+  setRows("path-browser-table", "path-browser-empty", rows);
+
+  byId("path-browser-summary").textContent = browser.truncated
+    ? `显示前 ${browser.entries.length} 项，目录内容过多`
+    : `${browser.entries.length} 项`;
+  const selected = browser.kind === "directory"
+    ? browser.currentPath : browser.selectedPath;
+  byId("path-browser-selection").textContent = selected
+    ? `${browser.kind === "directory" ? "将选择文件夹" : "已选择文件"}：${selected}`
+    : "请在列表中选择一个文件";
+  byId("path-browser-confirm").disabled =
+    browser.kind !== "directory" && !browser.selectedPath;
 }
 
 function bindProjectCreate() {
@@ -1173,6 +1740,35 @@ function bindPublish() {
   });
   byId("delete-all-button").addEventListener("click", () => {
     setAllRemovalActions("DELETE");
+  });
+  byId("forced-directory-select-all").addEventListener("change", (event) => {
+    forcedDirectoryCandidates()
+      .filter((directory) => !directory.missing)
+      .forEach((directory) => setPathSelected(
+        app.forcedDirectorySelection,
+        directory.path,
+        event.target.checked
+      ));
+    renderForcedDirectories();
+  });
+  byId("clear-forced-directories").addEventListener("click", () => {
+    app.forcedDirectorySelection.clear();
+    renderForcedDirectories();
+  });
+  byId("save-forced-directories").addEventListener("click", async () => {
+    if (!app.project) return;
+    await runBusy("正在保存强制同步目录设置", async () => {
+      await api(
+        `/api/projects/${encodeURIComponent(app.project.id)}/forced-directories`,
+        {
+          method: "POST",
+          body: { directories: [...app.forcedDirectorySelection] }
+        }
+      );
+      await refreshState(app.project.id);
+      showView("publish");
+      toast("强制同步目录设置已保存");
+    });
   });
   byId("forced-file-search").addEventListener("input", renderForcedFiles);
   byId("forced-file-select-all").addEventListener("change", (event) => {
@@ -1438,6 +2034,7 @@ function showView(view) {
     toast("请先创建项目", true);
     return;
   }
+  const changed = app.view !== view;
   app.view = view;
   document.querySelectorAll(".view").forEach((section) => {
     section.classList.toggle("active", section.id === `view-${view}`);
@@ -1446,7 +2043,34 @@ function showView(view) {
     button.classList.toggle("active", button.dataset.view === view);
   });
   byId("page-title").textContent = titles[view];
-  byId("view-" + view).scrollTop = 0;
+  if (changed) byId("view-" + view).scrollTop = 0;
+}
+
+function capturePublishPosition() {
+  return {
+    view: byId("view-publish")?.scrollTop || 0,
+    sourceTable: document.querySelector(".source-file-table")?.scrollTop || 0,
+    forcedDirectoryTable:
+      document.querySelector(".forced-directory-table")?.scrollTop || 0,
+    forcedFileTable:
+      document.querySelector(".forced-file-table")?.scrollTop || 0
+  };
+}
+
+function restorePublishPosition(position) {
+  window.requestAnimationFrame(() => {
+    byId("view-publish").scrollTop = position.view;
+    const sourceTable = document.querySelector(".source-file-table");
+    const forcedDirectoryTable = document.querySelector(
+      ".forced-directory-table"
+    );
+    const forcedFileTable = document.querySelector(".forced-file-table");
+    if (sourceTable) sourceTable.scrollTop = position.sourceTable;
+    if (forcedDirectoryTable) {
+      forcedDirectoryTable.scrollTop = position.forcedDirectoryTable;
+    }
+    if (forcedFileTable) forcedFileTable.scrollTop = position.forcedFileTable;
+  });
 }
 
 async function runBusy(label, operation) {
@@ -1597,23 +2221,40 @@ function visibleForcedFiles() {
   );
 }
 
-function fileTreeRows(files, folderRenderer, fileRenderer) {
+function fileTreeRows(files, folderRenderer, fileRenderer, options = {}) {
   if (files.length === 0) return [];
   const root = buildFileTree(files);
   const rows = [];
-  const append = (node, depth) => {
-    rows.push(folderRenderer(node, depth));
+  const appendContents = (node, depth) => {
     [...node.folders.values()]
       .sort((left, right) => left.name.localeCompare(
         right.name, "zh-CN", { sensitivity: "base" }
       ))
-      .forEach((folder) => append(folder, depth + 1));
+      .forEach((folder) => {
+        const treeState = folderExpansionState(folder, options);
+        rows.push(folderRenderer(folder, depth, treeState));
+        if (treeState.expanded) appendContents(folder, depth + 1);
+      });
     node.files
       .sort(compareFilePath)
-      .forEach((file) => rows.push(fileRenderer(file, depth + 1)));
+      .forEach((file) => rows.push(fileRenderer(file, depth)));
   };
-  append(root, 0);
+  appendContents(root, 0);
   return rows;
+}
+
+function folderExpansionState(node, options = {}) {
+  const expandedFolders = options.expandedFolders || new Set();
+  const expanded = Boolean(options.expandAll)
+    || pathSelected(expandedFolders, node.path);
+  return {
+    expanded,
+    hasChildren: node.folders.size > 0 || node.files.length > 0,
+    toggle() {
+      setPathSelected(expandedFolders, node.path, !expanded);
+      options.onToggle?.();
+    }
+  };
 }
 
 function buildFileTree(files) {
@@ -1652,18 +2293,51 @@ function buildFileTree(files) {
   return root;
 }
 
-function folderPathCell(node, depth) {
+function folderPathCell(node, depth, treeState) {
   const cell = document.createElement("td");
   cell.className = "path-cell tree-path-cell";
   indentTreeCell(cell, depth);
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "tree-toggle";
+  toggle.textContent = treeState?.expanded ? "▾" : "▸";
+  toggle.disabled = !treeState?.hasChildren;
+  toggle.title = treeState?.expanded ? "收起文件夹" : "展开文件夹";
+  toggle.setAttribute("aria-label", `${toggle.title} ${node.path}/`);
+  toggle.setAttribute("aria-expanded", String(Boolean(treeState?.expanded)));
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    treeState?.toggle();
+  });
+  const icon = document.createElement("span");
+  icon.className = "tree-entry-icon folder";
+  icon.setAttribute("aria-hidden", "true");
   const label = document.createElement("span");
   label.className = "tree-folder-name";
-  label.textContent = node.path ? `${node.name}/` : "全部文件";
+  label.textContent = `${node.name}/`;
   const count = document.createElement("span");
   count.className = "tree-folder-count";
   count.textContent = `${node.entries.length} 个文件`;
-  cell.title = node.path ? `${node.path}/` : "当前列表中的全部文件";
-  cell.append(label, count);
+  cell.title = `${node.path}/`;
+  cell.append(toggle, icon, label, count);
+  return cell;
+}
+
+function treeFilePathCell(path, depth) {
+  const cell = document.createElement("td");
+  cell.className = "path-cell tree-path-cell";
+  indentTreeCell(cell, depth);
+  const spacer = document.createElement("span");
+  spacer.className = "tree-toggle-spacer";
+  const icon = document.createElement("span");
+  icon.className = "tree-entry-icon file";
+  icon.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span");
+  label.className = "tree-file-name";
+  label.textContent = String(path || "").replaceAll("\\", "/")
+    .split("/").filter(Boolean).at(-1) || String(path || "");
+  cell.title = path;
+  cell.append(spacer, icon, label);
   return cell;
 }
 
@@ -1821,15 +2495,39 @@ function setConnection(online) {
 }
 
 function toast(message, error = false) {
+  if (error) {
+    showErrorDialog(message);
+    return;
+  }
+  const stack = byId("toast-stack");
   const element = document.createElement("div");
-  element.className = error ? "toast error" : "toast";
+  element.className = "toast";
   element.textContent = message;
-  byId("toast-stack").append(element);
+  stack.append(element);
   window.setTimeout(() => element.remove(), 4200);
+}
+
+function showErrorDialog(message) {
+  const dialog = byId("error-dialog");
+  byId("error-dialog-message").textContent =
+    String(message || "操作未能完成，请稍后重试。");
+  if (!dialog.open) dialog.showModal();
 }
 
 window.addEventListener("error", (event) => {
   toast(event.message || "页面发生错误", true);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const message = event.reason instanceof Error
+    ? event.reason.message
+    : String(event.reason || "页面请求未能完成");
+  toast(message, true);
+});
+
+window.addEventListener("beforeunload", () => {
+  app.sourceUploadCancelled = true;
+  abortActiveUploads();
 });
 
 initialize();

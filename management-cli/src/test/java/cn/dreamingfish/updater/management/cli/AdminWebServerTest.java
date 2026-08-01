@@ -50,12 +50,24 @@ class AdminWebServerTest {
             HttpResponse<String> page = send(base, "/", "GET", null, null);
             assertEquals(200, page.statusCode());
             assertTrue(page.body().contains("梦鱼更新管理"));
+            assertTrue(page.body().contains("管理文件"));
+            assertTrue(page.body().contains("管理强制同步目录"));
             assertTrue(page.body().contains("单文件强制同步"));
+            assertTrue(page.body().contains("id=\"error-dialog\""));
+            assertTrue(page.body().contains("操作失败"));
+            assertTrue(page.body().contains("id=\"path-browser-dialog\""));
+            assertTrue(page.body().contains("管理端所在服务器中的文件"));
             assertTrue(page.body().contains("data-path-kind=\"directory\""));
+            assertTrue(page.body().contains("id=\"source-target-tree\""));
+            assertTrue(page.body().contains("选择文件保存位置"));
+            assertTrue(page.body().contains("或者从管理端所在的服务器本身导入"));
+            assertTrue(!page.body().contains("name=\"targetDirectory\""));
             assertTrue(!page.body().contains("data-view=\"files\""));
             assertTrue(page.body().contains("整合包文件"));
             assertTrue(page.body().contains("全选当前列表"));
             assertTrue(page.body().indexOf("整合包文件")
+                    < page.body().indexOf("管理强制同步目录"));
+            assertTrue(page.body().indexOf("管理强制同步目录")
                     < page.body().indexOf("单文件强制同步"));
             assertTrue(page.body().indexOf("单文件强制同步")
                     < page.body().indexOf("发布预览"));
@@ -76,6 +88,16 @@ class AdminWebServerTest {
                     .body().getBytes(StandardCharsets.UTF_8), Map.class);
             String token = session.get("token").toString();
 
+            HttpResponse<String> browsed = send(
+                    base, "/api/system/browse-path", "POST",
+                    json.writeString(Map.of(
+                            "kind", "directory",
+                            "path", temporary.toString())), token);
+            assertEquals(200, browsed.statusCode(), browsed.body());
+            assertTrue(browsed.body().contains("\"currentPath\""));
+            assertTrue(browsed.body().contains("\"name\":\"pack\""));
+            assertTrue(browsed.body().contains("\"directory\":true"));
+
             String createBody = json.writeString(Map.of(
                     "id", "web-demo",
                     "displayName", "Web Demo",
@@ -93,6 +115,14 @@ class AdminWebServerTest {
             assertEquals(200, scanned.statusCode(), scanned.body());
             assertTrue(scanned.body().contains("\"path\":\"mods/example.jar\""));
             assertTrue(scanned.body().contains("\"files\""));
+
+            HttpResponse<String> forcedDirectory = send(
+                    base, "/api/projects/web-demo/forced-directories", "POST",
+                    json.writeString(Map.of(
+                            "directories", new String[]{"mods"})), token);
+            assertEquals(200, forcedDirectory.statusCode(), forcedDirectory.body());
+            assertTrue(forcedDirectory.body().contains(
+                    "\"forcedSyncDirectories\":[\"mods\"]"));
 
             HttpResponse<String> forcedFile = send(
                     base, "/api/projects/web-demo/forced-files", "POST",
@@ -273,6 +303,9 @@ class AdminWebServerTest {
             assertTrue(script.body().contains("bindSourceFiles"));
             assertTrue(script.body().contains("app.sourceFiles?.files"));
             assertTrue(script.body().contains("fileTreeRows"));
+            assertTrue(script.body().contains("uploadTargetDirectory"));
+            assertTrue(script.body().contains("beforeunload"));
+            assertTrue(script.body().contains("capturePublishPosition"));
             assertTrue(script.body().contains("remove-batch"));
             assertTrue(script.body().contains("本次没有修改"));
         }

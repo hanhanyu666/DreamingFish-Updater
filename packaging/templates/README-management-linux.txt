@@ -1,13 +1,13 @@
 DreamingFish 管理端 Linux x64
 
-本包自带 Java 21 运行时，不需要另外安装 Java。首次解压后执行：
-  chmod +x dfs-admin runtime/bin/java
+本包自带 Java 21 运行时，不需要另外安装 Java。如果曾在 Windows 解压，或通过 VS Code 覆盖到 Linux，文件的执行权限可能会丢失。首次部署或遇到 Permission denied 时执行：
+  chmod 755 dfs-admin runtime/bin/* runtime/lib/jspawnhelper
   ./dfs-admin
 
 Linux 启动脚本已自动启用 Java IPv4 网络栈，确保公共 HTTP 服务实际监听 IPv4 的 0.0.0.0；不需要再手动设置 JAVA_TOOL_OPTIONS。
 
-不带参数会进入中文交互终端。管理数据自动保存在本目录的 data 文件夹中，不需要配置；首次向导只询问 HTTP 设置。
-标准整合包源目录不需要是完整游戏目录。目录里放什么就管理什么，可以只放 mods，也可以只放 config。Web“扫描与发布”页顶部可上传、导入、归档并移除文件。
+不带参数会进入中文交互终端。管理数据自动保存在本目录的 data 文件夹中，不需要配置；首次向导会先说明数据位置，再依次询问玩家下载服务与 Web 管理页面端口。
+要管理的文件目录不需要是完整游戏目录。目录里放什么就管理什么，可以只放 mods，也可以只放 config。Web“管理文件”页顶部可上传、导入、归档并移除文件。
 
 主菜单选择 [10] 可启动 Web 管理界面：
   http://127.0.0.1:18080/

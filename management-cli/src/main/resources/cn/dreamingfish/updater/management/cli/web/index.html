@@ -1,9 +1,17 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DreamingFish Admin</title>
+  <script>
+    try {
+      document.documentElement.dataset.theme =
+        localStorage.getItem("dfs-admin-theme") === "light" ? "light" : "dark";
+    } catch (_) {
+      document.documentElement.dataset.theme = "dark";
+    }
+  </script>
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
@@ -20,7 +28,7 @@
       <nav class="navigation" aria-label="管理功能">
         <button class="nav-button active" data-view="dashboard"><span>⌂</span>概览</button>
         <button class="nav-button requires-project" data-view="project"><span>◫</span>项目设置</button>
-        <button class="nav-button requires-project" data-view="publish"><span>↑</span>扫描与发布</button>
+        <button class="nav-button requires-project" data-view="publish"><span>↑</span>管理文件</button>
         <button class="nav-button requires-project" data-view="player"><span>▣</span>玩家端程序</button>
         <button class="nav-button requires-project" data-view="instance"><span>◇</span>玩家实例</button>
         <button class="nav-button" data-view="settings"><span>⚙</span>服务设置</button>
@@ -42,6 +50,7 @@
           <h1 id="page-title">运行概览</h1>
         </div>
         <div class="topbar-actions">
+          <button class="secondary-button theme-toggle" id="theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式">☀ 白天模式</button>
           <label class="project-picker">
             <span>当前项目</span>
             <select id="project-select" aria-label="当前项目"></select>
@@ -52,18 +61,6 @@
 
       <main class="content">
         <section class="view active" id="view-dashboard">
-          <div class="view-guide">
-            <div class="guide-copy">
-              <span>本页说明</span>
-              <strong>先确认项目与发布状态，再开放玩家下载服务</strong>
-              <p>概览只负责查看运行状态和启停公共 HTTP 文件服务，不会扫描或发布文件。Web 管理页面与玩家下载服务相互独立。</p>
-            </div>
-            <ol class="guide-steps">
-              <li><b>1</b><div><strong>选择项目</strong><small>右上角切换当前管理的整合包项目。</small></div></li>
-              <li><b>2</b><div><strong>确认已发布</strong><small>至少需要一个玩家端程序版本和一个整合包版本。</small></div></li>
-              <li><b>3</b><div><strong>启动下载服务</strong><small>玩家更新期间保持 HTTP 服务在线，并检查显示的监听地址。</small></div></li>
-            </ol>
-          </div>
           <div class="service-band">
             <div class="service-state">
               <span class="service-indicator" id="service-indicator"></span>
@@ -110,7 +107,7 @@
                 <thead>
                   <tr>
                     <th>项目</th>
-                    <th>源目录</th>
+                    <th>管理目录</th>
                     <th>当前发布</th>
                     <th>发布数</th>
                     <th></th>
@@ -124,18 +121,6 @@
         </section>
 
         <section class="view" id="view-project">
-          <div class="view-guide">
-            <div class="guide-copy">
-              <span>本页说明</span>
-              <strong>维护项目身份、文件来源和玩家看到的品牌信息</strong>
-              <p>保存设置不会自动扫描或发布。修改目录、公共地址或强制同步规则后，请前往“扫描与发布”检查预览，再创建新版本。</p>
-            </div>
-            <ol class="guide-steps">
-              <li><b>1</b><div><strong>指定文件目录</strong><small>填写管理服务器上的独立整合包目录，不是管理数据目录。</small></div></li>
-              <li><b>2</b><div><strong>填写公网地址</strong><small>必须是玩家电脑实际能够访问的 HTTP 地址。</small></div></li>
-              <li><b>3</b><div><strong>谨慎设置强制同步</strong><small>目录内玩家自行添加的文件也可能被归档或移除。</small></div></li>
-            </ol>
-          </div>
           <form class="panel form-panel" id="project-form">
             <div class="panel-header">
               <div>
@@ -151,17 +136,17 @@
                 <small class="field-help">显示在管理端项目列表中；修改后不会改变稳定的项目 ID 和签名身份。</small>
               </label>
               <label class="field span-2">
-                <span>整合包文件目录（必填）</span>
+                <span>要管理的文件目录（必填）</span>
                 <div class="path-input-row">
                   <input name="sourceDirectory" required>
-                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择整合包文件目录">浏览</button>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择要管理的文件目录">浏览</button>
                 </div>
-                <small class="field-help">只放需要发布的 mods、config 等内容，不需要完整 .minecraft。</small>
+                <small class="field-help">选择服务器上用于存放 mods、config 等待管理文件的目录，不需要放入完整 .minecraft。</small>
               </label>
               <label class="field span-2">
-                <span>玩家访问公共 HTTP 地址（必填）</span>
-                <input name="publicBaseUrl" type="url" placeholder="http://example.com:39988" required>
-                <small class="field-help">必须能从玩家电脑访问；不要填写 0.0.0.0、127.0.0.1 或服务器内网监听地址。</small>
+                <span>玩家端更新器访问地址（必填）</span>
+                <input name="publicBaseUrl" type="url" placeholder="例如 http://您的公网IP或域名:公网端口" required>
+                <small class="field-help">填写玩家电脑上的更新器实际访问的地址。请先确认公网端口已映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
               </label>
               <label class="field">
                 <span>界面产品名称（必填）</span>
@@ -178,10 +163,10 @@
                 <input name="subtitle">
                 <small class="field-help">玩家端品牌说明，可填写玩法定位或服务器简介。</small>
               </label>
-              <label class="field span-2">
-                <span>强制同步一级目录</span>
+              <label class="field sync-warning-field span-2">
+                <span>强制同步一级目录（谨慎启用）</span>
                 <input name="forcedSyncDirectories" placeholder="mods, config">
-                <small class="field-help">目录内玩家额外文件会被归档或移除，只在需要完全一致时启用。</small>
+                <small class="field-help">启用后，整个一级目录会与服务器保持一致：玩家额外添加的文件会被归档移出，而且目录内文件不能被豁免。可以先不填，之后在“管理文件”中随时设置。</small>
               </label>
               <label class="field color-field">
                 <span>主强调色</span>
@@ -210,18 +195,6 @@
         </section>
 
         <section class="view" id="view-publish">
-          <div class="view-guide">
-            <div class="guide-copy">
-              <span>推荐流程</span>
-              <strong>整理文件、设置策略、扫描预览，最后创建不可变发布</strong>
-              <p>扫描只生成本次变更预览，不会立刻影响玩家。正式发布后版本内容不可修改，后续修正必须创建新版本或回滚发布。</p>
-            </div>
-            <ol class="guide-steps">
-              <li><b>1</b><div><strong>整理整合包文件</strong><small>上传、导入或移除管理服务器源目录中的内容。</small></div></li>
-              <li><b>2</b><div><strong>确认同步策略</strong><small>普通托管允许额外文件；强制同步会收敛玩家本地内容。</small></div></li>
-              <li><b>3</b><div><strong>扫描并发布</strong><small>逐项检查新增、修改、删除和预计下载量后再填写版本号。</small></div></li>
-            </ol>
-          </div>
           <section class="panel">
             <div class="panel-header source-file-header">
               <div>
@@ -234,7 +207,7 @@
                 <button class="primary-button" id="open-source-add" type="button">＋ 添加文件</button>
               </div>
             </div>
-            <p class="panel-help"><strong>这里展示管理服务器“整合包文件目录”的真实内容。</strong>添加或移除会直接修改该目录，但只有扫描并发布新版本后才会影响玩家。文件夹勾选会递归选择其下全部文件。</p>
+            <p class="panel-help"><strong>这里展示管理服务器“要管理的文件目录”中的真实内容。</strong>添加或移除会直接修改该目录，但只有扫描并发布新版本后才会影响玩家。文件夹勾选会递归选择其下全部文件。</p>
             <div class="source-file-summary">
               <div><span>托管文件</span><strong id="source-managed-count">--</strong></div>
               <div><span>总大小</span><strong id="source-total-size">--</strong></div>
@@ -254,15 +227,44 @@
                 <thead><tr><th>选择</th><th>状态</th><th>文件或文件夹</th><th>大小</th><th>修改时间</th><th></th></tr></thead>
                 <tbody id="source-file-table"></tbody>
               </table>
-              <div class="empty-state" id="source-file-empty">整合包目录中没有文件</div>
+              <div class="empty-state" id="source-file-empty">要管理的文件目录中没有文件</div>
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel sync-warning-panel">
+            <div class="panel-header forced-directory-header">
+              <div>
+                <h2>管理强制同步目录（谨慎启用）</h2>
+                <span id="forced-directory-count">未设置强制同步目录</span>
+              </div>
+              <div class="button-row">
+                <button class="secondary-button" id="clear-forced-directories" type="button">清空选择</button>
+                <button class="primary-button" id="save-forced-directories" type="button">保存目录设置</button>
+              </div>
+            </div>
+            <p class="panel-help"><strong>适合 mods、config 等需要与服务器完全一致的整个一级目录。</strong>启用后，目录内文件不能被玩家豁免，玩家额外添加的文件也会被归档移出。这里只列出“要管理的文件目录”中实际存在的一级目录。</p>
+            <div class="selection-toolbar">
+              <label class="selection-check">
+                <input id="forced-directory-select-all" type="checkbox">
+                <span>全选现有一级目录</span>
+              </label>
+              <span id="forced-directory-visible-count">等待读取目录</span>
+            </div>
+            <div class="table-wrap forced-directory-table">
+              <table>
+                <thead><tr><th>强制</th><th>一级目录</th><th>同步效果</th><th>文件数</th></tr></thead>
+                <tbody id="forced-directory-table"></tbody>
+              </table>
+              <div class="empty-state" id="forced-directory-empty">当前没有可管理的一级目录</div>
+            </div>
+            <p class="notice-line">强制同步目录会持续包含以后新增到该目录的文件；修改后还需要重新扫描并发布新版本，才会对玩家生效。</p>
+          </section>
+
+          <section class="panel sync-warning-panel">
             <div class="panel-header forced-file-header">
               <div>
-                <h2>单文件强制同步</h2>
-                <span id="forced-file-count">扫描后可视化选择；玩家不能在本地豁免已选文件</span>
+                <h2>单文件强制同步（谨慎启用）</h2>
+                <span id="forced-file-count">只锁定少数指定文件，不影响同目录其它内容</span>
               </div>
               <div class="button-row">
                 <input class="table-search" id="forced-file-search" placeholder="搜索文件">
@@ -270,7 +272,7 @@
                 <button class="primary-button" id="save-forced-files" type="button">保存设置</button>
               </div>
             </div>
-            <p class="panel-help"><strong>只对确实不能由玩家修改的单个文件启用。</strong>已选文件会覆盖玩家本地修改并忽略豁免；若整个一级目录都必须完全一致，请改到“项目设置”配置强制同步目录。</p>
+            <p class="panel-help"><strong>普通托管文件本来就会随发布更新；这里的额外作用是禁止玩家豁免选中的文件。</strong>它不会清理同目录的其它文件。即使全选，也只会记录当前已有文件，以后新增的文件不会自动加入；需要整个目录保持一致时，请使用上方“管理强制同步目录”。</p>
             <div class="selection-toolbar">
               <label class="selection-check">
                 <input id="forced-file-select-all" type="checkbox">
@@ -285,7 +287,7 @@
               </table>
               <div class="empty-state" id="forced-file-empty">请先读取或扫描整合包目录</div>
             </div>
-            <p class="notice-line forced-file-notice">强制同步文件会覆盖玩家修改并忽略本地豁免；这里只影响选中的文件，不会强制同目录的其它内容。</p>
+            <p class="notice-line forced-file-notice">单文件强制同步只影响选中的具体文件，主要用于禁止玩家豁免；不会归档同目录的额外文件，也不等同于强制同步整个目录。</p>
           </section>
 
           <section class="panel">
@@ -359,18 +361,6 @@
         </section>
 
         <section class="view" id="view-player">
-          <div class="view-guide">
-            <div class="guide-copy">
-              <span>本页说明</span>
-              <strong>发布玩家电脑上运行的 DreamingFish Updater 程序</strong>
-              <p>玩家端程序与 mods/config 整合包版本分开发布。只有更新器界面或更新逻辑发生变化时才需要发布新程序，普通模组更新请使用“扫描与发布”。</p>
-            </div>
-            <ol class="guide-steps">
-              <li><b>1</b><div><strong>先解压玩家端发行包</strong><small>把 ZIP 原样解压到管理服务器能够读取的独立目录。</small></div></li>
-              <li><b>2</b><div><strong>选择解压根目录</strong><small>应能在其下找到 DreamingFishUpdater 应用目录，而不是 Minecraft 实例。</small></div></li>
-              <li><b>3</b><div><strong>发布后再制包</strong><small>首次部署包和玩家实例会引用当前平台最新的已签名程序。</small></div></li>
-            </ol>
-          </div>
           <form class="panel form-panel" id="program-form">
             <div class="panel-header">
               <div><h2>发布玩家端程序</h2><span>自动读取版本并定位 app-image</span></div>
@@ -394,7 +384,7 @@
                   <input name="sourceDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择玩家端发行包解压根目录">浏览</button>
                 </div>
-                <small class="field-help">这是管理服务器上的路径，例如 /srv/minecraft/updater/player-0.1.19；不是玩家电脑上的路径。</small>
+                <small class="field-help">这是管理服务器上的路径，例如 /srv/minecraft/updater/player-0.1.20；不是玩家电脑上的路径。</small>
               </label>
             </div>
           </form>
@@ -415,18 +405,6 @@
         </section>
 
         <section class="view" id="view-instance">
-          <div class="view-guide">
-            <div class="guide-copy">
-              <span>推荐方式</span>
-              <strong>绝大多数服主应使用“首次部署包”</strong>
-              <p>它不要求管理服务器保存完整 Minecraft，只生成更新器接入文件、项目绑定和签名基线。将生成目录下载到自己的电脑，再合并进已经能启动的 Forge/整合包实例即可。</p>
-            </div>
-            <ol class="guide-steps">
-              <li><b>1</b><div><strong>先完成两类发布</strong><small>至少发布一个玩家端程序版本和一个整合包版本。</small></div></li>
-              <li><b>2</b><div><strong>生成首次部署包</strong><small>输出路径位于管理服务器，生成后通过 SFTP 等方式下载。</small></div></li>
-              <li><b>3</b><div><strong>合并到玩家实例</strong><small>复制整个生成目录的内容，并按说明配置启动参数。</small></div></li>
-            </ol>
-          </div>
           <form class="panel form-panel recommended-panel" id="deployment-form">
             <div class="panel-header">
               <div><div class="panel-title-line"><h2>生成首次部署包</h2><small class="panel-tag recommended">推荐</small></div><span>适用于远程 Linux 管理端和绝大多数整合包发布流程</span></div>
@@ -496,18 +474,6 @@
         </section>
 
         <section class="view" id="view-settings">
-          <div class="view-guide">
-            <div class="guide-copy">
-              <span>本页说明</span>
-              <strong>区分玩家下载监听、玩家公网地址和本机 Web 管理端口</strong>
-              <p>这里配置服务器实际监听地址；玩家访问的公网域名或映射端口在“项目设置”中填写。Web 管理端始终只允许本机或 SSH 隧道访问。</p>
-            </div>
-            <ol class="guide-steps">
-              <li><b>1</b><div><strong>HTTP 监听</strong><small>面向玩家文件下载，VPS 通常使用 0.0.0.0 和服务器内部端口。</small></div></li>
-              <li><b>2</b><div><strong>公网映射</strong><small>路由器、NAT 或反向代理应转发到这里配置的 HTTP 端口。</small></div></li>
-              <li><b>3</b><div><strong>Web 管理</strong><small>固定监听 127.0.0.1，远程访问必须建立 SSH 隧道。</small></div></li>
-            </ol>
-          </div>
           <form class="panel form-panel" id="settings-form">
             <div class="panel-header">
               <div><h2>服务监听设置</h2><span>Web 管理界面固定监听本机回环地址</span></div>
@@ -566,26 +532,26 @@
         </label>
         <label class="field">
           <span>项目显示名称（必填）</span>
-          <input name="displayName" placeholder="梦鱼建筑服" required>
-          <small class="field-help">显示在管理端和玩家更新器中。</small>
+          <input name="displayName" placeholder="填写您的服务器名称或您想展示的名称" required>
+          <small class="field-help">会显示在管理端和玩家端更新器中，例如服务器名称或整合包名称。</small>
         </label>
         <label class="field span-2">
-          <span>整合包文件目录（必填）</span>
+          <span>要管理的文件目录（必填）</span>
           <div class="path-input-row">
-            <input name="sourceDirectory" placeholder="/opt/dreamingfish/projects/build-server" required>
-            <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择整合包文件目录">浏览</button>
+            <input name="sourceDirectory" placeholder="例如 /srv/minecraft/modpack-source" required>
+            <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择要管理的文件目录">浏览</button>
           </div>
-          <small class="field-help">只放需要发布的 mods、config 等内容；必须与管理数据目录分开。</small>
+          <small class="field-help">选择服务器上用于存放 mods、config 等待管理文件的目录；必须与管理端 data 目录分开。</small>
         </label>
         <label class="field span-2">
-          <span>玩家访问公共 HTTP 地址（必填）</span>
-          <input name="publicBaseUrl" type="url" placeholder="http://example.com:39988" required>
-          <small class="field-help">填写玩家实际访问的公网域名或 IP 与端口，不是 0.0.0.0、127.0.0.1 或内网监听地址。</small>
+          <span>玩家端更新器访问地址（必填）</span>
+          <input name="publicBaseUrl" type="url" placeholder="例如 http://您的公网IP或域名:公网端口" required>
+          <small class="field-help">填写玩家电脑上的更新器实际访问地址。请确认公网端口已经映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
         </label>
-        <label class="field span-2">
-          <span>强制同步一级目录（可选）</span>
+        <label class="field sync-warning-field span-2">
+          <span>强制同步一级目录（可选，谨慎启用）</span>
           <input name="forcedSyncDirectories" placeholder="mods, config">
-          <small class="field-help">目录内玩家额外文件会被归档或移除，请谨慎启用。</small>
+          <small class="field-help">启用后，整个一级目录会与服务器保持一致，目录内文件不能被玩家豁免，额外文件会被归档移出。首次创建可以留空，之后可在“管理文件”中设置。</small>
         </label>
         <label class="field span-2">
           <span>Minecraft 服务器地址（可选）</span>
@@ -609,6 +575,60 @@
       <div class="modal-actions">
         <button class="secondary-button" value="cancel" formnovalidate>取消</button>
         <button class="primary-button" id="confirm-action" value="default">确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal compact-modal error-dialog" id="error-dialog">
+    <form method="dialog">
+      <div class="modal-header">
+        <div>
+          <span>OPERATION FAILED</span>
+          <h2>操作失败</h2>
+        </div>
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
+      </div>
+      <div class="modal-accent warning"></div>
+      <p id="error-dialog-message">操作未能完成，请检查填写内容后重试。</p>
+      <div class="modal-actions">
+        <button class="primary-button" value="cancel" formnovalidate autofocus>知道了</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal path-browser-modal" id="path-browser-dialog">
+    <form method="dialog" id="path-browser-form">
+      <div class="modal-header">
+        <div>
+          <span>SERVER FILE BROWSER</span>
+          <h2 id="path-browser-title">选择服务器路径</h2>
+        </div>
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
+      </div>
+      <p class="path-browser-help"><strong>这里浏览的是管理端所在服务器中的文件，不是您当前浏览器电脑中的文件。</strong>远程 Linux 管理端会显示 Linux 服务器目录，Windows 管理端会显示本机盘符。</p>
+      <div class="path-browser-address">
+        <select id="path-browser-root" aria-label="根目录或磁盘"></select>
+        <input id="path-browser-address" aria-label="服务器路径" autocomplete="off">
+        <button class="secondary-button" id="path-browser-go" type="submit">转到</button>
+      </div>
+      <div class="path-browser-toolbar">
+        <div class="button-row">
+          <button class="secondary-button" id="path-browser-up" type="button">↑ 上一级</button>
+          <button class="secondary-button" id="path-browser-refresh" type="button">↻ 刷新</button>
+        </div>
+        <span id="path-browser-summary">正在读取目录</span>
+      </div>
+      <div class="table-wrap path-browser-table-wrap">
+        <table>
+          <thead><tr><th>名称</th><th>类型</th><th>大小</th><th></th></tr></thead>
+          <tbody id="path-browser-table"></tbody>
+        </table>
+        <div class="empty-state" id="path-browser-empty">该目录中没有内容</div>
+      </div>
+      <p class="notice-line path-browser-selection" id="path-browser-selection">尚未选择路径</p>
+      <div class="modal-actions">
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
+        <button class="primary-button" id="path-browser-confirm" type="button">选择当前文件夹</button>
       </div>
     </form>
   </dialog>
@@ -638,10 +658,16 @@
         <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
       </div>
       <div class="form-grid one-column source-add-grid">
-        <label class="field">
-          <span>目标目录（相对于整合包文件目录）</span>
-          <input name="targetDirectory" placeholder="例如 mods；留空表示根目录">
-        </label>
+        <div class="source-target-picker">
+          <div class="source-target-heading">
+            <div>
+              <strong>选择文件保存位置</strong>
+              <span>点击根目录或文件夹后，再上传或导入文件</span>
+            </div>
+            <span id="source-target-selection">尚未选择</span>
+          </div>
+          <div class="source-target-tree" id="source-target-tree" role="tree" aria-label="选择文件保存位置"></div>
+        </div>
         <label class="check-field">
           <input name="overwrite" type="checkbox">
           <span>同名文件存在时归档并覆盖</span>
@@ -656,7 +682,7 @@
           <div><span id="source-upload-label">准备上传</span><strong id="source-upload-percent">0%</strong></div>
           <progress id="source-upload-meter" max="100" value="0"></progress>
         </div>
-        <div class="source-divider"><span>或从 VPS 本机导入</span></div>
+        <div class="source-divider"><span>或者从管理端所在的服务器本身导入</span></div>
         <label class="field">
           <span>服务器文件路径</span>
           <div class="path-input-row">
@@ -667,8 +693,8 @@
       </div>
       <div class="modal-actions source-add-actions">
         <button class="secondary-button" value="cancel" formnovalidate>取消</button>
-        <button class="secondary-button" id="import-server-source" type="button">导入服务器文件</button>
-        <button class="primary-button" id="upload-source-files" type="button">上传所选文件</button>
+        <button class="secondary-button" id="import-server-source" type="button" disabled>导入服务器文件</button>
+        <button class="primary-button" id="upload-source-files" type="button" disabled>上传所选文件</button>
       </div>
     </form>
   </dialog>

@@ -153,7 +153,6 @@ class ManagementCliTest {
                 "18081",
                 "",
                 "n",
-                "",
                 "interactive-pack",
                 "交互测试整合包",
                 source.toString(),
@@ -177,13 +176,23 @@ class ManagementCliTest {
 
         Invocation invocation = invokeWithInput(settingsFile, input);
         assertEquals(0, invocation.exitCode(), invocation.err());
-        assertTrue(invocation.out().contains("首次运行配置"));
-        assertTrue(invocation.out().contains("不是玩家访问的公网地址"));
-        assertTrue(invocation.out().contains("Web 管理界面并创建第一个项目"));
+        assertTrue(invocation.out().contains("首次使用引导"));
+        assertTrue(invocation.out().contains("欢迎使用 DreamingFish Updater"));
+        assertTrue(invocation.out().contains("[1/3] 管理端数据保存位置"));
+        assertTrue(invocation.out().contains(
+                "0.0.0.0   = 允许其他电脑连接"));
+        assertTrue(invocation.out().contains(
+                "127.0.0.1 = 只有当前电脑能连接"));
+        assertTrue(invocation.out().contains("这里填写的不是公网 IP"));
+        assertTrue(invocation.out().contains(
+                "按 Y 进入 Web 管理界面创建，按 N 使用命令行创建"));
+        assertTrue(invocation.out().contains("是否现在启动 Web 管理界面并创建第一个项目"));
         assertTrue(invocation.out().contains("玩家访问公共 HTTP 地址（必填）"));
         assertTrue(invocation.out().contains(
                 "Web 管理端口不能与 HTTP 文件服务端口相同，请重新输入"));
-        assertTrue(invocation.out().contains("管理数据目录：" + data));
+        assertTrue(invocation.out().contains("  " + data));
+        assertTrue(invocation.out().contains("非常重要，请勿删除"));
+        assertTrue(invocation.out().contains("移动或复制到新版管理端根目录"));
         assertTrue(!invocation.out().contains("管理数据目录 ["));
         assertTrue(invocation.out().contains("本次内容范围：config/、mods/"));
         assertTrue(invocation.out().contains("实际将保存的更新记录："));
@@ -217,7 +226,7 @@ class ManagementCliTest {
         );
         Invocation secondRun = invokeWithInput(settingsFile, secondInput);
         assertEquals(0, secondRun.exitCode(), secondRun.err());
-        assertTrue(!secondRun.out().contains("首次运行配置"));
+        assertTrue(!secondRun.out().contains("首次使用引导"));
         assertTrue(secondRun.out().contains("[8] 修改服务设置"));
         assertTrue(secondRun.out().contains("服务设置已保存。"));
         assertTrue(!secondRun.out().contains("修改管理数据目录"));

@@ -31,6 +31,25 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>verify-minimized-shaded-artifact</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>test</goal>
+            </goals>
+            <configuration>
+              <includes>
+                <include>**/ShadedBootstrapArtifactTest.java</include>
+              </includes>
+              <systemPropertyVariables>
+                <dreamingfish.shaded.artifact.verification>true</dreamingfish.shaded.artifact.verification>
+                <dreamingfish.shaded.artifact.path>${project.build.directory}/${project.build.finalName}.jar</dreamingfish.shaded.artifact.path>
+                <dreamingfish.shaded.classes.path>${project.build.outputDirectory}</dreamingfish.shaded.classes.path>
+              </systemPropertyVariables>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -43,7 +62,7 @@
             </goals>
             <configuration>
               <createDependencyReducedPom>false</createDependencyReducedPom>
-              <minimizeJar>false</minimizeJar>
+              <minimizeJar>true</minimizeJar>
               <filters>
                 <filter>
                   <artifact>*:*</artifact>
