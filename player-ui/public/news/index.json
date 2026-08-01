@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "articles": [
+    {
+      "id": "welcome-to-dreamhaven",
+      "title": "初识梦屿：灯还亮着",
+      "summary": "一座让普通人安心生活的梦屿，一片仍在等待的外缘带，以及一名选择最后离开的线路维护员。",
+      "publishedOn": "2026-07-30",
+      "cover": "news/images/dreamhaven-ordinary-life.jpg",
+      "body": "news/articles/dreamhaven-ordinary-life.md"
+    },
+    {
+      "id": "building-server-open",
+      "title": "来自另一维度的求助",
+      "summary": "守望梦屿仍在加急开发。在正式踏入梦屿以前，建筑先行服邀请所有玩家共同建造故事中的初始小镇。",
+      "publishedOn": "2026-07-28",
+      "cover": "images/hero-dreamhaven.png",
+      "body": "news/articles/building-server-open.md"
+    }
+  ]
+}

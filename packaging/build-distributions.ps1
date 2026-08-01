@@ -1,12 +1,13 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.20",
+    [string]$Version = "0.1.21",
     [string]$AdminVersion = "0.1.16",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
     [switch]$PlayerOnly,
-    [switch]$AdminOnly
+    [switch]$AdminOnly,
+    [switch]$TauriPlayer
 )
 
 Set-StrictMode -Version Latest
@@ -249,33 +250,59 @@ if ($missingArtifacts) {
 }
 
 if (-not $AdminOnly) {
-    # Build the Windows desktop app image with a private Java 21 runtime.
-    $playerInput = Join-Path $buildRoot "player-input"
-    New-Item -ItemType Directory -Force -Path $playerInput | Out-Null
-    Copy-Item -LiteralPath $playerJar.FullName -Destination (Join-Path $playerInput "player-app.jar")
-    Get-ChildItem -LiteralPath (Join-Path $repoRoot "player-app\target\runtime-dependencies") -Filter "*.jar" |
-        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $playerInput }
-    $playerImageRoot = Join-Path $buildRoot "player-image"
-    New-Item -ItemType Directory -Force -Path $playerImageRoot | Out-Null
-    Invoke-Checked $jpackage @(
-        "--type", "app-image",
-        "--name", "DreamingFishUpdater",
-        "--dest", $playerImageRoot,
-        "--input", $playerInput,
-        "--main-jar", "player-app.jar",
-        "--main-class", "cn.dreamingfish.updater.player.PlayerLauncher",
-        "--app-version", $Version,
-        "--vendor", "DreamingFish",
-        "--description", "Minecraft modpack player updater",
-        "--add-modules", "java.desktop,java.net.http,jdk.crypto.ec,jdk.unsupported",
-        "--java-options", "-Dfile.encoding=UTF-8"
-    )
+    if ($TauriPlayer) {
+        # New Tauri + Vue player window with the Java engine running as a sidecar.
+        $playerUi = Join-Path $repoRoot "player-ui"
+        Push-Location $playerUi
+        try {
+            if (-not (Test-Path -LiteralPath (Join-Path $playerUi "node_modules"))) {
+                Invoke-Checked "npm.cmd" @("install")
+            }
+            Invoke-Checked "npm.cmd" @("run", "tauri", "--", "build", "--no-bundle")
+        } finally {
+            Pop-Location
+        }
+        $tauriExe = Join-Path $playerUi "src-tauri\target\release\dreamingfish-player.exe"
+        if (-not (Test-Path -LiteralPath $tauriExe)) {
+            throw "Tauri player executable was not produced: $tauriExe"
+        }
 
-    # jpackage can mark the Windows launcher read-only. Normalize the app image so
-    # Maven clean, updater maintenance, and later packaging runs can remove it.
-    Get-ChildItem -Recurse -Force -LiteralPath (Join-Path $playerImageRoot "DreamingFishUpdater") |
-        Where-Object { -not $_.PSIsContainer -and $_.IsReadOnly } |
-        ForEach-Object { $_.IsReadOnly = $false }
+        $playerRuntimeRoot = Join-Path $buildRoot "player-runtime"
+        New-Item -ItemType Directory -Force -Path $playerRuntimeRoot | Out-Null
+        Invoke-Checked $jlink @(
+            "--add-modules", "java.desktop,java.net.http,jdk.crypto.ec,jdk.unsupported,java.logging",
+            "--strip-debug", "--no-man-pages", "--no-header-files",
+            "--output", (Join-Path $playerRuntimeRoot "runtime")
+        )
+    } else {
+        # Legacy JavaFX app image with a private Java 21 runtime.
+        $playerInput = Join-Path $buildRoot "player-input"
+        New-Item -ItemType Directory -Force -Path $playerInput | Out-Null
+        Copy-Item -LiteralPath $playerJar.FullName -Destination (Join-Path $playerInput "player-app.jar")
+        Get-ChildItem -LiteralPath (Join-Path $repoRoot "player-app\target\runtime-dependencies") -Filter "*.jar" |
+            ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $playerInput }
+        $playerImageRoot = Join-Path $buildRoot "player-image"
+        New-Item -ItemType Directory -Force -Path $playerImageRoot | Out-Null
+        Invoke-Checked $jpackage @(
+            "--type", "app-image",
+            "--name", "DreamingFishUpdater",
+            "--dest", $playerImageRoot,
+            "--input", $playerInput,
+            "--main-jar", "player-app.jar",
+            "--main-class", "cn.dreamingfish.updater.player.PlayerLauncher",
+            "--app-version", $Version,
+            "--vendor", "DreamingFish",
+            "--description", "Minecraft modpack player updater",
+            "--add-modules", "java.desktop,java.net.http,jdk.crypto.ec,jdk.unsupported",
+            "--java-options", "-Dfile.encoding=UTF-8"
+        )
+
+        # jpackage can mark the Windows launcher read-only. Normalize the app image so
+        # Maven clean, updater maintenance, and later packaging runs can remove it.
+        Get-ChildItem -Recurse -Force -LiteralPath (Join-Path $playerImageRoot "DreamingFishUpdater") |
+            Where-Object { -not $_.PSIsContainer -and $_.IsReadOnly } |
+            ForEach-Object { $_.IsReadOnly = $false }
+    }
 
     $playerBundle = Join-Path $distRoot "dreamingfish-player-windows-x64"
     $bootstrapDirectory = Join-Path $playerBundle ".dreamingfish-bootstrap"
@@ -284,7 +311,16 @@ if (-not $AdminOnly) {
     New-Item -ItemType Directory -Force -Path $bootstrapDirectory, $initialProgram, $playerState | Out-Null
     Copy-Item -LiteralPath $agentJar.FullName -Destination (Join-Path $bootstrapDirectory "bootstrap-agent.jar")
     Copy-Item -LiteralPath (Join-Path $templates "project-binding.example.json") -Destination $bootstrapDirectory
-    Copy-DirectoryContents (Join-Path $playerImageRoot "DreamingFishUpdater") $initialProgram
+    if ($TauriPlayer) {
+        Copy-Item -Force -LiteralPath $tauriExe -Destination `
+            (Join-Path $initialProgram "DreamingFishUpdater.exe")
+        Copy-Item -Force -LiteralPath $playerJar.FullName -Destination `
+            (Join-Path $initialProgram "player-sidecar.jar")
+        Copy-DirectoryContents (Join-Path $playerRuntimeRoot "runtime") `
+            (Join-Path $initialProgram "runtime")
+    } else {
+        Copy-DirectoryContents (Join-Path $playerImageRoot "DreamingFishUpdater") $initialProgram
+    }
     $activeTemplate = Get-Content -Raw -LiteralPath (Join-Path $templates "active-player.properties")
     $activeTemplate = $activeTemplate.Replace("@VERSION@", $Version)
     [System.IO.File]::WriteAllText((Join-Path $playerState "active-player.properties"),

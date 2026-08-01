@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the DreamingFish player updater window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-set-background-color"
+  ]
+}
