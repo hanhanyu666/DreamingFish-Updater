@@ -24,7 +24,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.1.16"));
+        assertTrue(version.out().contains("0.1.17"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -260,6 +260,29 @@ class ManagementCliTest {
         assertEquals("0.0.0.0", settings.httpHost());
         assertEquals(8080, settings.httpPort());
         assertEquals(ManagementSettings.DEFAULT_WEB_PORT, settings.webPort());
+        assertEquals("127.0.0.1", settings.webHost());
+    }
+
+    @Test
+    void migratesSchemaTwoSettingsToTheLoopbackWebDefault() throws Exception {
+        Path adminHome = Files.createDirectories(temporary.resolve("schema-two-admin"));
+        Path settingsFile = adminHome.resolve("management-settings.json");
+        Files.writeString(settingsFile, """
+                {
+                  "schemaVersion": 2,
+                  "dataDirectory": "legacy-data",
+                  "defaultProjectId": "",
+                  "httpHost": "0.0.0.0",
+                  "httpPort": 8080,
+                  "webPort": 18081
+                }
+                """);
+
+        ManagementSettings settings = new ManagementSettingsStore(settingsFile).load();
+
+        assertEquals(ManagementSettings.CURRENT_SCHEMA, settings.schemaVersion());
+        assertEquals(18081, settings.webPort());
+        assertEquals("127.0.0.1", settings.webHost());
     }
 
     @Test

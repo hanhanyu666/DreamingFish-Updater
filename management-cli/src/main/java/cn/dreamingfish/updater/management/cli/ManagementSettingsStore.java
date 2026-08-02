@@ -68,7 +68,7 @@ final class ManagementSettingsStore {
                 : file.getParent();
         return new ManagementSettings(ManagementSettings.CURRENT_SCHEMA,
                 parent.resolve("data").toString(), "", "0.0.0.0", 8080,
-                ManagementSettings.DEFAULT_WEB_PORT);
+                ManagementSettings.DEFAULT_WEB_PORT, "127.0.0.1");
     }
 
     private ManagementSettings normalize(ManagementSettings settings) {
@@ -77,7 +77,8 @@ final class ManagementSettingsStore {
         String projectId = settings.defaultProjectId() == null ? "" : settings.defaultProjectId().trim();
         return new ManagementSettings(ManagementSettings.CURRENT_SCHEMA,
                 data.toAbsolutePath().normalize().toString(), projectId,
-                settings.httpHost().trim(), settings.httpPort(), settings.webPort());
+                settings.httpHost().trim(), settings.httpPort(), settings.webPort(),
+                settings.webHost() == null ? "127.0.0.1" : settings.webHost().trim());
     }
 
     private ManagementSettings relocateToLocalData(ManagementSettings settings) {
@@ -96,14 +97,15 @@ final class ManagementSettingsStore {
     }
 
     private static ManagementSettings migrate(ManagementSettings settings) {
-        if (settings != null && settings.schemaVersion() == 1) {
+        if (settings != null && (settings.schemaVersion() == 1 || settings.schemaVersion() == 2)) {
             return new ManagementSettings(
                     ManagementSettings.CURRENT_SCHEMA,
                     settings.dataDirectory(),
                     settings.defaultProjectId(),
                     settings.httpHost(),
                     settings.httpPort(),
-                    ManagementSettings.DEFAULT_WEB_PORT
+                    settings.schemaVersion() == 1 ? ManagementSettings.DEFAULT_WEB_PORT : settings.webPort(),
+                    "127.0.0.1"
             );
         }
         return settings;
@@ -136,6 +138,9 @@ final class ManagementSettingsStore {
         }
         if (settings.webPort() < 1 || settings.webPort() > 65535) {
             throw new ManagementException("Web 管理端口必须在 1 到 65535 之间");
+        }
+        if (!"127.0.0.1".equals(settings.webHost()) && !"0.0.0.0".equals(settings.webHost())) {
+            throw new ManagementException("Web 监听地址只能是 127.0.0.1 或 0.0.0.0");
         }
         if (settings.webPort() == settings.httpPort()) {
             throw new ManagementException("Web 管理端口不能与 HTTP 文件服务端口相同");

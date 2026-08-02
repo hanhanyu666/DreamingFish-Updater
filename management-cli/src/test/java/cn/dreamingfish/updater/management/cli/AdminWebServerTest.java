@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -203,6 +204,137 @@ class AdminWebServerTest {
     }
 
     @Test
+    void registersLocallyAndProtectsRemoteAccessWithHttpsSessions()
+            throws Exception {
+        Path admin = temporary.resolve("secure-admin");
+        ManagementCli root = new ManagementCli(
+                admin.resolve("management-settings.json"),
+                new StringReader(""));
+
+        try (AdminWebServer server = new AdminWebServer(
+                root, new InetSocketAddress(
+                InetAddress.getLoopbackAddress(), 0))) {
+            server.start();
+            URI base = URI.create(
+                    "http://127.0.0.1:" + server.address().getPort());
+            String credentials = json.writeString(Map.of(
+                    "username", "server_admin",
+                    "password", "correct horse battery",
+                    "confirmPassword", "correct horse battery",
+                    "allowLocalBypass", false));
+
+            HttpResponse<String> remoteRegistration = send(
+                    base, "/api/auth/register", "POST", credentials, null,
+                    Map.of(
+                            "X-Forwarded-For", "203.0.113.4",
+                            "X-Forwarded-Proto", "https"));
+            assertEquals(403, remoteRegistration.statusCode());
+            assertTrue(remoteRegistration.body().contains("local_only"));
+
+            HttpResponse<String> registration = send(
+                    base, "/api/auth/register", "POST", credentials, null);
+            assertEquals(201, registration.statusCode(), registration.body());
+            String localCookie = sessionCookie(registration);
+            String localSetCookie = registration.headers()
+                    .firstValue("Set-Cookie").orElseThrow();
+            assertTrue(localSetCookie.contains("HttpOnly"));
+            assertTrue(localSetCookie.contains("SameSite=Strict"));
+            assertTrue(!localSetCookie.contains("Secure"));
+            String persisted = Files.readString(
+                    admin.resolve("management-web-auth.json"));
+            assertTrue(!persisted.contains("correct horse battery"));
+            assertTrue(persisted.contains("600000"));
+
+            HttpResponse<String> localWithoutSession = send(
+                    base, "/api/session", "GET", null, null);
+            assertEquals(401, localWithoutSession.statusCode());
+            HttpResponse<String> localSession = send(
+                    base, "/api/session", "GET", null, null,
+                    Map.of("Cookie", localCookie));
+            assertEquals(200, localSession.statusCode(), localSession.body());
+
+            String wrongCredentials = json.writeString(Map.of(
+                    "username", "server_admin",
+                    "password", "definitely incorrect"));
+            Map<String, String> limitedRemote = Map.of(
+                    "X-Forwarded-For", "203.0.113.8",
+                    "X-Forwarded-Proto", "https");
+            for (int attempt = 0; attempt < 5; attempt++) {
+                assertEquals(401, send(base, "/api/auth/login", "POST",
+                        wrongCredentials, null, limitedRemote).statusCode());
+            }
+            assertEquals(429, send(base, "/api/auth/login", "POST",
+                    wrongCredentials, null, limitedRemote).statusCode());
+
+            String loginBody = json.writeString(Map.of(
+                    "username", "server_admin",
+                    "password", "correct horse battery"));
+            HttpResponse<String> remoteHttp = send(
+                    base, "/api/auth/login", "POST", loginBody, null,
+                    Map.of("X-Forwarded-For", "203.0.113.9"));
+            assertEquals(400, remoteHttp.statusCode());
+            assertTrue(remoteHttp.body().contains("https_required"));
+
+            HttpResponse<String> spoofedLocal = send(
+                    base, "/api/auth/login", "POST", loginBody, null,
+                    Map.of("X-Forwarded-For",
+                            "127.0.0.1, 203.0.113.10"));
+            assertEquals(400, spoofedLocal.statusCode());
+            assertTrue(spoofedLocal.body().contains("https_required"));
+
+            Map<String, String> secureRemote = Map.of(
+                    "X-Forwarded-For", "203.0.113.11",
+                    "X-Forwarded-Proto", "https");
+            HttpResponse<String> login = send(
+                    base, "/api/auth/login", "POST", loginBody, null,
+                    secureRemote);
+            assertEquals(200, login.statusCode(), login.body());
+            assertTrue(login.headers().firstValue("Set-Cookie")
+                    .orElseThrow().contains("Secure"));
+            String remoteCookie = sessionCookie(login);
+
+            HttpResponse<String> replayedOverHttp = send(
+                    base, "/api/state", "GET", null, null,
+                    Map.of(
+                            "X-Forwarded-For", "203.0.113.11",
+                            "Cookie", remoteCookie));
+            assertEquals(401, replayedOverHttp.statusCode());
+
+            Map<String, String> secureSession = new HashMap<>(secureRemote);
+            secureSession.put("Cookie", remoteCookie);
+            HttpResponse<String> remoteSession = send(
+                    base, "/api/session", "GET", null, null,
+                    secureSession);
+            assertEquals(200, remoteSession.statusCode(), remoteSession.body());
+            String token = json.read(remoteSession.body()
+                    .getBytes(StandardCharsets.UTF_8), Map.class)
+                    .get("token").toString();
+
+            String accountUpdate = json.writeString(Map.of(
+                    "username", "server_admin",
+                    "password", "correct horse battery",
+                    "newPassword", "new correct horse battery",
+                    "confirmPassword", "new correct horse battery",
+                    "allowLocalBypass", true));
+            assertEquals(403, send(base, "/api/auth/account", "PUT",
+                    accountUpdate, null, secureSession).statusCode());
+            HttpResponse<String> updated = send(
+                    base, "/api/auth/account", "PUT", accountUpdate,
+                    token, secureSession);
+            assertEquals(200, updated.statusCode(), updated.body());
+            assertTrue(updated.headers().firstValue("Set-Cookie")
+                    .orElseThrow().contains("Secure"));
+
+            assertEquals(200, send(base, "/api/session", "GET",
+                    null, null).statusCode());
+            WebAuthStore reloaded = new WebAuthStore(
+                    admin.resolve("management-web-auth.json"));
+            assertTrue(reloaded.verify("server_admin",
+                    "new correct horse battery".toCharArray()));
+        }
+    }
+
+    @Test
     void renamesProjectsAndManagesSourceFilesThroughTheWebApi() throws Exception {
         ManagementCli root = new ManagementCli(
                 temporary.resolve("file-admin/management-settings.json"),
@@ -314,10 +446,17 @@ class AdminWebServerTest {
     private HttpResponse<String> send(
             URI base, String path, String method, String body, String token)
             throws Exception {
+        return send(base, path, method, body, token, Map.of());
+    }
+
+    private HttpResponse<String> send(
+            URI base, String path, String method, String body, String token,
+            Map<String, String> extraHeaders) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder(base.resolve(path))
                 .timeout(Duration.ofSeconds(10))
                 .header("Accept", "application/json");
         if (token != null) builder.header("X-DFS-Token", token);
+        extraHeaders.forEach(builder::header);
         if (body == null) {
             builder.method(method, HttpRequest.BodyPublishers.noBody());
         } else {
@@ -326,6 +465,11 @@ class AdminWebServerTest {
         }
         return client.send(builder.build(),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private static String sessionCookie(HttpResponse<?> response) {
+        return response.headers().firstValue("Set-Cookie").orElseThrow()
+                .split(";", 2)[0];
     }
 
     private HttpResponse<String> sendBytes(

@@ -77,7 +77,8 @@ final class InteractiveConsole {
         root.out().println("这个 data 文件夹位于管理端根目录中，非常重要，请勿删除！");
         root.out().println();
         root.out().println("升级管理端的方法：");
-        root.out().println("  1. 把旧管理端根目录中的 data 文件夹和 management-settings.json");
+        root.out().println("  1. 把旧管理端根目录中的 data 文件夹、management-settings.json");
+        root.out().println("     和 management-web-auth.json（如果已经注册 Web 账户）");
         root.out().println("     移动或复制到新版管理端根目录。");
         root.out().println("  2. 启动新版管理端，程序会自动读取原有数据。");
 
@@ -100,8 +101,8 @@ final class InteractiveConsole {
         root.out().println("[3/3] Web 管理页面");
         root.out().println("这个页面只给管理员使用，不要提供给玩家。");
         root.out().println("  默认端口是 18080，通常直接按回车。");
-        root.out().println("  如果管理端运行在远程服务器，需要通过 SSH 隧道访问。");
-        root.out().println("  为了安全，Web 管理页面只允许本机连接，不能使用服务器公网 IP 直接打开。");
+        root.out().println("  默认只监听 127.0.0.1；需要公网访问时，先通过本机或 SSH 隧道注册账户，");
+        root.out().println("  再在服务设置或 Web 页面显式改为 0.0.0.0，并务必配置 HTTPS 反向代理。");
         int webPort = promptWebPort(
                 "Web 管理端口（一般直接按回车）", current.webPort(), port);
         root.saveSettings(new ManagementSettings(
@@ -110,7 +111,8 @@ final class InteractiveConsole {
                 current.defaultProjectId(),
                 host,
                 port,
-                webPort
+                webPort,
+                "127.0.0.1"
         ));
         root.services();
         root.out().println();
@@ -492,15 +494,26 @@ final class InteractiveConsole {
         String host = prompt("下载服务监听地址（必填）", current.httpHost());
         int port = promptPort("下载服务端口（必填）", current.httpPort());
         int webPort = promptWebPort(
-                "Web 管理端口（必填；仅监听 127.0.0.1）",
+                "Web 管理端口（必填）",
                 current.webPort(), port);
+        root.out().println("Web 监听地址：127.0.0.1 仅本机；0.0.0.0 可公网连接且必须已有账户和 HTTPS 反代。");
+        String webHost = prompt("Web 管理监听地址", current.webHost());
+        if (!webHost.equals("127.0.0.1") && !webHost.equals("0.0.0.0")) {
+            root.out().println("不支持该地址，将保持 127.0.0.1。"); webHost = "127.0.0.1";
+        }
+        if (webHost.equals("0.0.0.0") && !new WebAuthStore(root.settingsFile().getParent()
+                .resolve("management-web-auth.json")).registered()) {
+            root.out().println("尚未注册管理账户，不能启用公网监听；请先用 127.0.0.1 启动并注册账户。");
+            webHost = "127.0.0.1";
+        }
         root.saveSettings(new ManagementSettings(
                 ManagementSettings.CURRENT_SCHEMA,
                 current.dataDirectory(),
                 current.defaultProjectId(),
                 host,
                 port,
-                webPort
+                webPort,
+                webHost
         ));
         root.services();
         root.out().println("服务设置已保存。");
@@ -540,8 +553,10 @@ final class InteractiveConsole {
 
     private boolean serveWeb(boolean askBeforeStart) {
         ManagementSettings settings = root.settings();
-        String address = "http://127.0.0.1:" + settings.webPort() + "/";
-        if (askBeforeStart && !confirm("启动 Web 管理界面 " + address + "？", true)) {
+        String listenAddress = settings.webHost() + ":" + settings.webPort();
+        String localAddress = "http://127.0.0.1:" + settings.webPort() + "/";
+        if (askBeforeStart && !confirm("启动 Web 管理界面并监听 "
+                + listenAddress + "？", true)) {
             return false;
         }
         try (AdminWebServer server = new AdminWebServer(root)) {
@@ -549,19 +564,23 @@ final class InteractiveConsole {
             try {
                 Runtime.getRuntime().addShutdownHook(shutdown);
                 server.start();
-                root.out().println("Web 管理界面已启动：" + address);
+                root.out().println("Web 管理界面已启动，监听：" + listenAddress);
                 root.out().println();
                 root.out().println("如果管理端运行在当前电脑：");
-                root.out().println("  请直接在浏览器打开：" + address);
+                root.out().println("  请直接在浏览器打开：" + localAddress);
                 root.out().println();
-                root.out().println("如果管理端运行在远程服务器：");
+                root.out().println("如果管理端运行在远程服务器且保持安全的 127.0.0.1 监听：");
                 root.out().println("  1. 在您自己的电脑上打开终端，运行以下 SSH 隧道命令：");
                 root.out().println("     ssh -N -L "
                         + settings.webPort() + ":127.0.0.1:" + settings.webPort()
                         + " 用户名@您的服务器地址");
                 root.out().println("  2. 保持 SSH 窗口运行，再在自己电脑的浏览器打开：");
-                root.out().println("     " + address);
-                root.out().println("  注意：Web 管理页面不能使用服务器公网 IP 直接访问。");
+                root.out().println("     " + localAddress);
+                if (settings.webHost().equals("0.0.0.0")) {
+                    root.out().println("公网监听已启用：远程登录必须经 HTTPS 反向代理访问，禁止直接使用明文 HTTP。");
+                } else {
+                    root.out().println("同机 Caddy/Nginx 可代理 127.0.0.1 到公网 443，这是推荐部署方式。");
+                }
                 root.out().println();
                 waitForServiceStop();
             } finally {

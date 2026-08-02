@@ -2,6 +2,7 @@
 
 const app = {
   token: "",
+  auth: null,
   state: null,
   project: null,
   selectedProjectId: "",
@@ -77,16 +78,120 @@ async function initialize() {
   initializeTheme();
   bindEvents();
   try {
-    const session = await api("/api/session");
-    app.token = session.token;
-    byId("admin-version").textContent =
-      `DreamingFish Admin ${session.version}`;
-    setConnection(true);
-    await refreshState();
+    await refreshAuth();
   } catch (error) {
     setConnection(false);
     toast(error.message, true);
   }
+}
+
+async function refreshAuth() {
+  const status = await api("/api/auth/status");
+  app.auth = status || {};
+  renderAuthIdentity();
+  const registered = Boolean(status.registered ?? status.configured ?? status.hasAccount);
+  const authenticated = Boolean(status.authenticated ?? status.loggedIn ?? status.localBypass);
+  byId("auth-loading").hidden = true;
+  byId("register-form").hidden = registered;
+  byId("login-form").hidden = !registered || authenticated;
+  if (!registered || !authenticated) {
+    app.token = "";
+    byId("app-shell").hidden = true;
+    byId("auth-screen").hidden = false;
+    const loginUsername = byId("login-form").elements.username;
+    if (status.username && !loginUsername.value) loginUsername.value = status.username;
+    return;
+  }
+  await enterManagement();
+}
+
+async function enterManagement() {
+  const session = await api("/api/session");
+  app.token = session.token || "";
+  byId("admin-version").textContent = `DreamingFish Admin ${session.version || ""}`.trim();
+  byId("auth-screen").hidden = true;
+  byId("app-shell").hidden = false;
+  setConnection(true);
+  await refreshState();
+}
+
+function bindAuthentication() {
+  byId("auth-theme-toggle").addEventListener("click", () => {
+    const current = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+    applyTheme(current === "light" ? "dark" : "light", true);
+  });
+  byId("register-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    if (values.get("password") !== values.get("confirmPassword")) {
+      showErrorDialog("两次输入的密码不一致。");
+      return;
+    }
+    await runBusy("正在创建管理员账户", async () => {
+      await api("/api/auth/register", { method: "POST", body: {
+        username: values.get("username"), password: values.get("password"),
+        confirmPassword: values.get("confirmPassword"),
+        allowLocalBypass: values.get("allowLocalBypass") === "on"
+      }});
+      form.reset();
+      await refreshAuth();
+    });
+  });
+  byId("login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    await runBusy("正在登录", async () => {
+      await api("/api/auth/login", { method: "POST", body: {
+        username: values.get("username"), password: values.get("password")
+      }});
+      form.elements.password.value = "";
+      await refreshAuth();
+    });
+  });
+  byId("logout-button").addEventListener("click", async () => {
+    await runBusy("正在注销", async () => {
+      await api("/api/auth/logout", { method: "POST", body: {} });
+      app.token = "";
+      app.state = null;
+      app.project = null;
+      await refreshAuth();
+    });
+  });
+  byId("account-settings").addEventListener("click", () => {
+    const form = byId("account-form");
+    form.reset();
+    form.elements.username.value = app.auth?.username || "";
+    form.elements.allowLocalBypass.checked = Boolean(app.auth?.allowLocalBypass);
+    byId("account-dialog").showModal();
+  });
+  byId("account-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      byId("account-dialog").close("cancel");
+      return;
+    }
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const newPassword = String(values.get("newPassword") || "");
+    if (newPassword !== String(values.get("confirmPassword") || "")) {
+      showErrorDialog("两次输入的新密码不一致。");
+      return;
+    }
+    await runBusy("正在保存账户设置", async () => {
+      await api("/api/auth/account", { method: "PUT", body: {
+        username: values.get("username"), password: values.get("password"),
+        newPassword, confirmPassword: values.get("confirmPassword"),
+        allowLocalBypass: values.get("allowLocalBypass") === "on"
+      }});
+      byId("account-dialog").close();
+      form.reset();
+      app.auth = await api("/api/auth/status");
+      renderAuthIdentity();
+      toast("账户安全设置已保存");
+    });
+  });
 }
 
 async function refreshState(preferredProjectId = app.selectedProjectId) {
@@ -843,9 +948,13 @@ function renderSettings() {
   setFormValue(form, "webPort", app.state.settings.webPort);
   setFormValue(form, "dataDirectory", app.state.dataDirectory);
   setFormValue(form, "settingsFile", app.state.settingsFile);
+  const webPort = app.state.settings.webPort;
+  byId("ssh-tunnel-command").textContent =
+    `ssh -N -L ${webPort}:127.0.0.1:${webPort} 用户名@您的服务器地址`;
 }
 
 function bindEvents() {
+  bindAuthentication();
   byId("theme-toggle").addEventListener("click", () => {
     const current = document.documentElement.dataset.theme === "light"
       ? "light"
@@ -938,16 +1047,24 @@ function applyTheme(theme, persist) {
   document.documentElement.dataset.theme = normalized;
   const toggle = byId("theme-toggle");
   const light = normalized === "light";
-  toggle.textContent = light ? "☾ 夜间模式" : "☀ 白天模式";
+  toggle.textContent = light ? "☾" : "☀";
   toggle.title = light ? "切换到夜间模式" : "切换到白天模式";
   toggle.setAttribute("aria-label", toggle.title);
   toggle.setAttribute("aria-pressed", String(light));
+  const authToggle = byId("auth-theme-toggle");
+  authToggle.textContent = light ? "☾" : "☀";
+  authToggle.title = light ? "切换到夜间模式" : "切换到白天模式";
+  authToggle.setAttribute("aria-label", authToggle.title);
   if (!persist) return;
   try {
     localStorage.setItem("dfs-admin-theme", normalized);
   } catch (_) {
     // The current page can still switch themes even when persistence is blocked.
   }
+}
+
+function renderAuthIdentity() {
+  byId("account-username").textContent = app.auth?.username || "管理员";
 }
 
 function bindErrorDialog() {
@@ -1961,12 +2078,17 @@ function bindSettings() {
     const payload = {
       httpHost: textValue(data, "httpHost"),
       httpPort: Number(textValue(data, "httpPort")),
+      webHost: textValue(data, "webHost"),
       webPort: Number(textValue(data, "webPort"))
     };
+    const webRestartRequired = payload.webHost !== app.state.settings.webHost
+      || payload.webPort !== app.state.settings.webPort;
     await runBusy("正在保存服务设置", async () => {
       await api("/api/settings", { method: "PUT", body: payload });
       await refreshState();
-      toast("服务设置已保存");
+      toast(webRestartRequired
+        ? "服务设置已保存；请重启 Web 管理界面使新监听设置生效"
+        : "服务设置已保存");
     });
   });
 }

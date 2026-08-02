@@ -15,7 +15,30 @@
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <div class="app-shell">
+  <section class="auth-screen" id="auth-screen" aria-live="polite">
+    <div class="auth-card">
+      <div class="auth-brand"><div class="brand-mark">DF</div><div><div class="brand-name">梦鱼更新管理</div><div class="brand-en"><span>Dreaming</span><strong>Fish</strong></div></div></div>
+      <button class="icon-button auth-theme-toggle" id="auth-theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式">☀</button>
+      <div id="auth-loading" class="auth-loading"><div class="busy-spinner"></div><span>正在检查账户状态</span></div>
+      <form id="register-form" class="auth-form" hidden>
+        <div><span class="page-kicker">FIRST TIME SETUP</span><h1>创建管理员账户</h1><p>此账户用于从公网访问管理界面。</p></div>
+        <label class="field"><span>用户名</span><input name="username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" required autofocus><small class="field-help">3–32 位，只能使用字母、数字、点、下划线或连字符。</small></label>
+        <label class="field"><span>密码</span><input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="256" required><small class="field-help">至少 10 位，建议使用 14 位以上且不与其他网站重复的密码。</small></label>
+        <label class="field"><span>确认密码</span><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="256" required></label>
+        <label class="check-field auth-check"><input name="allowLocalBypass" type="checkbox"><span>允许在管理服务本机访问时免登录</span></label>
+        <small class="field-help">仅回环地址的请求可免登录；公网访问始终需要账户密码。</small>
+        <button class="primary-button auth-submit" type="submit">创建账户并进入</button>
+      </form>
+      <form id="login-form" class="auth-form" hidden>
+        <div><span class="page-kicker">SECURE ACCESS</span><h1>登录管理控制台</h1><p>请输入管理员账户。密码不会保存在浏览器中。</p></div>
+        <label class="field"><span>用户名</span><input name="username" autocomplete="username" maxlength="32" required autofocus></label>
+        <label class="field"><span>密码</span><input name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+        <button class="primary-button auth-submit" type="submit">登录</button>
+      </form>
+    </div>
+  </section>
+
+  <div class="app-shell" id="app-shell" hidden>
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">DF</div>
@@ -34,6 +57,19 @@
         <button class="nav-button" data-view="settings"><span>⚙</span>服务设置</button>
       </nav>
 
+      <div class="sidebar-account">
+        <div class="sidebar-account-identity">
+          <span>当前登录</span>
+          <strong id="account-username">管理员</strong>
+        </div>
+        <div class="sidebar-account-actions">
+          <button class="secondary-button account-button" id="account-settings" type="button">账户安全</button>
+          <button class="icon-button logout-button" id="logout-button" type="button" title="登出" aria-label="登出">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6.5A2.5 2.5 0 0 0 4 7.5v9A2.5 2.5 0 0 0 6.5 19H10M14.5 8.5 18 12l-3.5 3.5M9 12h9"/></svg>
+          </button>
+        </div>
+      </div>
+
       <div class="sidebar-footer">
         <div class="connection-line">
           <span class="status-dot" id="connection-dot"></span>
@@ -50,7 +86,7 @@
           <h1 id="page-title">运行概览</h1>
         </div>
         <div class="topbar-actions">
-          <button class="secondary-button theme-toggle" id="theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式">☀ 白天模式</button>
+          <button class="icon-button theme-toggle" id="theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式">☀</button>
           <label class="project-picker">
             <span>当前项目</span>
             <select id="project-select" aria-label="当前项目"></select>
@@ -476,7 +512,7 @@
         <section class="view" id="view-settings">
           <form class="panel form-panel" id="settings-form">
             <div class="panel-header">
-              <div><h2>服务监听设置</h2><span>Web 管理界面固定监听本机回环地址</span></div>
+              <div><h2>服务监听设置</h2><span>修改 Web 监听地址或端口后，需要重启 Web 管理界面</span></div>
               <button class="primary-button" type="submit">保存服务设置</button>
             </div>
             <div class="form-grid">
@@ -492,13 +528,16 @@
               </label>
               <label class="field">
                 <span>Web 管理监听地址</span>
-                <input name="webHost" value="127.0.0.1" readonly>
-                <small class="field-help">安全限制固定为本机回环地址，不能改成 0.0.0.0 或公网网卡。</small>
+                <select name="webHost" required>
+                  <option value="127.0.0.1">127.0.0.1（仅本机与同机反向代理，推荐）</option>
+                  <option value="0.0.0.0">0.0.0.0（允许外部反向代理连接）</option>
+                </select>
+                <small class="field-help">同机 Caddy/Nginx 请保持 127.0.0.1，只公开代理的 HTTPS 端口。仅当代理位于容器或另一台机器时才考虑 0.0.0.0；禁止把明文 HTTP 端口直接暴露公网。</small>
               </label>
               <label class="field">
                 <span>Web 管理端口（必填）</span>
                 <input name="webPort" type="number" min="1" max="65535" required>
-                <small class="field-help">不能与 HTTP 文件服务端口相同。远程管理请在自己的电脑建立 SSH 隧道。</small>
+                <small class="field-help">不能与 HTTP 文件服务端口相同。公网访问必须使用 HTTPS 反向代理。</small>
               </label>
               <label class="field span-2">
                 <span>管理数据目录</span>
@@ -508,15 +547,29 @@
               <label class="field span-2">
                 <span>设置文件</span>
                 <input name="settingsFile" readonly>
-                <small class="field-help">记录监听端口和管理数据位置，迁移管理端时应与 data 一起保留。</small>
+                <small class="field-help">记录监听端口和管理数据位置。迁移时还要保留 data，以及注册后生成的 management-web-auth.json。</small>
               </label>
             </div>
-            <div class="notice-line command-notice"><strong>远程访问 Web：</strong><code>ssh -N -L 18080:127.0.0.1:18080 用户名@您的服务器地址</code><span>Web 端口修改会在下次启动管理界面时生效；如果修改了 18080，请同步替换命令两处端口。</span></div>
+            <div class="notice-line command-notice"><strong>SSH 隧道访问：</strong><code id="ssh-tunnel-command">ssh -N -L 18080:127.0.0.1:18080 用户名@您的服务器地址</code><span>公网长期访问请使用 Caddy/Nginx 提供 HTTPS；修改 Web 地址或端口后需要重启管理界面。</span></div>
           </form>
         </section>
       </main>
     </section>
   </div>
+
+  <dialog class="modal compact-modal" id="account-dialog">
+    <form method="dialog" id="account-form">
+      <div class="modal-header"><div><span>ACCOUNT SECURITY</span><h2>账户安全设置</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button></div>
+      <div class="form-grid one-column">
+        <label class="field"><span>用户名</span><input name="username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" required></label>
+        <label class="field"><span>当前密码（必填）</span><input name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+        <label class="field"><span>新密码（留空则不修改）</span><input name="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="256"></label>
+        <label class="field"><span>确认新密码</span><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="256"></label>
+        <label class="check-field auth-check"><input name="allowLocalBypass" type="checkbox"><span>允许在管理服务本机访问时免登录</span></label>
+      </div>
+      <div class="modal-actions"><button class="secondary-button" value="cancel" formnovalidate>取消</button><button class="primary-button" value="default">保存账户设置</button></div>
+    </form>
+  </dialog>
 
   <dialog class="modal" id="create-project-dialog">
     <form method="dialog" id="create-project-form">

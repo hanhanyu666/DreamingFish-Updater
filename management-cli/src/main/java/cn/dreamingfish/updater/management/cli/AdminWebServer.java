@@ -56,16 +56,19 @@ final class AdminWebServer implements AutoCloseable {
     private final ReentrantLock mutationLock = new ReentrantLock();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final String sessionToken;
+    private final WebAuthStore auth;
+    private final Map<String, LoginAttempts> loginAttempts = new java.util.concurrent.ConcurrentHashMap<>();
 
     AdminWebServer(ManagementCli root) {
-        this(root, new InetSocketAddress("127.0.0.1", root.settings().webPort()));
+        this(root, new InetSocketAddress(root.settings().webHost(), root.settings().webPort()));
     }
 
     AdminWebServer(ManagementCli root, InetSocketAddress address) {
         this.root = Objects.requireNonNull(root, "root");
-        if (address.getAddress() == null || !address.getAddress().isLoopbackAddress()) {
-            throw new ManagementException("Web 管理界面只允许监听回环地址");
-        }
+        if (address.getAddress() == null) throw new ManagementException("Web 管理监听地址无效");
+        auth = new WebAuthStore(root.settingsFile().getParent().resolve("management-web-auth.json"));
+        if (!address.getAddress().isLoopbackAddress() && !auth.registered())
+            throw new ManagementException("启用公网 Web 监听前必须先通过本机或 SSH 隧道注册管理账户");
         try {
             server = HttpServer.create(address, 0);
         } catch (IOException e) {
@@ -138,9 +141,143 @@ final class AdminWebServer implements AutoCloseable {
         sendBytes(exchange, 200, asset.bytes);
     }
 
+    private void handleAuth(HttpExchange exchange, String path) throws IOException {
+        boolean local = isLocalClient(exchange);
+        if (path.equals("/api/auth/status") && exchange.getRequestMethod().equals("GET")) {
+            exchange.getResponseHeaders().set("Cache-Control", "no-store");
+            sendJson(exchange, 200, Map.of("registered", auth.registered(), "authenticated",
+                    authenticated(exchange), "local", local, "localBypass", auth.localBypass(),
+                    "username", authenticated(exchange) ? auth.username() : ""));
+            return;
+        }
+        if (path.equals("/api/auth/register") && exchange.getRequestMethod().equals("POST")) {
+            if (!local) throw new WebApiException(403, "local_only", "首次注册只能从管理端本机访问；远程服务器请先使用 SSH 隧道");
+            if (auth.registered()) {
+                throw new WebApiException(409, "already_registered",
+                        "Web 管理账户已经注册");
+            }
+            AuthRequest request = readJson(exchange, AuthRequest.class);
+            if (!Objects.equals(request.password, request.confirmPassword))
+                throw new WebApiException(400, "password_mismatch", "两次输入的密码不一致");
+            auth.register(request.username, request.password == null ? new char[0] : request.password.toCharArray(),
+                    Boolean.TRUE.equals(request.allowLocalBypass));
+            setSessionCookie(exchange, auth.createSession(), secureRequest(exchange));
+            sendJson(exchange, 201, Map.of("authenticated", true)); return;
+        }
+        if (path.equals("/api/auth/login") && exchange.getRequestMethod().equals("POST")) {
+            if (!local && !secureRequest(exchange))
+                throw new WebApiException(400, "https_required", "远程登录必须使用 HTTPS，请配置 Caddy/Nginx TLS 反向代理");
+            AuthRequest request = readJson(exchange, AuthRequest.class);
+            String ip = clientAddress(exchange);
+            LoginAttempts attempts = loginAttempts.computeIfAbsent(
+                    ip, ignored -> new LoginAttempts());
+            trimAttempts();
+            if (attempts.blocked()) throw new WebApiException(429, "login_limited", "登录失败次数过多，请稍后再试");
+            if (!auth.verify(request.username, request.password == null ? new char[0] : request.password.toCharArray())) {
+                attempts.fail();
+                throw new WebApiException(401, "invalid_credentials", "用户名或密码错误");
+            }
+            loginAttempts.remove(ip); setSessionCookie(exchange, auth.createSession(), secureRequest(exchange));
+            sendJson(exchange, 200, Map.of("authenticated", true)); return;
+        }
+        if (path.equals("/api/auth/logout") && exchange.getRequestMethod().equals("POST")) {
+            auth.logout(cookie(exchange, "DFS_ADMIN_SESSION"));
+            clearSessionCookie(exchange);
+            sendJson(exchange, 200, Map.of("authenticated", false)); return;
+        }
+        if (path.equals("/api/auth/account") && exchange.getRequestMethod().equals("PUT")) {
+            requireAuthentication(exchange); requireToken(exchange); AuthRequest request = readJson(exchange, AuthRequest.class);
+            if (request.newPassword != null && !Objects.equals(request.newPassword, request.confirmPassword))
+                throw new WebApiException(400, "password_mismatch", "两次输入的新密码不一致");
+            try { auth.update(request.password, request.username, request.newPassword, Boolean.TRUE.equals(request.allowLocalBypass)); }
+            catch (SecurityException e) { throw new WebApiException(401, "invalid_credentials", "当前密码错误"); }
+            setSessionCookie(exchange, auth.createSession(), secureRequest(exchange));
+            sendJson(exchange, 200, Map.of("updated", true)); return;
+        }
+        throw new WebApiException(404, "not_found", "认证 API 不存在");
+    }
+
+    private void requireAuthentication(HttpExchange exchange) {
+        if (!authenticated(exchange)) throw new WebApiException(401, "authentication_required", "请先登录管理账户");
+    }
+    private boolean authenticated(HttpExchange exchange) {
+        boolean local = isLocalClient(exchange);
+        return (local && (!auth.registered() || auth.localBypass()
+                || auth.sessionValid(cookie(exchange, "DFS_ADMIN_SESSION"))))
+                || (secureRequest(exchange) && auth.sessionValid(cookie(exchange, "DFS_ADMIN_SESSION")));
+    }
+    private boolean isLocalClient(HttpExchange exchange) { return isLoopback(clientAddress(exchange)); }
+    private String clientAddress(HttpExchange exchange) {
+        String peer = exchange.getRemoteAddress().getAddress().getHostAddress();
+        if (isLoopback(peer)) {
+            String forwarded = exchange.getRequestHeaders().getFirst("X-Forwarded-For");
+            if (forwarded != null && !forwarded.isBlank()) {
+                String[] chain = forwarded.split(",");
+                String candidate = chain[chain.length - 1].trim();
+                if (!candidate.isEmpty() && candidate.length() <= 64) {
+                    return candidate;
+                }
+            }
+        }
+        return peer;
+    }
+    private static boolean isLoopback(String value) {
+        if (value == null) return false;
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (normalized.equals("::1")
+                || normalized.equals("0:0:0:0:0:0:0:1")) {
+            return true;
+        }
+        if (!normalized.matches("[0-9.]+")) return false;
+        String[] octets = normalized.split("\\.", -1);
+        if (octets.length != 4 || !octets[0].equals("127")) return false;
+        try {
+            for (String octet : octets) {
+                int number = Integer.parseInt(octet);
+                if (number < 0 || number > 255) return false;
+            }
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+    private boolean secureRequest(HttpExchange exchange) {
+        if (exchange instanceof com.sun.net.httpserver.HttpsExchange) return true;
+        return exchange.getRemoteAddress().getAddress().isLoopbackAddress()
+                && "https".equalsIgnoreCase(exchange.getRequestHeaders().getFirst("X-Forwarded-Proto"));
+    }
+    private static void setSessionCookie(HttpExchange exchange, String id, boolean secure) {
+        exchange.getResponseHeaders().add("Set-Cookie", "DFS_ADMIN_SESSION=" + id
+                + "; Path=/; HttpOnly; SameSite=Strict" + (secure ? "; Secure" : ""));
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+    }
+    private void clearSessionCookie(HttpExchange exchange) {
+        exchange.getResponseHeaders().add("Set-Cookie",
+                "DFS_ADMIN_SESSION=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+                        + (secureRequest(exchange) ? "; Secure" : ""));
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+    }
+    private static String cookie(HttpExchange exchange, String name) {
+        for (String header : exchange.getRequestHeaders().getOrDefault("Cookie", List.of()))
+            for (String part : header.split(";")) { String[] pair = part.trim().split("=", 2); if (pair.length == 2 && pair[0].equals(name)) return pair[1]; }
+        return null;
+    }
+    private void trimAttempts() {
+        if (loginAttempts.size() > 1024) loginAttempts.entrySet().removeIf(e -> e.getValue().stale());
+        while (loginAttempts.size() > 1024) {
+            String candidate = loginAttempts.keySet().stream()
+                    .findFirst().orElse(null);
+            if (candidate == null) break;
+            loginAttempts.remove(candidate);
+        }
+    }
+
     private void handleApi(HttpExchange exchange, String path) throws Exception {
+        if (path.startsWith("/api/auth/")) { handleAuth(exchange, path); return; }
+        requireAuthentication(exchange);
         if (mutating(exchange.getRequestMethod())) requireToken(exchange);
         if (path.equals("/api/session") && exchange.getRequestMethod().equals("GET")) {
+            exchange.getResponseHeaders().set("Cache-Control", "no-store");
             sendJson(exchange, 200, Map.of(
                     "token", sessionToken,
                     "version", ManagementCli.VERSION,
@@ -481,13 +618,17 @@ final class AdminWebServer implements AutoCloseable {
                 ? current.httpPort() : request.httpPort;
         int webPort = request.webPort == null
                 ? current.webPort() : request.webPort;
+        String webHost = defaultValue(request.webHost, current.webHost());
+        if (!"127.0.0.1".equals(webHost) && !auth.registered())
+            throw new WebApiException(409, "account_required", "启用公网监听前请先注册管理账户，并配置 HTTPS 反向代理");
         root.saveSettings(new ManagementSettings(
                 ManagementSettings.CURRENT_SCHEMA,
                 current.dataDirectory(),
                 current.defaultProjectId(),
                 host,
                 httpPort,
-                webPort
+                webPort,
+                webHost
         ));
         return settingsView(root.settings());
     }
@@ -837,7 +978,7 @@ final class AdminWebServer implements AutoCloseable {
         return Map.of(
                 "httpHost", settings.httpHost(),
                 "httpPort", settings.httpPort(),
-                "webHost", "127.0.0.1",
+                "webHost", settings.webHost(),
                 "webPort", settings.webPort()
         );
     }
@@ -1114,8 +1255,19 @@ final class AdminWebServer implements AutoCloseable {
     private record SettingsRequest(
             String httpHost,
             Integer httpPort,
-            Integer webPort
+            Integer webPort,
+            String webHost
     ) {
+    }
+
+    private record AuthRequest(String username, String password, String confirmPassword,
+                               String newPassword, Boolean allowLocalBypass) { }
+
+    private static final class LoginAttempts {
+        private int failures; private long first = System.currentTimeMillis();
+        synchronized void fail() { if (stale()) { failures = 0; first = System.currentTimeMillis(); } failures++; }
+        synchronized boolean blocked() { return !stale() && failures >= 5; }
+        synchronized boolean stale() { return System.currentTimeMillis() - first > 5 * 60_000L; }
     }
 
     private static final class WebApiException extends RuntimeException {

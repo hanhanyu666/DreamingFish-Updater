@@ -6,7 +6,7 @@ import java.util.concurrent.CountDownLatch;
 
 @CommandLine.Command(
         name = "web",
-        description = "Run the loopback-only Web management console"
+        description = "Run the authenticated Web management console"
 )
 final class WebCommand implements Runnable {
     @CommandLine.ParentCommand
@@ -19,7 +19,7 @@ final class WebCommand implements Runnable {
             Runtime.getRuntime().addShutdownHook(shutdown);
             server.start();
             root.out().println(
-                    "Web management console listening on http://127.0.0.1:"
+                    "Web management console listening on http://" + root.settings().webHost() + ":"
                             + server.address().getPort() + "/");
             try {
                 new CountDownLatch(1).await();
