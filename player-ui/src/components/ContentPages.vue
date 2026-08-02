@@ -3,7 +3,7 @@ import { usePlayerStore } from "../stores/player";
 import NewsPage from "./NewsPage.vue";
 
 const store = usePlayerStore();
-const VERSION = "0.1.25";
+const VERSION = "0.1.26";
 </script>
 
 <template>

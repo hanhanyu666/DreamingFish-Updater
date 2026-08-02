@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.25",
+    [string]$Version = "0.1.26",
     [string]$AdminVersion = "0.1.18",
     [string]$DistDirectory = "",
     [string]$JdkHome = "",

@@ -26,6 +26,7 @@ function minimize(): void {
   <div
     class="title-bar reveal"
     style="--reveal-delay: 70ms; --from-y: -10px"
+    data-tauri-drag-region
     @dblclick.self="toggleMaximize"
   >
     <div class="top-brand" data-tauri-drag-region>
