@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -327,6 +328,43 @@ class AdminWebServerTest {
 
             assertEquals(200, send(base, "/api/session", "GET",
                     null, null).statusCode());
+
+            String updatedCookie = sessionCookie(updated);
+            HttpResponse<String> logout = send(
+                    base, "/api/auth/logout", "POST", "{}", null,
+                    Map.of("Cookie", updatedCookie));
+            assertEquals(200, logout.statusCode(), logout.body());
+            List<String> logoutCookies = logout.headers().allValues("Set-Cookie");
+            assertTrue(logoutCookies.stream().anyMatch(value ->
+                    value.startsWith("DFS_ADMIN_SESSION=")
+                            && value.contains("Max-Age=0")));
+            String loggedOutCookie = logoutCookies.stream()
+                    .filter(value -> value.startsWith("DFS_ADMIN_LOGGED_OUT=1"))
+                    .findFirst().orElseThrow().split(";", 2)[0];
+            assertEquals(401, send(base, "/api/session", "GET",
+                    null, null, Map.of("Cookie", loggedOutCookie)).statusCode());
+            HttpResponse<String> loggedOutStatus = send(
+                    base, "/api/auth/status", "GET", null, null,
+                    Map.of("Cookie", loggedOutCookie));
+            assertTrue(loggedOutStatus.body().contains("\"authenticated\":false"),
+                    loggedOutStatus.body());
+
+            // The marker is browser-session scoped: clearing browser cookies
+            // restores the configured local bypass without changing the account.
+            assertEquals(200, send(base, "/api/session", "GET",
+                    null, null).statusCode());
+
+            String newLoginBody = json.writeString(Map.of(
+                    "username", "server_admin",
+                    "password", "new correct horse battery"));
+            HttpResponse<String> relogin = send(
+                    base, "/api/auth/login", "POST", newLoginBody, null,
+                    Map.of("Cookie", loggedOutCookie));
+            assertEquals(200, relogin.statusCode(), relogin.body());
+            assertTrue(relogin.headers().allValues("Set-Cookie").stream()
+                    .anyMatch(value -> value.startsWith("DFS_ADMIN_LOGGED_OUT=")
+                            && value.contains("Max-Age=0")));
+
             WebAuthStore reloaded = new WebAuthStore(
                     admin.resolve("management-web-auth.json"));
             assertTrue(reloaded.verify("server_admin",

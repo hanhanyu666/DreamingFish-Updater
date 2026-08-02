@@ -46,6 +46,8 @@ import java.util.concurrent.locks.ReentrantLock;
 final class AdminWebServer implements AutoCloseable {
     private static final int MAX_REQUEST_BYTES = 1024 * 1024;
     private static final String TOKEN_HEADER = "X-DFS-Token";
+    private static final String SESSION_COOKIE = "DFS_ADMIN_SESSION";
+    private static final String LOGGED_OUT_COOKIE = "DFS_ADMIN_LOGGED_OUT";
     private static final Map<String, StaticAsset> STATIC_ASSETS = loadAssets();
 
     private final ManagementCli root;
@@ -162,6 +164,7 @@ final class AdminWebServer implements AutoCloseable {
             auth.register(request.username, request.password == null ? new char[0] : request.password.toCharArray(),
                     Boolean.TRUE.equals(request.allowLocalBypass));
             setSessionCookie(exchange, auth.createSession(), secureRequest(exchange));
+            clearLoggedOutCookie(exchange);
             sendJson(exchange, 201, Map.of("authenticated", true)); return;
         }
         if (path.equals("/api/auth/login") && exchange.getRequestMethod().equals("POST")) {
@@ -178,11 +181,13 @@ final class AdminWebServer implements AutoCloseable {
                 throw new WebApiException(401, "invalid_credentials", "用户名或密码错误");
             }
             loginAttempts.remove(ip); setSessionCookie(exchange, auth.createSession(), secureRequest(exchange));
+            clearLoggedOutCookie(exchange);
             sendJson(exchange, 200, Map.of("authenticated", true)); return;
         }
         if (path.equals("/api/auth/logout") && exchange.getRequestMethod().equals("POST")) {
-            auth.logout(cookie(exchange, "DFS_ADMIN_SESSION"));
+            auth.logout(cookie(exchange, SESSION_COOKIE));
             clearSessionCookie(exchange);
+            setLoggedOutCookie(exchange);
             sendJson(exchange, 200, Map.of("authenticated", false)); return;
         }
         if (path.equals("/api/auth/account") && exchange.getRequestMethod().equals("PUT")) {
@@ -202,9 +207,12 @@ final class AdminWebServer implements AutoCloseable {
     }
     private boolean authenticated(HttpExchange exchange) {
         boolean local = isLocalClient(exchange);
-        return (local && (!auth.registered() || auth.localBypass()
-                || auth.sessionValid(cookie(exchange, "DFS_ADMIN_SESSION"))))
-                || (secureRequest(exchange) && auth.sessionValid(cookie(exchange, "DFS_ADMIN_SESSION")));
+        boolean sessionValid = auth.sessionValid(cookie(exchange, SESSION_COOKIE));
+        boolean explicitlyLoggedOut = "1".equals(cookie(exchange, LOGGED_OUT_COOKIE));
+        return (local && (!auth.registered()
+                || (auth.localBypass() && !explicitlyLoggedOut)
+                || sessionValid))
+                || (secureRequest(exchange) && sessionValid);
     }
     private boolean isLocalClient(HttpExchange exchange) { return isLoopback(clientAddress(exchange)); }
     private String clientAddress(HttpExchange exchange) {
@@ -247,13 +255,25 @@ final class AdminWebServer implements AutoCloseable {
                 && "https".equalsIgnoreCase(exchange.getRequestHeaders().getFirst("X-Forwarded-Proto"));
     }
     private static void setSessionCookie(HttpExchange exchange, String id, boolean secure) {
-        exchange.getResponseHeaders().add("Set-Cookie", "DFS_ADMIN_SESSION=" + id
+        exchange.getResponseHeaders().add("Set-Cookie", SESSION_COOKIE + "=" + id
                 + "; Path=/; HttpOnly; SameSite=Strict" + (secure ? "; Secure" : ""));
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
     }
     private void clearSessionCookie(HttpExchange exchange) {
         exchange.getResponseHeaders().add("Set-Cookie",
-                "DFS_ADMIN_SESSION=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+                SESSION_COOKIE + "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+                        + (secureRequest(exchange) ? "; Secure" : ""));
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+    }
+    private void setLoggedOutCookie(HttpExchange exchange) {
+        exchange.getResponseHeaders().add("Set-Cookie",
+                LOGGED_OUT_COOKIE + "=1; Path=/; HttpOnly; SameSite=Strict"
+                        + (secureRequest(exchange) ? "; Secure" : ""));
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+    }
+    private void clearLoggedOutCookie(HttpExchange exchange) {
+        exchange.getResponseHeaders().add("Set-Cookie",
+                LOGGED_OUT_COOKIE + "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
                         + (secureRequest(exchange) ? "; Secure" : ""));
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
     }
