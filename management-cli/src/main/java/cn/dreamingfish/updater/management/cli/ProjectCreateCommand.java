@@ -36,6 +36,14 @@ final class ProjectCreateCommand implements Runnable {
     @CommandLine.Option(names = "--secondary-accent", defaultValue = "#b06cff")
     String secondaryAccent;
 
+    @CommandLine.Option(names = "--brand-name", defaultValue = "梦鱼服",
+            description = "Chinese brand name shown in the player title bar")
+    String brandName;
+
+    @CommandLine.Option(names = "--brand-english-name", defaultValue = "DreamingFish",
+            description = "English brand name shown in the player title bar")
+    String brandEnglishName;
+
     @CommandLine.Option(names = "--rules", description = "ProjectRules JSON file")
     Path rulesFile;
 
@@ -63,7 +71,8 @@ final class ProjectCreateCommand implements Runnable {
         if (forcedSyncFiles != null) {
             rules = rules.withForcedSyncFiles(parsePaths(forcedSyncFiles));
         }
-        Branding branding = new Branding(name, subtitle, serverAddress, null, accent, secondaryAccent);
+        Branding branding = new Branding(name, subtitle, serverAddress, null,
+                accent, secondaryAccent, brandName, brandEnglishName);
         ProjectRecord project = services.projects().create(
                 projectId, name, source, publicUrl, branding, rules);
         if (cover != null) {

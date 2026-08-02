@@ -1,6 +1,7 @@
 package cn.dreamingfish.updater.management;
 
 import cn.dreamingfish.updater.protocol.CryptoSupport;
+import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.FilePolicy;
 import cn.dreamingfish.updater.protocol.ReleaseManifest;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PublishServiceTest {
     @TempDir
     Path temporary;
+
+    @Test
+    void carriesTitleBarBrandingThroughBindingCoverAndPublishedManifest()
+            throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary);
+        ProjectRecord project = fixture.createProject();
+        Branding old = project.branding();
+        Branding custom = new Branding(
+                old.productName(), old.subtitle(), old.serverAddress(), null,
+                old.accentColor(), old.secondaryAccentColor(),
+                "星河服", "StarRiver");
+        project = fixture.projects.configure(
+                project.id(), null, null, custom, null);
+
+        Path cover = temporary.resolve("cover.png");
+        Files.writeString(cover, "cover-content");
+        project = fixture.projects.setCover(project.id(), cover);
+        assertEquals("星河服", project.branding().brandName());
+        assertEquals("StarRiver", project.branding().brandEnglishName());
+        assertEquals("星河服", fixture.projects.bindingFor(
+                project, "DreamingFishUpdater", null)
+                .fallbackBranding().brandName());
+
+        Files.writeString(fixture.source.resolve("options.txt"), "music:1");
+        fixture.scanner.createPreview(project.id());
+        StoredRelease release = fixture.publisher.publish(
+                project.id(), "1.0.0", "0.1.0", "Brand test");
+        Branding published = fixture.database.readManifest(release).branding();
+        assertEquals("星河服", published.brandName());
+        assertEquals("StarRiver", published.brandEnglishName());
+    }
 
     @Test
     void publishesSignedImmutableReleasesAndRollsBackAsANewRelease() throws Exception {

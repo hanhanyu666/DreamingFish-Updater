@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const titleBarSource = readFileSync(resolve("src/components/TitleBar.vue"), "utf8");
+const playerStyles = readFileSync(resolve("src/styles/player.css"), "utf8");
 const capabilities = JSON.parse(
   readFileSync(
     resolve("src-tauri/capabilities/default.json"),
@@ -26,5 +27,18 @@ describe("custom title bar dragging", () => {
 
   it("grants the capability used by Tauri drag regions", () => {
     expect(capabilities.permissions).toContain("core:window:allow-start-dragging");
+  });
+
+  it("renders both configured title-bar brand names", () => {
+    expect(titleBarSource).toContain("store.state.branding.brandName");
+    expect(titleBarSource).toContain("store.state.branding.brandEnglishName");
+    expect(titleBarSource).not.toContain(">梦鱼服</span>");
+  });
+
+  it("truncates long brand names without pushing the navigation", () => {
+    expect(playerStyles).toMatch(/\.top-brand\s*\{[\s\S]*?max-width:\s*280px/);
+    expect(playerStyles).toMatch(
+      /\.brand-chinese,\s*\.brand-english\s*\{[\s\S]*?text-overflow:\s*ellipsis/,
+    );
   });
 });

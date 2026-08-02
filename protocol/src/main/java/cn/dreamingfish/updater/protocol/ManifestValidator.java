@@ -241,6 +241,8 @@ public final class ManifestValidator {
         requireText(branding.productName(), "branding product name", 128);
         requireLength(branding.subtitle(), "branding subtitle", 512);
         requireLength(branding.serverAddress(), "server address", 255);
+        requireText(branding.brandName(), "branding name", 32);
+        requireText(branding.brandEnglishName(), "English branding name", 48);
         if (branding.coverObject() != null && !Hex.isSha256(branding.coverObject())) {
             throw new ProtocolException("Invalid branding cover object hash");
         }

@@ -29,6 +29,22 @@ class JsonCodecTest {
         assertThrows(ProtocolException.class, () -> codec.read(duplicate, ProjectBinding.class));
     }
 
+    @Test
+    void suppliesTitleBarBrandDefaultsForLegacyJson() {
+        String legacy = """
+                {"productName":"旧整合包","subtitle":"旧说明",\
+                "serverAddress":"","coverObject":null,\
+                "accentColor":"#2ee8df","secondaryAccentColor":"#b06cff"}
+                """;
+
+        Branding branding = codec.read(
+                legacy.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                Branding.class);
+
+        assertEquals("梦鱼服", branding.brandName());
+        assertEquals("DreamingFish", branding.brandEnglishName());
+    }
+
     static ReleaseManifest sampleManifest() {
         return new ReleaseManifest(
                 1,

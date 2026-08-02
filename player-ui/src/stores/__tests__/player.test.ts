@@ -4,6 +4,7 @@ import {
   handleSidecarMessage,
   closeCommandForState,
   confirmDisableMod,
+  displayBranding,
   showPage,
   toggleDrawer,
   usePlayerStore,
@@ -23,6 +24,35 @@ describe("player store", () => {
     expect(store.state.playerName).toBe("测试玩家");
     handleSidecarMessage({ type: "log", line: "hello" });
     expect(store.state.logs).toEqual(["hello"]);
+  });
+
+  it("keeps custom title-bar branding and defaults legacy messages", () => {
+    expect(displayBranding({
+      productName: "测试整合包",
+      subtitle: "测试说明",
+      serverAddress: "",
+      coverObject: null,
+      accentColor: "#123456",
+      secondaryAccentColor: "#654321",
+      brandName: "星河服",
+      brandEnglishName: "StarRiver",
+    })).toMatchObject({
+      brandName: "星河服",
+      brandEnglishName: "StarRiver",
+    });
+
+    const legacy = {
+      productName: "旧整合包",
+      subtitle: "旧说明",
+      serverAddress: "",
+      coverObject: null,
+      accentColor: "#123456",
+      secondaryAccentColor: "#654321",
+    } as unknown as Parameters<typeof displayBranding>[0];
+    expect(displayBranding(legacy)).toMatchObject({
+      brandName: "梦鱼服",
+      brandEnglishName: "DreamingFish",
+    });
   });
 
   it("applies progress state", () => {

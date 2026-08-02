@@ -855,11 +855,20 @@ final class AdminWebServer implements AutoCloseable {
         String secondary = defaultValue(
                 request.secondaryAccentColor,
                 current == null ? "#b06cff" : current.secondaryAccentColor());
+        String brandName = defaultValue(
+                request.brandName,
+                current == null
+                        ? Branding.DEFAULT_BRAND_NAME : current.brandName());
+        String brandEnglishName = defaultValue(
+                request.brandEnglishName,
+                current == null
+                        ? Branding.DEFAULT_BRAND_ENGLISH_NAME
+                        : current.brandEnglishName());
         String coverObject = Boolean.TRUE.equals(request.removeCover)
                 ? null : current == null ? null : current.coverObject();
         return new Branding(
                 productName, subtitle, serverAddress,
-                coverObject, accent, secondary);
+                coverObject, accent, secondary, brandName, brandEnglishName);
     }
 
     private Map<String, Object> projectSummary(
@@ -1197,6 +1206,8 @@ final class AdminWebServer implements AutoCloseable {
             String serverAddress,
             String accentColor,
             String secondaryAccentColor,
+            String brandName,
+            String brandEnglishName,
             String coverPath,
             Boolean removeCover
     ) {

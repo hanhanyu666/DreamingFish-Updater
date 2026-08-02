@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.concurrent.FutureTask;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.26";
+    static final String VERSION = "0.1.27";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
 
     private PlayerArguments arguments;

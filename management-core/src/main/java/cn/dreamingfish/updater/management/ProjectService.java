@@ -109,7 +109,8 @@ public final class ProjectService {
         Branding old = current.branding();
         Branding branding = new Branding(
                 old.productName(), old.subtitle(), old.serverAddress(), cover.sha256(),
-                old.accentColor(), old.secondaryAccentColor()
+                old.accentColor(), old.secondaryAccentColor(),
+                old.brandName(), old.brandEnglishName()
         );
         database.updateProject(id, current.displayName(), current.sourceDirectory(),
                 current.publicBaseUrl(), branding, current.rules());

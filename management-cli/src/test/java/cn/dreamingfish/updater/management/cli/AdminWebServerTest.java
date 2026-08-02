@@ -63,6 +63,8 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("id=\"source-target-tree\""));
             assertTrue(page.body().contains("选择文件保存位置"));
             assertTrue(page.body().contains("或者从管理端所在的服务器本身导入"));
+            assertTrue(page.body().contains("name=\"brandName\""));
+            assertTrue(page.body().contains("name=\"brandEnglishName\""));
             assertTrue(!page.body().contains("name=\"targetDirectory\""));
             assertTrue(!page.body().contains("data-view=\"files\""));
             assertTrue(page.body().contains("整合包文件"));
@@ -105,12 +107,17 @@ class AdminWebServerTest {
                     "displayName", "Web Demo",
                     "sourceDirectory", source.getParent().toString(),
                     "publicBaseUrl", "http://127.0.0.1:8080",
-                    "forcedSyncDirectories", new String[]{"mods"}
+                    "forcedSyncDirectories", new String[]{"mods"},
+                    "brandName", "星河服",
+                    "brandEnglishName", "StarRiver"
             ));
             HttpResponse<String> created = send(
                     base, "/api/projects", "POST", createBody, token);
             assertEquals(201, created.statusCode(), created.body());
             assertTrue(created.body().contains("\"id\":\"web-demo\""));
+            assertTrue(created.body().contains("\"brandName\":\"星河服\""));
+            assertTrue(created.body().contains(
+                    "\"brandEnglishName\":\"StarRiver\""));
 
             HttpResponse<String> scanned = send(
                     base, "/api/projects/web-demo/scan", "POST", "{}", token);

@@ -53,6 +53,8 @@ export interface Branding {
   coverObject: string | null;
   accentColor: string | null;
   secondaryAccentColor: string | null;
+  brandName: string;
+  brandEnglishName: string;
 }
 
 export interface ReleaseHistoryEntry {
@@ -154,4 +156,6 @@ export const DEFAULT_BRANDING: Branding = {
   coverObject: null,
   accentColor: "#2ee8df",
   secondaryAccentColor: "#b06cff",
+  brandName: "梦鱼服",
+  brandEnglishName: "DreamingFish",
 };

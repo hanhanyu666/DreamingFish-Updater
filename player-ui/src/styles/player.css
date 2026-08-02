@@ -200,32 +200,41 @@ input {
   align-items: center;
   gap: 9px;
   padding-right: 4px;
+  min-width: 0;
+  max-width: 280px;
+  flex: 0 1 auto;
 }
 
 .brand-english {
-  display: flex;
-  align-items: center;
-  gap: 0;
+  color: var(--dfs-accent);
+  background: linear-gradient(
+    90deg,
+    var(--dfs-accent) 0%,
+    var(--dfs-accent) 62%,
+    var(--dfs-secondary) 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 15px;
+  font-weight: 700;
+  max-width: 160px;
 }
 
 .brand-chinese {
   color: rgba(255, 248, 226, 0.96);
   font-size: 16px;
   font-weight: 700;
+  max-width: 105px;
 }
 
-.brand-dreaming,
-.brand-fish {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.brand-dreaming {
-  color: var(--dfs-accent);
-}
-
-.brand-fish {
-  color: var(--dfs-secondary);
+.brand-chinese,
+.brand-english {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .top-navigation {

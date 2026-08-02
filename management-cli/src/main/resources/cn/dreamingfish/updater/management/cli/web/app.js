@@ -487,6 +487,12 @@ function renderProjectForm() {
   setFormValue(form, "sourceDirectory", app.project.sourceDirectory);
   setFormValue(form, "publicBaseUrl", app.project.publicBaseUrl);
   setFormValue(form, "productName", app.project.branding.productName);
+  setFormValue(form, "brandName", app.project.branding.brandName || "梦鱼服");
+  setFormValue(
+    form,
+    "brandEnglishName",
+    app.project.branding.brandEnglishName || "DreamingFish"
+  );
   setFormValue(form, "subtitle", app.project.branding.subtitle);
   setFormValue(form, "serverAddress", app.project.branding.serverAddress);
   setFormValue(
@@ -1781,6 +1787,8 @@ function bindProjectCreate() {
   const form = byId("create-project-form");
   byId("open-create-project").addEventListener("click", () => {
     form.reset();
+    setFormValue(form, "brandName", "梦鱼服");
+    setFormValue(form, "brandEnglishName", "DreamingFish");
     dialog.showModal();
   });
   form.addEventListener("submit", async (event) => {
@@ -1800,7 +1808,9 @@ function bindProjectCreate() {
         textValue(data, "forcedSyncDirectories")
       ),
       forcedSyncFiles: [],
-      serverAddress: textValue(data, "serverAddress")
+      serverAddress: textValue(data, "serverAddress"),
+      brandName: textValue(data, "brandName"),
+      brandEnglishName: textValue(data, "brandEnglishName")
     };
     await runBusy("正在创建项目", async () => {
       const created = await api("/api/projects", {
@@ -1829,6 +1839,8 @@ function bindProjectForm() {
       sourceDirectory: textValue(data, "sourceDirectory"),
       publicBaseUrl: textValue(data, "publicBaseUrl"),
       productName: textValue(data, "productName"),
+      brandName: textValue(data, "brandName"),
+      brandEnglishName: textValue(data, "brandEnglishName"),
       subtitle: textValue(data, "subtitle"),
       serverAddress: textValue(data, "serverAddress"),
       forcedSyncDirectories: directoryList(

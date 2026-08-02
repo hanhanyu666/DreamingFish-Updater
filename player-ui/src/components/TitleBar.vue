@@ -29,12 +29,21 @@ function minimize(): void {
     data-tauri-drag-region
     @dblclick.self="toggleMaximize"
   >
-    <div class="top-brand" data-tauri-drag-region>
-      <span class="brand-chinese" data-tauri-drag-region>梦鱼服</span>
-      <span class="brand-english" data-tauri-drag-region>
-        <span class="brand-dreaming" data-tauri-drag-region>Dreaming</span>
-        <span class="brand-fish" data-tauri-drag-region>Fish</span>
-      </span>
+    <div
+      class="top-brand"
+      :aria-label="`${store.state.branding.brandName} ${store.state.branding.brandEnglishName}`"
+      data-tauri-drag-region
+    >
+      <span
+        class="brand-chinese"
+        :title="store.state.branding.brandName"
+        data-tauri-drag-region
+      >{{ store.state.branding.brandName }}</span>
+      <span
+        class="brand-english"
+        :title="store.state.branding.brandEnglishName"
+        data-tauri-drag-region
+      >{{ store.state.branding.brandEnglishName }}</span>
     </div>
     <div class="top-navigation" data-tauri-drag-region>
       <button

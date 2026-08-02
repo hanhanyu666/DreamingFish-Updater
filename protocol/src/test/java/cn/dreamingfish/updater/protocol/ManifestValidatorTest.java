@@ -17,6 +17,29 @@ class ManifestValidatorTest {
     }
 
     @Test
+    void rejectsOverlongTitleBarBrandNames() {
+        ReleaseManifest original = JsonCodecTest.sampleManifest();
+        Branding invalid = new Branding(
+                original.branding().productName(),
+                original.branding().subtitle(),
+                original.branding().serverAddress(),
+                original.branding().coverObject(),
+                original.branding().accentColor(),
+                original.branding().secondaryAccentColor(),
+                "中".repeat(33),
+                "English".repeat(8));
+        ReleaseManifest manifest = new ReleaseManifest(
+                original.schemaVersion(), original.projectId(),
+                original.releaseId(), original.sequence(), original.createdAt(),
+                original.displayVersion(), original.minimumPlayerVersion(),
+                original.changelog(), original.requiredCapabilities(), invalid,
+                original.files());
+
+        assertThrows(ProtocolException.class,
+                () -> ManifestValidator.validateRelease(manifest, Set.of()));
+    }
+
+    @Test
     void rejectsUnknownRequiredCapability() {
         ReleaseManifest original = JsonCodecTest.sampleManifest();
         ReleaseManifest incompatible = new ReleaseManifest(

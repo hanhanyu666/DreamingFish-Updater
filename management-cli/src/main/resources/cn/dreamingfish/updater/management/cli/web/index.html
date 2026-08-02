@@ -194,6 +194,16 @@
                 <input name="serverAddress">
                 <small class="field-help">仅供玩家界面展示和复制，例如 play.example.com:25565；与更新下载地址无关。</small>
               </label>
+              <label class="field">
+                <span>左上角中文品牌名（必填）</span>
+                <input name="brandName" maxlength="32" required>
+                <small class="field-help">显示在玩家端窗口左上角，例如服务器简称；不会改变中间的整合包名称。</small>
+              </label>
+              <label class="field">
+                <span>左上角英文品牌名（必填）</span>
+                <input name="brandEnglishName" maxlength="48" required>
+                <small class="field-help">紧跟中文品牌名显示，例如 DreamingFish；文字过长时玩家端会自动省略。</small>
+              </label>
               <label class="field span-2">
                 <span>副标题</span>
                 <input name="subtitle">
@@ -600,6 +610,16 @@
           <span>玩家端更新器访问地址（必填）</span>
           <input name="publicBaseUrl" type="url" placeholder="例如 http://您的公网IP或域名:公网端口" required>
           <small class="field-help">填写玩家电脑上的更新器实际访问地址。请确认公网端口已经映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
+        </label>
+        <label class="field">
+          <span>左上角中文品牌名（必填）</span>
+          <input name="brandName" maxlength="32" value="梦鱼服" required>
+          <small class="field-help">显示在玩家端窗口左上角，例如您的服务器简称。</small>
+        </label>
+        <label class="field">
+          <span>左上角英文品牌名（必填）</span>
+          <input name="brandEnglishName" maxlength="48" value="DreamingFish" required>
+          <small class="field-help">显示在中文品牌名旁边；文字过长时会自动省略。</small>
         </label>
         <label class="field sync-warning-field span-2">
           <span>强制同步一级目录（可选，谨慎启用）</span>

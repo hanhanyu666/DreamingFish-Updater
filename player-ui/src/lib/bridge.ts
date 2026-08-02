@@ -242,6 +242,8 @@ class MockBridge implements PlayerBridge {
       coverObject: null,
       accentColor: "#2ee8df",
       secondaryAccentColor: "#b06cff",
+      brandName: "梦鱼服",
+      brandEnglishName: "DreamingFish",
     } });
     this.emit({ type: "background", path: null });
     this.emit({ type: "logs", lines: [

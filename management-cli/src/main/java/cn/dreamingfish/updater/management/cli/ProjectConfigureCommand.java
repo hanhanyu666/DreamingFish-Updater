@@ -30,6 +30,10 @@ final class ProjectConfigureCommand implements Runnable {
     String accent;
     @CommandLine.Option(names = "--secondary-accent")
     String secondaryAccent;
+    @CommandLine.Option(names = "--brand-name")
+    String brandName;
+    @CommandLine.Option(names = "--brand-english-name")
+    String brandEnglishName;
     @CommandLine.Option(names = "--rules")
     Path rulesFile;
     @CommandLine.Option(names = "--force-sync-directories",
@@ -57,7 +61,10 @@ final class ProjectConfigureCommand implements Runnable {
                 serverAddress == null ? old.serverAddress() : serverAddress,
                 old.coverObject(),
                 accent == null ? old.accentColor() : accent,
-                secondaryAccent == null ? old.secondaryAccentColor() : secondaryAccent
+                secondaryAccent == null ? old.secondaryAccentColor() : secondaryAccent,
+                brandName == null ? old.brandName() : brandName,
+                brandEnglishName == null
+                        ? old.brandEnglishName() : brandEnglishName
         );
         ProjectRules rules = rulesFile == null ? current.rules() : ProjectCreateCommand.readRules(services, rulesFile);
         if (clearForceSync && forcedSyncDirectories != null) {

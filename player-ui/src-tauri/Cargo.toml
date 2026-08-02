@@ -1,6 +1,6 @@
 [package]
 name = "dreamingfish-player"
-version = "0.1.26"
+version = "0.1.27"
 description = "DreamingFish modpack player updater"
 authors = ["DreamingFish"]
 edition = "2021"

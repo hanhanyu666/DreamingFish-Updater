@@ -267,6 +267,10 @@ export function displayBranding(branding: Branding | null | undefined): Branding
     coverObject: branding.coverObject,
     accentColor: branding.accentColor,
     secondaryAccentColor: branding.secondaryAccentColor,
+    brandName: unusableText(branding.brandName)
+      ? DEFAULT_BRANDING.brandName : branding.brandName,
+    brandEnglishName: unusableText(branding.brandEnglishName)
+      ? DEFAULT_BRANDING.brandEnglishName : branding.brandEnglishName,
   };
 }
 

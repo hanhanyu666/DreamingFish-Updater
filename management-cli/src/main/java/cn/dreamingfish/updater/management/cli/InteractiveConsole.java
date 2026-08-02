@@ -223,7 +223,8 @@ final class InteractiveConsole {
         String coverInput = readLine("电脑端封面图片路径（可留空）：").trim();
         Path cover = coverInput.isEmpty() ? null : requireRegularFile(coverInput, "封面图片");
 
-        Branding branding = new Branding(name, subtitle, serverAddress, null, accent, secondaryAccent);
+        Branding branding = new Branding(name, subtitle, serverAddress, null,
+                accent, secondaryAccent);
         var services = root.services();
         ProjectRules rules = ProjectRules.defaults().withForcedSyncDirectories(
                 ProjectCreateCommand.parsePaths(forcedInput))
@@ -278,7 +279,8 @@ final class InteractiveConsole {
         }
 
         Branding branding = new Branding(productName, subtitle, serverAddress,
-                coverObject, accent, secondaryAccent);
+                coverObject, accent, secondaryAccent,
+                old.brandName(), old.brandEnglishName());
         var services = root.services();
         ProjectRules rules = current.rules()
                 .withForcedSyncDirectories(forcedDirectories)
