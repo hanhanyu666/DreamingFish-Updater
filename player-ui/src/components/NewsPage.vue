@@ -58,9 +58,9 @@ function openExternal(uri: string): void {
     <template v-if="!showingArticle">
       <div class="content-page-alignment">
         <div class="content-page news-page">
-          <div class="page-eyebrow">DREAMINGFISH NEWS</div>
-          <div class="page-title">梦鱼服新闻</div>
-          <div class="page-lead">服务器动态、开发进度与世界观档案。</div>
+          <div class="page-eyebrow">{{ store.state.branding.brandEnglishName }} NEWS</div>
+          <div class="page-title">{{ store.state.branding.brandName }}新闻</div>
+          <div class="page-lead">这里记录服务器动态、版本消息和想与玩家分享的内容。</div>
           <div class="page-divider"></div>
           <div class="news-card-list">
             <div v-if="articles.length === 0" class="news-empty">
@@ -78,7 +78,7 @@ function openExternal(uri: string): void {
               @click="openArticle(article)"
               @keydown="onCardKeydown($event, article)"
             >
-              <div class="news-card-cover">
+              <div v-if="article.cover" class="news-card-cover">
                 <img class="news-cover-image" :src="article.cover" :alt="article.title" />
                 <span v-if="false" class="news-cover-missing">图片无法显示</span>
               </div>
@@ -99,11 +99,11 @@ function openExternal(uri: string): void {
       <div class="content-page-alignment">
         <div class="content-page news-page">
           <button type="button" class="news-back-button" @click="showList">‹ 返回新闻</button>
-          <div class="news-article-cover">
+          <div v-if="selected.cover" class="news-article-cover">
             <img class="news-cover-image" :src="selected.cover" :alt="selected.title" />
           </div>
           <div class="page-eyebrow">
-            DREAMINGFISH NEWS · {{ newsDateLabel(selected.publishedOn) }}
+            {{ store.state.branding.brandEnglishName }} NEWS · {{ newsDateLabel(selected.publishedOn) }}
           </div>
           <div class="page-title">{{ selected.title }}</div>
           <div class="page-lead">{{ selected.summary }}</div>

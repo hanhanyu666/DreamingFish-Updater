@@ -18,6 +18,8 @@ public final class ManifestValidator {
     private static final Pattern RELEASE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
     private static final Pattern CSS_COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
     private static final Pattern COMPONENT_ID = Pattern.compile("[A-Za-z0-9_.-]{1,128}");
+    private static final Pattern NEWS_ID = Pattern.compile("[a-z0-9][a-z0-9-]{0,63}");
+    private static final Pattern ISO_DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
 
     private ManifestValidator() {
     }
@@ -248,6 +250,62 @@ public final class ManifestValidator {
         }
         validateColor(branding.accentColor(), "accent color");
         validateColor(branding.secondaryAccentColor(), "secondary accent color");
+        validateNews(branding.newsArticles());
+        validateCustomPage(branding.customPage());
+    }
+
+    private static void validateNews(List<PlayerNewsArticle> articles) {
+        // A missing field belongs to a legacy project and keeps using the
+        // player program's bundled news. An explicit empty list means no news.
+        if (articles == null) return;
+        if (articles.size() > 50) {
+            throw new ProtocolException("Too many player news articles");
+        }
+        Set<String> ids = new java.util.HashSet<>();
+        for (PlayerNewsArticle article : articles) {
+            if (article == null || article.id() == null
+                    || !NEWS_ID.matcher(article.id()).matches()
+                    || !ids.add(article.id())) {
+                throw new ProtocolException("Invalid or duplicate player news article ID");
+            }
+            requireText(article.title(), "player news title", 120);
+            requireLength(article.summary(), "player news summary", 300);
+            if (article.publishedOn() == null
+                    || !ISO_DATE.matcher(article.publishedOn()).matches()) {
+                throw new ProtocolException("Invalid player news publication date");
+            }
+            requireLength(article.markdown(), "player news Markdown", 131_072);
+            validateOptionalWebUrl(article.coverUrl(), "player news cover URL");
+        }
+    }
+
+    private static void validateCustomPage(PlayerCustomPage page) {
+        if (page == null) return;
+        requireLength(page.navigationLabel(), "custom page navigation label", 12);
+        requireLength(page.eyebrow(), "custom page eyebrow", 48);
+        requireLength(page.title(), "custom page title", 120);
+        requireLength(page.lead(), "custom page lead", 300);
+        requireLength(page.markdown(), "custom page Markdown", 131_072);
+        if (page.enabled()) {
+            requireText(page.navigationLabel(), "custom page navigation label", 12);
+            requireText(page.title(), "custom page title", 120);
+        }
+    }
+
+    private static void validateOptionalWebUrl(String value, String label) {
+        if (value == null || value.isBlank()) return;
+        requireLength(value, label, 2_048);
+        try {
+            URI uri = new URI(value.trim());
+            String scheme = uri.getScheme() == null
+                    ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            if (!(scheme.equals("http") || scheme.equals("https"))
+                    || uri.getHost() == null || uri.getUserInfo() != null) {
+                throw new ProtocolException("Invalid " + label);
+            }
+        } catch (URISyntaxException e) {
+            throw new ProtocolException("Invalid " + label, e);
+        }
     }
 
     private static void validateColor(String value, String label) {

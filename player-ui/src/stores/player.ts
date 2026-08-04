@@ -12,6 +12,7 @@ import {
   DEFAULT_BRANDING,
   STAGE_NAMES,
   type Branding,
+  type AdminPreviewPayload,
   type ConfirmRequest,
   type LocalFileEntry,
   type LocalModEntry,
@@ -24,16 +25,9 @@ import {
 import type { NewsArticle } from "../lib/news";
 import { loadBundledNews } from "../lib/news";
 
-export type Page = "HOME" | "NEWS" | "DREAM_HAVEN" | "ABOUT";
+export type Page = "HOME" | "NEWS" | "CUSTOM" | "ABOUT";
 export type DrawerMode = "UPDATE" | "HISTORY" | "LOGS" | "FILES" | "PLAYER_MODS";
 export type LocalManagementMode = "FILES" | "MODS";
-
-export const PAGE_LABELS: Record<Page, string> = {
-  HOME: "主页",
-  NEWS: "新闻",
-  DREAM_HAVEN: "守望梦屿",
-  ABOUT: "关于",
-};
 
 export const DRAWER_LABELS: Record<DrawerMode, string> = {
   UPDATE: "本次更新",
@@ -247,6 +241,25 @@ export function handleSidecarMessage(message: SidecarMessage): void {
 export function setBranding(branding: Branding | null): void {
   const display = displayBranding(branding);
   state.branding = display;
+  if (display.newsArticles != null) {
+    const articles = display.newsArticles.map((article) => ({
+      id: article.id,
+      title: article.title,
+      summary: article.summary,
+      publishedOn: article.publishedOn,
+      cover: safeCoverUrl(article.coverUrl),
+      markdown: article.markdown,
+    })).sort((left, right) => {
+      const date = right.publishedOn.localeCompare(left.publishedOn);
+      return date !== 0 ? date : left.title.localeCompare(right.title);
+    });
+    state.newsArticles = articles;
+    state.latestArticle = articles[0] ?? null;
+    state.newsLoadError = null;
+  }
+  if (state.page === "CUSTOM" && !display.customPage?.enabled) {
+    state.page = "HOME";
+  }
   document.documentElement.style.setProperty(
     "--dfs-accent",
     validColor(display.accentColor, "#2ee8df"),
@@ -271,7 +284,19 @@ export function displayBranding(branding: Branding | null | undefined): Branding
       ? DEFAULT_BRANDING.brandName : branding.brandName,
     brandEnglishName: unusableText(branding.brandEnglishName)
       ? DEFAULT_BRANDING.brandEnglishName : branding.brandEnglishName,
+    newsArticles: branding.newsArticles ?? null,
+    customPage: branding.customPage ?? null,
   };
+}
+
+function safeCoverUrl(value: string | null | undefined): string {
+  if (!value) return "";
+  try {
+    const uri = new URL(value);
+    return uri.protocol === "http:" || uri.protocol === "https:" ? uri.toString() : "";
+  } catch {
+    return "";
+  }
 }
 
 function unusableText(value: string | null | undefined): boolean {
@@ -571,14 +596,55 @@ export function setLatestArticle(article: NewsArticle | null): void {
 }
 
 export async function loadNews(): Promise<void> {
-  if (state.newsArticles.length > 0) return;
+  if (state.branding.newsArticles != null || state.newsArticles.length > 0) return;
   try {
     const articles = await loadBundledNews();
+    if (state.branding.newsArticles != null) return;
     state.newsArticles = articles;
     state.latestArticle = articles[0] ?? null;
   } catch (error) {
     state.newsLoadError = String(error);
   }
+}
+
+export function navigationPages(): Array<{ page: Page; label: string }> {
+  const pages: Array<{ page: Page; label: string }> = [
+    { page: "HOME", label: "主页" },
+    { page: "NEWS", label: "新闻" },
+  ];
+  const custom = state.branding.customPage;
+  if (custom?.enabled && custom.navigationLabel.trim().length > 0) {
+    pages.push({ page: "CUSTOM", label: custom.navigationLabel });
+  }
+  pages.push({ page: "ABOUT", label: "关于" });
+  return pages;
+}
+
+export function applyAdminPreview(payload: AdminPreviewPayload): void {
+  setBranding(payload.branding);
+  state.preview = true;
+  state.playerName = "玩家预览";
+  state.background = null;
+  state.backgroundUrl = payload.backgroundUrl;
+  state.ready = true;
+  state.working = false;
+  state.launchPermitted = true;
+  state.stageTitle = "已是最新版本";
+  state.currentPathText = "本地文件已验证";
+  state.percent = "100%";
+  state.byteSummary = "";
+  state.progress = {
+    stage: "COMPLETE",
+    message: "本地文件已验证",
+    currentPath: null,
+    completedBytes: 1,
+    totalBytes: 1,
+    fraction: 1,
+  };
+  state.error = null;
+  state.result = null;
+  state.countdownRemaining = null;
+  state.launchNotice = null;
 }
 
 export function setFileTreeExpanded(expanded: Map<string, boolean>): void {
@@ -671,6 +737,8 @@ export function usePlayerStore() {
     openLatestNews,
     setLatestArticle,
     loadNews,
+    navigationPages,
+    applyAdminPreview,
     setFileTreeExpanded,
     confirmRestoreFiles,
     confirmRestoreMods,

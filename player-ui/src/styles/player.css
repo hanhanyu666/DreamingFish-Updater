@@ -1,6 +1,6 @@
 @font-face {
   font-family: "HarmonyOS Sans SC";
-  src: url("/fonts/HarmonyOS_Sans_SC_Bold.ttf") format("truetype");
+  src: url("@player-fonts/HarmonyOS_Sans_SC_Bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
 }
@@ -817,6 +817,36 @@ input {
   font-size: 15px;
   font-weight: 400;
   line-height: 1.75;
+}
+
+.about-actions {
+  display: flex;
+  padding-top: 24px;
+}
+
+.about-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 17px;
+  border: 1px solid rgba(46, 232, 223, 0.38);
+  border-radius: 10px;
+  color: #fff8dc;
+  background:
+    linear-gradient(to bottom right, rgba(46, 232, 223, 0.17), rgba(176, 108, 255, 0.08)),
+    rgba(4, 10, 11, 0.72);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.about-github-link:hover,
+.about-github-link:focus-visible {
+  border-color: rgba(46, 232, 223, 0.68);
+  background:
+    linear-gradient(to bottom right, rgba(46, 232, 223, 0.27), rgba(176, 108, 255, 0.13)),
+    rgba(4, 10, 11, 0.82);
+  box-shadow: 0 6px 18px rgba(46, 232, 223, 0.14);
 }
 
 .page-callout {

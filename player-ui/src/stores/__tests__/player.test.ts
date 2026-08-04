@@ -55,6 +55,45 @@ describe("player store", () => {
     });
   });
 
+  it("uses configured news and exposes the configured navigation page", () => {
+    handleSidecarMessage({
+      type: "branding",
+      branding: {
+        productName: "星河整合包",
+        subtitle: "一起探索",
+        serverAddress: "play.example.com",
+        coverObject: null,
+        accentColor: "#123456",
+        secondaryAccentColor: "#654321",
+        brandName: "星河服",
+        brandEnglishName: "StarRiver",
+        newsArticles: [{
+          id: "welcome",
+          title: "欢迎",
+          summary: "第一条消息",
+          publishedOn: "2026-08-04",
+          coverUrl: "https://example.com/cover.jpg",
+          markdown: "# 欢迎",
+        }],
+        customPage: {
+          enabled: true,
+          navigationLabel: "玩法介绍",
+          eyebrow: "GUIDE",
+          title: "从这里开始",
+          lead: "先看这里",
+          markdown: "- 安装整合包",
+        },
+      },
+    });
+
+    expect(store.state.newsArticles).toHaveLength(1);
+    expect(store.state.latestArticle?.title).toBe("欢迎");
+    expect(store.navigationPages()).toContainEqual({
+      page: "CUSTOM",
+      label: "玩法介绍",
+    });
+  });
+
   it("applies progress state", () => {
     handleSidecarMessage({
       type: "progress",

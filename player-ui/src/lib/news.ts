@@ -51,7 +51,7 @@ function validateResourcePath(value: string): string {
   return segments.join("/");
 }
 
-function resolveAsset(path: string): string {
+function resolveAsset(path: string, base: string): string {
   const value = path.trim();
   try {
     const uri = new URL(value);
@@ -60,10 +60,10 @@ function resolveAsset(path: string): string {
     // relative resource
   }
   const safe = validateResourcePath(value);
-  return "/" + safe;
+  return base + safe;
 }
 
-export async function loadBundledNews(base = "/"): Promise<NewsArticle[]> {
+export async function loadBundledNews(base = import.meta.env.BASE_URL): Promise<NewsArticle[]> {
   const indexResponse = await fetch(base + "news/index.json");
   if (!indexResponse.ok) throw new Error("无法读取内置新闻索引");
   const index = (await indexResponse.json()) as NewsIndex;
@@ -84,7 +84,7 @@ export async function loadBundledNews(base = "/"): Promise<NewsArticle[]> {
     }
     const [markdownResponse, cover] = await Promise.all([
       fetch(base + bodyPath),
-      Promise.resolve(resolveAsset(metadata.cover)),
+      Promise.resolve(resolveAsset(metadata.cover, base)),
     ]);
     if (!markdownResponse.ok) throw new Error("无法读取新闻正文：" + bodyPath);
     const markdown = await markdownResponse.text();

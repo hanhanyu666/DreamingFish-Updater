@@ -8,6 +8,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class JsonCodecTest {
@@ -43,6 +44,24 @@ class JsonCodecTest {
 
         assertEquals("梦鱼服", branding.brandName());
         assertEquals("DreamingFish", branding.brandEnglishName());
+        assertNull(branding.newsArticles());
+        assertNull(branding.customPage());
+    }
+
+    @Test
+    void roundTripsConfigurablePlayerContent() {
+        Branding branding = new Branding(
+                "星河", "一起出发", "play.example.com", null,
+                "#112233", "#445566", "星河服", "StarRiver",
+                List.of(new PlayerNewsArticle(
+                        "welcome", "欢迎", "第一条消息", "2026-08-04",
+                        "https://example.com/cover.jpg", "# 欢迎\n正文")),
+                new PlayerCustomPage(true, "玩法介绍", "GUIDE",
+                        "从这里开始", "先看看这几件事", "- 安装整合包"));
+
+        Branding restored = codec.read(codec.write(branding), Branding.class);
+
+        assertEquals(branding, restored);
     }
 
     static ReleaseManifest sampleManifest() {

@@ -270,7 +270,8 @@ final class PlayerView {
         String subtitle = unusableText(branding.subtitle()) ? defaults.subtitle() : branding.subtitle();
         return new Branding(branding.productName(), subtitle, branding.serverAddress(),
                 branding.coverObject(), branding.accentColor(), branding.secondaryAccentColor(),
-                branding.brandName(), branding.brandEnglishName());
+                branding.brandName(), branding.brandEnglishName(),
+                branding.newsArticles(), branding.customPage());
     }
 
     private static boolean unusableText(String value) {

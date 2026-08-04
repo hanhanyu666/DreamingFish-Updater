@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { getBridge } from "../lib/bridge";
-import { PAGE_LABELS, usePlayerStore, type Page } from "../stores/player";
+import { usePlayerStore, type Page } from "../stores/player";
 
 const store = usePlayerStore();
 const bridge = getBridge();
@@ -47,14 +47,14 @@ function minimize(): void {
     </div>
     <div class="top-navigation" data-tauri-drag-region>
       <button
-        v-for="(label, page) in PAGE_LABELS"
-        :key="page"
+        v-for="entry in store.navigationPages()"
+        :key="entry.page"
         type="button"
         class="top-nav-button"
-        :class="{ selected: store.state.page === page }"
-        @click="go(page as Page)"
+        :class="{ selected: store.state.page === entry.page }"
+        @click="go(entry.page)"
       >
-        {{ label }}
+        {{ entry.label }}
       </button>
     </div>
     <div class="title-spacer" data-tauri-drag-region></div>

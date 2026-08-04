@@ -55,6 +55,32 @@ export interface Branding {
   secondaryAccentColor: string | null;
   brandName: string;
   brandEnglishName: string;
+  newsArticles?: PlayerNewsArticle[] | null;
+  customPage?: PlayerCustomPage | null;
+}
+
+export interface PlayerNewsArticle {
+  id: string;
+  title: string;
+  summary: string;
+  publishedOn: string;
+  coverUrl: string;
+  markdown: string;
+}
+
+export interface PlayerCustomPage {
+  enabled: boolean;
+  navigationLabel: string;
+  eyebrow: string;
+  title: string;
+  lead: string;
+  markdown: string;
+}
+
+export interface AdminPreviewPayload {
+  type: "dfs-admin-preview";
+  branding: Branding;
+  backgroundUrl: string | null;
 }
 
 export interface ReleaseHistoryEntry {
@@ -158,4 +184,6 @@ export const DEFAULT_BRANDING: Branding = {
   secondaryAccentColor: "#b06cff",
   brandName: "梦鱼服",
   brandEnglishName: "DreamingFish",
+  newsArticles: null,
+  customPage: null,
 };

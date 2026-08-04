@@ -234,6 +234,8 @@ class MockBridge implements PlayerBridge {
   }
 
   private playPreview(): void {
+    const adminPreview = new URLSearchParams(window.location.search)
+      .get("adminPreview") === "1";
     this.emit({ type: "identity", name: "Hanyu" });
     this.emit({ type: "branding", branding: {
       productName: "梦屿",
@@ -244,12 +246,24 @@ class MockBridge implements PlayerBridge {
       secondaryAccentColor: "#b06cff",
       brandName: "梦鱼服",
       brandEnglishName: "DreamingFish",
+      newsArticles: null,
+      customPage: null,
     } });
     this.emit({ type: "background", path: null });
     this.emit({ type: "logs", lines: [
       "12:08:41  INFO  已连接到守望梦屿更新服务",
       "12:08:42  INFO  正在下载 mods/dreamingfish-core.jar",
     ] });
+    if (adminPreview) {
+      this.working = false;
+      this.permitted = true;
+      this.emit({ type: "ready" });
+      this.emit({ type: "progress", event: {
+        stage: "COMPLETE", message: "本地文件已验证", currentPath: null,
+        completedBytes: 1, totalBytes: 1, fraction: 1,
+      } });
+      return;
+    }
     this.later(300, () => this.emit({ type: "ready" }));
     this.later(400, () => this.emit({ type: "progress", event: {
       stage: "CHECKING", message: "正在连接更新服务", currentPath: null, completedBytes: 0, totalBytes: 0, fraction: -1,

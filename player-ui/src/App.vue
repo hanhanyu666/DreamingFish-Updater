@@ -9,6 +9,7 @@ import { getBridge } from "./lib/bridge";
 import { newsDateLabel } from "./lib/news";
 import {
   handleSidecarMessage,
+  applyAdminPreview,
   setMaximized,
   startPreview,
   usePlayerStore,
@@ -19,6 +20,7 @@ const bridge = getBridge();
 const root = ref<HTMLElement | null>(null);
 const entrancePlayed = ref(false);
 const windowHeight = ref(window.innerHeight);
+const adminPreview = new URLSearchParams(window.location.search).get("adminPreview") === "1";
 let countdownTimer: number | null = null;
 
 const latestNews = computed(() => store.state.latestArticle);
@@ -27,8 +29,14 @@ const latestNewsVisible = computed(
   () => homeVisible.value && latestNews.value != null && windowHeight.value >= 640,
 );
 const backgroundUrl = computed(
-  () => store.state.backgroundUrl ?? "/images/hero-dreamhaven.png",
+  () => store.state.backgroundUrl ?? `${import.meta.env.BASE_URL}images/hero-dreamhaven.png`,
 );
+
+function onPreviewMessage(event: MessageEvent): void {
+  if (!adminPreview || event.origin !== window.location.origin
+      || event.data?.type !== "dfs-admin-preview") return;
+  applyAdminPreview(event.data);
+}
 
 onMounted(() => {
   bridge.onMessage(handleSidecarMessage);
@@ -38,10 +46,15 @@ onMounted(() => {
   void store.loadNews();
 
   if (!bridge.isTauri) startPreview();
+  if (adminPreview) {
+    window.addEventListener("message", onPreviewMessage);
+    window.parent.postMessage({ type: "dfs-player-preview-ready" }, window.location.origin);
+  }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", updateLatestNewsVisibility);
+  window.removeEventListener("message", onPreviewMessage);
   if (countdownTimer != null) window.clearInterval(countdownTimer);
 });
 
