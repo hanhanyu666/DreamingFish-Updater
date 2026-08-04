@@ -156,9 +156,8 @@ class ManagementCliTest {
                 "interactive-pack",
                 "交互测试整合包",
                 source.toString(),
-                "",
-                "",
                 "http://127.0.0.1:18081",
+                "",
                 "",
                 "",
                 "",
@@ -187,7 +186,14 @@ class ManagementCliTest {
         assertTrue(invocation.out().contains(
                 "按 Y 进入 Web 管理界面创建，按 N 使用命令行创建"));
         assertTrue(invocation.out().contains("是否现在启动 Web 管理界面并创建第一个项目"));
-        assertTrue(invocation.out().contains("玩家访问公共 HTTP 地址（必填）"));
+        assertTrue(invocation.out().contains("[1/3] 创建必备设置"));
+        assertTrue(invocation.out().contains("[2/3] 同步策略（可选）"));
+        assertTrue(invocation.out().contains("[3/3] 玩家端个性化"));
+        assertTrue(invocation.out().contains(
+                "主菜单 [12]“修改玩家端个性化设置”继续调整"));
+        assertTrue(invocation.out().contains("玩家端更新器访问地址（必填）"));
+        assertTrue(invocation.out().contains("显示在首页左侧的大号标题区域"));
+        assertTrue(invocation.out().contains("显示在主标题下方"));
         assertTrue(invocation.out().contains(
                 "Web 管理端口不能与 HTTP 文件服务端口相同，请重新输入"));
         assertTrue(invocation.out().contains("  " + data));
@@ -209,6 +215,11 @@ class ManagementCliTest {
         ManagementPaths paths = ManagementPaths.at(data);
         ManagementDatabase database = new ManagementDatabase(paths, new JsonCodec());
         database.initialize();
+        var createdProject = database.requireProject("interactive-pack");
+        assertEquals("交互测试整合包", createdProject.branding().productName());
+        assertEquals("Minecraft 整合包更新", createdProject.branding().subtitle());
+        assertEquals("梦鱼服", createdProject.branding().brandName());
+        assertEquals("DreamingFish", createdProject.branding().brandEnglishName());
         var release = database.latestRelease("interactive-pack").orElseThrow();
         assertEquals("首次发布", release.changelog());
         var managedPaths = database.readManifest(release).files().stream()
@@ -236,6 +247,47 @@ class ManagementCliTest {
         assertEquals("127.0.0.1", updated.httpHost());
         assertEquals(18082, updated.httpPort());
         assertEquals(18080, updated.webPort());
+
+        String personalizationInput = String.join(System.lineSeparator(),
+                "12",
+                "星河服",
+                "StarRiver",
+                "星河主页",
+                "和朋友一起探索新的世界",
+                "play.example.com:25565",
+                "not-a-color",
+                "#112233",
+                "#445566",
+                "-",
+                "",
+                "",
+                "0",
+                ""
+        );
+        Invocation personalizationRun = invokeWithInput(
+                settingsFile, personalizationInput);
+        assertEquals(0, personalizationRun.exitCode(), personalizationRun.err());
+        assertTrue(personalizationRun.out().contains(
+                "[12] 修改玩家端个性化设置"));
+        assertTrue(personalizationRun.out().contains(
+                "颜色必须使用 #RRGGBB 格式"));
+        assertTrue(personalizationRun.out().contains(
+                "玩家端个性化设置已更新：interactive-pack"));
+
+        var personalizedProject = database.requireProject("interactive-pack");
+        assertEquals("星河服", personalizedProject.branding().brandName());
+        assertEquals("StarRiver",
+                personalizedProject.branding().brandEnglishName());
+        assertEquals("星河主页",
+                personalizedProject.branding().productName());
+        assertEquals("和朋友一起探索新的世界",
+                personalizedProject.branding().subtitle());
+        assertEquals("play.example.com:25565",
+                personalizedProject.branding().serverAddress());
+        assertEquals("#112233",
+                personalizedProject.branding().accentColor());
+        assertEquals("#445566",
+                personalizedProject.branding().secondaryAccentColor());
     }
 
     @Test

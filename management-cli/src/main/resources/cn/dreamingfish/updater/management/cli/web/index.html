@@ -51,6 +51,7 @@
       <nav class="navigation" aria-label="管理功能">
         <button class="nav-button active" data-view="dashboard"><span>⌂</span>概览</button>
         <button class="nav-button requires-project" data-view="project"><span>◫</span>项目设置</button>
+        <button class="nav-button requires-project" data-view="personalization"><span>✦</span>玩家端个性化</button>
         <button class="nav-button requires-project" data-view="publish"><span>↑</span>管理文件</button>
         <button class="nav-button requires-project" data-view="player"><span>▣</span>玩家端程序</button>
         <button class="nav-button requires-project" data-view="instance"><span>◇</span>玩家实例</button>
@@ -160,7 +161,7 @@
           <form class="panel form-panel" id="project-form">
             <div class="panel-header">
               <div>
-                <h2>项目与品牌</h2>
+                <h2>项目设置</h2>
                 <span id="project-identity">--</span>
               </div>
               <button class="primary-button" type="submit">保存项目设置</button>
@@ -184,60 +185,150 @@
                 <input name="publicBaseUrl" type="url" placeholder="例如 http://您的公网IP或域名:公网端口" required>
                 <small class="field-help">填写玩家电脑上的更新器实际访问的地址。请先确认公网端口已映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
               </label>
-              <label class="field">
-                <span>界面产品名称（必填）</span>
-                <input name="productName" required>
-                <small class="field-help">显示在玩家端更新器窗口中，通常填写服务器或整合包名称。</small>
-              </label>
-              <label class="field">
-                <span>Minecraft 服务器地址</span>
-                <input name="serverAddress">
-                <small class="field-help">仅供玩家界面展示和复制，例如 play.example.com:25565；与更新下载地址无关。</small>
-              </label>
-              <label class="field">
-                <span>左上角中文品牌名（必填）</span>
-                <input name="brandName" maxlength="32" required>
-                <small class="field-help">显示在玩家端窗口左上角，例如服务器简称；不会改变中间的整合包名称。</small>
-              </label>
-              <label class="field">
-                <span>左上角英文品牌名（必填）</span>
-                <input name="brandEnglishName" maxlength="48" required>
-                <small class="field-help">紧跟中文品牌名显示，例如 DreamingFish；文字过长时玩家端会自动省略。</small>
-              </label>
-              <label class="field span-2">
-                <span>副标题</span>
-                <input name="subtitle">
-                <small class="field-help">玩家端品牌说明，可填写玩法定位或服务器简介。</small>
-              </label>
               <label class="field sync-warning-field span-2">
                 <span>强制同步一级目录（谨慎启用）</span>
                 <input name="forcedSyncDirectories" placeholder="mods, config">
                 <small class="field-help">启用后，整个一级目录会与服务器保持一致：玩家额外添加的文件会被归档移出，而且目录内文件不能被豁免。可以先不填，之后在“管理文件”中随时设置。</small>
               </label>
-              <label class="field color-field">
-                <span>主强调色</span>
-                <div><input name="accentColor" type="color"><input name="accentColorText"></div>
-                <small class="field-help">用于玩家端主要按钮和状态强调。</small>
-              </label>
-              <label class="field color-field">
-                <span>次强调色</span>
-                <div><input name="secondaryAccentColor" type="color"><input name="secondaryAccentColorText"></div>
-                <small class="field-help">用于玩家端辅助强调，与主色保持足够区分。</small>
-              </label>
-              <label class="field span-2">
-                <span>服务器上的新封面文件路径</span>
-                <div class="path-input-row">
-                  <input name="coverPath">
-                  <button class="secondary-button path-picker-button" type="button" data-path-kind="image" data-path-name="coverPath" data-path-title="选择封面图片">浏览</button>
-                </div>
-                <small class="field-help">填写管理服务器本机上的图片路径；保存后会导入管理数据，不需要长期保留原文件。</small>
-              </label>
-              <label class="check-field span-2">
-                <input name="removeCover" type="checkbox">
-                <span>移除当前封面</span>
-              </label>
             </div>
           </form>
+        </section>
+
+        <section class="view" id="view-personalization">
+          <div class="personalization-layout">
+            <form class="panel form-panel personalization-form" id="personalization-form">
+              <div class="panel-header">
+                <div>
+                  <h2>玩家端个性化内容</h2>
+                  <span id="personalization-identity">--</span>
+                </div>
+                <button class="primary-button" type="submit">保存个性化设置</button>
+              </div>
+              <p class="panel-help"><strong>这里修改的是玩家看到的更新器界面。</strong>文字和配色会在右侧实时预览；更换背景图后需要先保存，管理端才能从服务器文件中载入图片。</p>
+              <div class="form-grid personalization-fields">
+                <div class="form-section-heading span-2">
+                  <strong>窗口品牌</strong>
+                  <small>左上角显示服务器品牌，首页标题用于介绍当前整合包。</small>
+                </div>
+                <label class="field">
+                  <span>左上角中文品牌名（必填）</span>
+                  <input name="brandName" maxlength="32" required>
+                  <small class="field-help">显示在玩家端窗口左上角，例如服务器简称。</small>
+                </label>
+                <label class="field">
+                  <span>左上角英文品牌名（必填）</span>
+                  <input name="brandEnglishName" maxlength="48" required>
+                  <small class="field-help">紧跟中文品牌名显示，文字过长时会自动省略。</small>
+                </label>
+                <label class="field">
+                  <span>玩家端主标题（必填）</span>
+                  <input name="productName" maxlength="128" required>
+                  <small class="field-help">显示在首页左侧的大号标题区域。</small>
+                </label>
+                <label class="field">
+                  <span>玩家端副标题</span>
+                  <input name="subtitle" maxlength="512">
+                  <small class="field-help">显示在主标题下方，可填写玩法定位或一句介绍。</small>
+                </label>
+                <label class="field span-2">
+                  <span>Minecraft 服务器地址</span>
+                  <input name="serverAddress" maxlength="255" placeholder="play.example.com:25565">
+                  <small class="field-help">显示在玩家端服务器信息区域，方便玩家查看和复制；与更新下载地址无关。</small>
+                </label>
+
+                <div class="form-section-heading span-2">
+                  <strong>外观与背景</strong>
+                  <small>颜色会立即反映在预览中；背景图片保存在管理端对象库中。</small>
+                </div>
+                <label class="field color-field">
+                  <span>主强调色</span>
+                  <div><input name="accentColor" type="color"><input name="accentColorText"></div>
+                  <small class="field-help">用于主要按钮、状态文字和品牌渐变。</small>
+                </label>
+                <label class="field color-field">
+                  <span>次强调色</span>
+                  <div><input name="secondaryAccentColor" type="color"><input name="secondaryAccentColorText"></div>
+                  <small class="field-help">用于辅助强调和品牌渐变的另一端。</small>
+                </label>
+                <div class="field span-2">
+                  <span>上传新的玩家端背景图片</span>
+                  <div class="cover-upload-row">
+                    <button class="secondary-button" id="choose-cover-upload" type="button">从本机选择图片</button>
+                    <span id="cover-upload-name">尚未选择新图片，将保留当前背景</span>
+                    <input id="cover-upload-input" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp" hidden>
+                  </div>
+                  <small class="field-help">从当前浏览器所在的电脑选择图片并上传，支持 PNG、JPEG、GIF、BMP 和 WebP，最大 32 MiB。</small>
+                </div>
+                <label class="check-field span-2">
+                  <input name="removeCover" type="checkbox">
+                  <span>移除当前背景，恢复玩家端内置默认背景</span>
+                </label>
+                <div class="personalization-cover-state span-2" id="personalization-cover-state">当前未设置自定义背景</div>
+
+                <div class="form-section-heading span-2 personalization-section-toolbar">
+                  <div>
+                    <strong>新闻管理</strong>
+                    <small>新闻会显示在玩家端首页和“新闻”页面，可添加多篇并随时修改。</small>
+                  </div>
+                  <button class="secondary-button" id="add-player-news" type="button">＋ 添加新闻</button>
+                </div>
+                <div class="legacy-content-note span-2" id="legacy-news-note" hidden>当前项目仍在使用玩家端程序自带的旧新闻。添加或保存新闻后，玩家端会改用这里的内容。</div>
+                <div class="player-news-editor span-2" id="player-news-editor"></div>
+
+                <div class="form-section-heading span-2">
+                  <strong>自定义页面</strong>
+                  <small>启用后，玩家端顶部会多出一个导航标签；页面正文支持 Markdown。</small>
+                </div>
+                <label class="check-field span-2 custom-page-toggle">
+                  <input name="customPageEnabled" type="checkbox">
+                  <span>启用自定义页面</span>
+                </label>
+                <div class="form-grid span-2 custom-page-fields" id="custom-page-fields">
+                  <label class="field">
+                    <span>顶部导航名称（最多 12 个字符）</span>
+                    <input name="customPageNavigationLabel" maxlength="12" placeholder="服务器介绍">
+                    <small class="field-help">显示在“新闻”和“关于”旁边，例如“服务器介绍”或“玩法指南”。</small>
+                  </label>
+                  <label class="field">
+                    <span>页面顶部小标题</span>
+                    <input name="customPageEyebrow" maxlength="48" placeholder="WELCOME">
+                    <small class="field-help">显示在页面主标题上方，留空也可以。</small>
+                  </label>
+                  <label class="field">
+                    <span>页面主标题</span>
+                    <input name="customPageTitle" maxlength="120" placeholder="欢迎来到服务器">
+                  </label>
+                  <label class="field">
+                    <span>页面引导语</span>
+                    <input name="customPageLead" maxlength="300" placeholder="用一两句话告诉玩家这里有什么">
+                  </label>
+                  <label class="field span-2">
+                    <span>页面正文（Markdown）</span>
+                    <textarea name="customPageMarkdown" maxlength="131072" rows="10" placeholder="可以写服务器介绍、玩法说明、规则或加入方式。"></textarea>
+                    <small class="field-help">支持标题、列表、加粗、链接和图片；玩家端会使用和新闻正文相同的排版。</small>
+                  </label>
+                </div>
+              </div>
+            </form>
+
+            <section class="panel player-preview-panel" aria-label="玩家端首页实时预览">
+              <div class="panel-header">
+                <div>
+                  <h2>玩家端预览</h2>
+                  <span>直接运行玩家端同一套界面，可点击顶部导航检查新闻和自定义页面</span>
+                </div>
+              </div>
+              <div class="player-preview-stage" id="player-preview-stage">
+                <iframe
+                  id="player-preview-frame"
+                  title="实际玩家端界面预览"
+                  src="/player-preview/index.html?adminPreview=1"
+                  sandbox="allow-scripts allow-same-origin"
+                ></iframe>
+              </div>
+              <p class="player-preview-note">这里加载的就是玩家端本地使用的 Vue 界面、字体和样式，只按比例缩小显示。预览不会连接更新服务或修改玩家文件；保存后，新设置会进入后续发布和玩家部署包。</p>
+            </section>
+          </div>
         </section>
 
         <section class="view" id="view-publish">
@@ -588,6 +679,10 @@
         <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
       </div>
       <div class="form-grid">
+        <div class="form-section-heading span-2">
+          <strong>创建必备设置</strong>
+          <small>以下四项用于创建项目、定位管理目录并让玩家端连接更新服务。</small>
+        </div>
         <label class="field">
           <span>项目 ID（必填）</span>
           <input name="id" pattern="[a-z0-9][a-z0-9._-]{0,63}" placeholder="build-server" title="小写字母或数字开头，可包含点、下划线和连字符" required>
@@ -596,7 +691,7 @@
         <label class="field">
           <span>项目显示名称（必填）</span>
           <input name="displayName" placeholder="填写您的服务器名称或您想展示的名称" required>
-          <small class="field-help">会显示在管理端和玩家端更新器中，例如服务器名称或整合包名称。</small>
+          <small class="field-help">显示在管理端项目列表中，例如服务器名称或整合包名称；创建时也会作为玩家端主标题的默认值。</small>
         </label>
         <label class="field span-2">
           <span>要管理的文件目录（必填）</span>
@@ -611,25 +706,43 @@
           <input name="publicBaseUrl" type="url" placeholder="例如 http://您的公网IP或域名:公网端口" required>
           <small class="field-help">填写玩家电脑上的更新器实际访问地址。请确认公网端口已经映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
         </label>
-        <label class="field">
-          <span>左上角中文品牌名（必填）</span>
-          <input name="brandName" maxlength="32" value="梦鱼服" required>
-          <small class="field-help">显示在玩家端窗口左上角，例如您的服务器简称。</small>
-        </label>
-        <label class="field">
-          <span>左上角英文品牌名（必填）</span>
-          <input name="brandEnglishName" maxlength="48" value="DreamingFish" required>
-          <small class="field-help">显示在中文品牌名旁边；文字过长时会自动省略。</small>
-        </label>
+        <div class="form-section-heading span-2">
+          <strong>同步策略（可选）</strong>
+          <small>不确定时请保持为空，创建后仍可在“管理文件”中设置。</small>
+        </div>
         <label class="field sync-warning-field span-2">
           <span>强制同步一级目录（可选，谨慎启用）</span>
           <input name="forcedSyncDirectories" placeholder="mods, config">
           <small class="field-help">启用后，整个一级目录会与服务器保持一致，目录内文件不能被玩家豁免，额外文件会被归档移出。首次创建可以留空，之后可在“管理文件”中设置。</small>
         </label>
+        <div class="form-section-heading span-2">
+          <strong>玩家端个性化</strong>
+          <small>以下内容只影响玩家端显示，已经提供默认值，创建后可在“玩家端个性化”中修改并预览。</small>
+        </div>
+        <label class="field">
+          <span>玩家端主标题</span>
+          <input name="productName" maxlength="64" placeholder="留空时使用项目显示名称">
+          <small class="field-help">显示在玩家端首页左侧的大号标题区域。</small>
+        </label>
+        <label class="field">
+          <span>玩家端副标题</span>
+          <input name="subtitle" maxlength="128" value="Minecraft 整合包更新">
+          <small class="field-help">显示在玩家端首页主标题下方的说明文字。</small>
+        </label>
+        <label class="field">
+          <span>左上角中文品牌名</span>
+          <input name="brandName" maxlength="32" value="梦鱼服" required>
+          <small class="field-help">显示在玩家端窗口左上角，通常填写服务器简称。</small>
+        </label>
+        <label class="field">
+          <span>左上角英文品牌名</span>
+          <input name="brandEnglishName" maxlength="48" value="DreamingFish" required>
+          <small class="field-help">紧跟在左上角中文品牌名右侧；文字过长时会自动省略。</small>
+        </label>
         <label class="field span-2">
           <span>Minecraft 服务器地址（可选）</span>
           <input name="serverAddress" placeholder="play.example.com:25565">
-          <small class="field-help">仅用于玩家界面展示，可与更新服务地址不同。</small>
+          <small class="field-help">显示在玩家端的服务器信息区域，仅供玩家查看和复制；可与更新服务地址不同。</small>
         </label>
       </div>
       <div class="modal-actions">

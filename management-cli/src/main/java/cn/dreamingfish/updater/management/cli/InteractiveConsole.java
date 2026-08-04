@@ -10,12 +10,17 @@ import cn.dreamingfish.updater.management.RemovalAction;
 import cn.dreamingfish.updater.management.RemovalDecision;
 import cn.dreamingfish.updater.management.StoredRelease;
 import cn.dreamingfish.updater.protocol.Branding;
+import cn.dreamingfish.updater.protocol.PlayerCustomPage;
+import cn.dreamingfish.updater.protocol.PlayerNewsArticle;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -140,6 +145,7 @@ final class InteractiveConsole {
             root.out().println("[9] 启动 HTTP 文件服务");
             root.out().println("[10] 启动 Web 管理界面");
             root.out().println("[11] 生成玩家端首次部署包");
+            root.out().println("[12] 修改玩家端个性化设置");
             root.out().println("[0] 退出");
             String choice = readLine("请选择：").trim();
             if (choice.equals("0")) {
@@ -159,7 +165,8 @@ final class InteractiveConsole {
                     case "9" -> serve();
                     case "10" -> serveWeb();
                     case "11" -> createPlayerDeployment();
-                    default -> root.out().println("请输入 0 到 11 之间的菜单编号。");
+                    case "12" -> configurePlayerPersonalization();
+                    default -> root.out().println("请输入 0 到 12 之间的菜单编号。");
                 }
             } catch (ManagementException | IllegalArgumentException e) {
                 root.err().println("操作失败：" + usefulMessage(e));
@@ -195,46 +202,50 @@ final class InteractiveConsole {
     private void createProject() {
         root.out().println();
         root.out().println("创建整合包项目");
+        root.out().println("================================");
+        root.out().println("[1/3] 创建必备设置");
+        root.out().println("以下四项用于创建项目、定位管理目录并让玩家端连接更新服务。");
+        root.out().println();
         root.out().println("【必填】项目 ID：用于目录、接口和玩家端绑定；创建后不应随意更改。");
         root.out().println("  格式：小写字母或数字开头，可包含点、下划线和连字符，例如 build-server。");
         String id = promptRequired("项目 ID（必填）");
-        root.out().println("【必填】项目显示名称：显示在管理端和玩家更新器中，例如 梦鱼建筑服。");
+        root.out().println("【必填】项目显示名称：显示在管理端项目列表中，例如服务器名称或整合包名称。");
+        root.out().println("  创建时也会作为玩家端主标题的默认值。");
         String name = promptRequired("项目显示名称（必填）");
-        root.out().println("【必填】整合包文件目录：只放准备交给更新器管理的内容，例如 mods、config。");
+        root.out().println("【必填】要管理的文件目录：只放准备交给更新器管理的内容，例如 mods、config。");
         root.out().println("  不需要复制完整 .minecraft；该目录必须与管理端 data 目录分开。");
-        Path source = promptDirectory("整合包文件目录（必填）", null, true);
-        root.out().println("强制同步目录：玩家不能保留目录内的额外文件，更新器会归档或移除它们。");
-        root.out().println("  只在确实需要目录完全一致时启用；留空表示不启用。");
-        String forcedInput = readLine(
-                "强制同步一级目录（逗号分隔，留空不启用，例如 mods）：").trim();
-        root.out().println("强制同步文件：仅指定文件不能被玩家豁免，不影响同目录的其它文件。");
-        String forcedFilesInput = readLine(
-                "强制同步文件（逗号分隔，留空不启用，例如 mods/required.jar）：").trim();
-        root.out().println("【必填】玩家访问公共 HTTP 地址：写入玩家部署包，必须能从玩家电脑访问。");
+        Path source = promptDirectory("要管理的文件目录（必填）", null, true);
+        root.out().println("【必填】玩家端更新器访问地址：写入玩家部署包，必须能从玩家电脑访问。");
         root.out().println("  示例：http://example.com:39988；不要填写 0.0.0.0、127.0.0.1 或 localhost。");
-        root.out().println("  它可以与服务器内部监听端口不同，但必须包含玩家实际使用的公网端口。");
-        String publicUrl = promptRequired("玩家访问公共 HTTP 地址（必填）");
-        root.out().println("以下为玩家更新器的界面信息，直接按回车可使用默认值。");
-        String subtitle = prompt("副标题（界面说明文字）", "Minecraft 整合包更新");
-        String serverAddress = prompt("Minecraft 服务器地址（可留空；与更新地址可以不同）", "");
-        String accent = prompt("主强调色（#RRGGBB）", "#2ee8df");
-        String secondaryAccent = prompt("次强调色（#RRGGBB）", "#b06cff");
-        root.out().println("封面图片用于玩家更新器电脑端背景；支持的图片格式由系统图片解码器决定。");
-        String coverInput = readLine("电脑端封面图片路径（可留空）：").trim();
-        Path cover = coverInput.isEmpty() ? null : requireRegularFile(coverInput, "封面图片");
+        root.out().println("  请确认公网端口已经映射或转发到管理端下载服务端口。");
+        String publicUrl = promptRequired("玩家端更新器访问地址（必填）");
 
-        Branding branding = new Branding(name, subtitle, serverAddress, null,
-                accent, secondaryAccent);
+        root.out().println();
+        root.out().println("[2/3] 同步策略（可选）");
+        root.out().println("强制同步一级目录会与服务器保持一致，玩家不能豁免目录内文件，额外文件会被归档移出。");
+        root.out().println("不确定时请直接按回车留空，创建后仍可在“管理文件”中设置。");
+        String forcedInput = readLine(
+                "强制同步一级目录（逗号分隔，留空不启用，例如 mods, config）：").trim();
+
+        root.out().println();
+        root.out().println("[3/3] 玩家端个性化");
+        root.out().println("以下内容只影响玩家端显示，直接按回车可使用默认值。");
+        root.out().println("创建后可从主菜单 [12]“修改玩家端个性化设置”继续调整，Web 页面还提供实时预览。");
+        String productName = prompt("玩家端主标题（显示在首页左侧的大号标题区域）", name);
+        String subtitle = prompt("玩家端副标题（显示在主标题下方）", "Minecraft 整合包更新");
+        String brandName = prompt("左上角中文品牌名（显示在玩家端窗口左上角）",
+                Branding.DEFAULT_BRAND_NAME);
+        String brandEnglishName = prompt("左上角英文品牌名（紧跟在中文品牌名右侧）",
+                Branding.DEFAULT_BRAND_ENGLISH_NAME);
+        String serverAddress = prompt("Minecraft 服务器地址（显示在服务器信息区域，可留空）", "");
+
+        Branding branding = new Branding(productName, subtitle, serverAddress,
+                null, "#2ee8df", "#b06cff", brandName, brandEnglishName);
         var services = root.services();
         ProjectRules rules = ProjectRules.defaults().withForcedSyncDirectories(
-                ProjectCreateCommand.parsePaths(forcedInput))
-                .withForcedSyncFiles(
-                        ProjectCreateCommand.parsePaths(forcedFilesInput));
+                ProjectCreateCommand.parsePaths(forcedInput));
         ProjectRecord project = services.projects().create(
                 id, name, source, publicUrl, branding, rules);
-        if (cover != null) {
-            project = services.projects().setCover(id, cover);
-        }
         root.saveSettings(root.settings().withDefaultProject(id));
         root.out().println("项目已创建：" + project.displayName() + " (" + project.id() + ")");
         root.out().println("项目签名私钥已保存在管理数据目录，请通过加密备份保护它。");
@@ -263,34 +274,224 @@ final class InteractiveConsole {
         List<String> forcedFiles = ProjectCreateCommand.parsePaths(
                 forcedFilesInput);
         String publicUrl = prompt("玩家访问公共 HTTP 地址（必填）", current.publicBaseUrl());
-        Branding old = current.branding();
-        String productName = prompt("界面产品名称", old.productName());
-        String subtitle = prompt("副标题", old.subtitle());
-        String serverAddress = prompt("Minecraft 服务器地址", old.serverAddress());
-        String accent = prompt("主强调色", old.accentColor());
-        String secondaryAccent = prompt("次强调色", old.secondaryAccentColor());
-        String coverInput = readLine("新封面图片路径（回车保留，输入 - 移除）：").trim();
-        Path cover = null;
-        String coverObject = old.coverObject();
-        if (coverInput.equals("-")) {
-            coverObject = null;
-        } else if (!coverInput.isEmpty()) {
-            cover = requireRegularFile(coverInput, "封面图片");
-        }
-
-        Branding branding = new Branding(productName, subtitle, serverAddress,
-                coverObject, accent, secondaryAccent,
-                old.brandName(), old.brandEnglishName());
         var services = root.services();
         ProjectRules rules = current.rules()
                 .withForcedSyncDirectories(forcedDirectories)
                 .withForcedSyncFiles(forcedFiles);
         ProjectRecord updated = services.projects().configure(
-                current.id(), displayName, source, publicUrl, branding, rules);
+                current.id(), displayName, source, publicUrl,
+                current.branding(), rules);
+        root.out().println("项目设置已更新：" + updated.id());
+    }
+
+    private void configurePlayerPersonalization() {
+        ProjectRecord current = selectProject();
+        if (current == null) return;
+        Branding old = current.branding();
+        root.out().println();
+        root.out().println("玩家端个性化设置");
+        root.out().println("================================");
+        root.out().println("这里的内容只影响玩家端显示，不会修改项目 ID、管理目录或玩家文件。");
+        root.out().println("直接按回车保留当前值；Web 管理页可以一边填写一边查看玩家端预览。");
+        root.out().println();
+        root.out().println("【窗口品牌】");
+        String brandName = prompt(
+                "左上角中文品牌名（显示在玩家端窗口左上角）",
+                old.brandName());
+        String brandEnglishName = prompt(
+                "左上角英文品牌名（紧跟在中文品牌名右侧）",
+                old.brandEnglishName());
+        String productName = prompt(
+                "玩家端主标题（显示在首页左侧的大号标题区域）",
+                old.productName());
+        String subtitle = prompt(
+                "玩家端副标题（显示在主标题下方）",
+                old.subtitle());
+        String serverAddress = prompt(
+                "Minecraft 服务器地址（显示在服务器信息区域）",
+                old.serverAddress());
+        root.out().println();
+        root.out().println("【外观与背景】");
+        String accent = promptColor("主强调色", old.accentColor());
+        String secondaryAccent = promptColor(
+                "次强调色", old.secondaryAccentColor());
+        String coverInput = readLine(
+                "服务器上的新背景图片路径（回车保留，输入 - 移除）：").trim();
+        Path cover = null;
+        String coverObject = old.coverObject();
+        if (coverInput.equals("-")) {
+            coverObject = null;
+        } else if (!coverInput.isEmpty()) {
+            cover = requireRegularFile(coverInput, "背景图片");
+        }
+
+        List<PlayerNewsArticle> newsArticles = old.newsArticles();
+        root.out().println();
+        root.out().println("【新闻】");
+        if (newsArticles == null) {
+            root.out().println("当前项目仍在使用玩家端程序内置的旧新闻；保存自定义新闻后将不再读取内置内容。");
+        } else {
+            root.out().println("当前已配置 " + newsArticles.size() + " 篇新闻。");
+        }
+        if (confirm("是否管理玩家端新闻？", false)) {
+            newsArticles = editPlayerNews(newsArticles == null ? List.of() : newsArticles);
+        }
+
+        PlayerCustomPage customPage = old.customPage();
+        root.out().println();
+        root.out().println("【自定义页面】");
+        root.out().println(customPage == null
+                ? "当前项目仍使用旧版内置介绍页面。"
+                : customPage.enabled()
+                        ? "当前已启用自定义页面：" + customPage.navigationLabel()
+                        : "当前未启用自定义页面。");
+        if (confirm("是否修改自定义页面？", false)) {
+            customPage = editCustomPage(customPage);
+        }
+
+        Branding branding = new Branding(
+                productName, subtitle, serverAddress,
+                coverObject, accent, secondaryAccent,
+                brandName, brandEnglishName, newsArticles, customPage);
+        var services = root.services();
+        ProjectRecord updated = services.projects().configure(
+                current.id(), current.displayName(), current.sourceDirectory(),
+                current.publicBaseUrl(), branding, current.rules());
         if (cover != null) {
             updated = services.projects().setCover(current.id(), cover);
         }
-        root.out().println("项目设置已更新：" + updated.id());
+        root.out().println();
+        root.out().println("玩家端个性化设置已更新：" + updated.id());
+        root.out().println("  左上角品牌：" + updated.branding().brandName()
+                + " " + updated.branding().brandEnglishName());
+        root.out().println("  首页标题：" + updated.branding().productName());
+        root.out().println("  首页副标题：" + displayOrNone(updated.branding().subtitle()));
+        root.out().println("  服务器地址：" + displayOrNone(
+                updated.branding().serverAddress()));
+        root.out().println("  自定义背景："
+                + (updated.branding().coverObject() == null ? "未设置" : "已设置"));
+        root.out().println("  新闻：" + (updated.branding().newsArticles() == null
+                ? "使用旧版内置新闻"
+                : updated.branding().newsArticles().size() + " 篇"));
+        root.out().println("  自定义页面：" + (updated.branding().customPage() != null
+                && updated.branding().customPage().enabled()
+                ? updated.branding().customPage().navigationLabel() : "未启用"));
+    }
+
+    private List<PlayerNewsArticle> editPlayerNews(List<PlayerNewsArticle> existing) {
+        List<PlayerNewsArticle> articles = new ArrayList<>(existing);
+        while (true) {
+            root.out().println();
+            root.out().println("玩家端新闻（按当前顺序展示）：");
+            if (articles.isEmpty()) root.out().println("  （还没有新闻）");
+            for (int i = 0; i < articles.size(); i++) {
+                PlayerNewsArticle article = articles.get(i);
+                root.out().println("  [" + (i + 1) + "] " + article.publishedOn()
+                        + " · " + article.title() + " (" + article.id() + ")");
+            }
+            root.out().println("  [A] 添加新闻  [E] 编辑新闻  [D] 删除新闻  [Q] 完成");
+            String choice = readLine("请选择：").trim().toLowerCase(Locale.ROOT);
+            switch (choice) {
+                case "a" -> articles.add(promptNewsArticle(null, articles));
+                case "e" -> {
+                    int index = promptListIndex("要编辑的新闻编号", articles.size());
+                    if (index >= 0) articles.set(index,
+                            promptNewsArticle(articles.get(index), articles));
+                }
+                case "d" -> {
+                    int index = promptListIndex("要删除的新闻编号", articles.size());
+                    if (index >= 0 && confirm("确认删除“"
+                            + articles.get(index).title() + "”？", false)) {
+                        articles.remove(index);
+                    }
+                }
+                case "q", "" -> { return List.copyOf(articles); }
+                default -> root.out().println("请输入 A、E、D 或 Q。");
+            }
+        }
+    }
+
+    private PlayerNewsArticle promptNewsArticle(
+            PlayerNewsArticle current, List<PlayerNewsArticle> articles) {
+        String defaultId = current == null ? "" : current.id();
+        String id;
+        while (true) {
+            id = prompt("文章 ID（小写字母、数字和连字符，创建后尽量不要修改）",
+                    defaultId);
+            String candidate = id;
+            boolean duplicate = articles.stream().anyMatch(article -> article != current
+                    && article.id().equals(candidate));
+            if (id.matches("[a-z0-9][a-z0-9-]{0,63}") && !duplicate) break;
+            root.out().println("文章 ID 格式无效或已经存在。");
+        }
+        String title = prompt("标题", current == null ? "" : current.title());
+        while (title.isBlank()) title = promptRequired("标题");
+        String summary = prompt("摘要", current == null ? "" : current.summary());
+        String date = promptNewsDate(current == null
+                ? LocalDate.now().toString() : current.publishedOn());
+        String coverUrl = prompt("封面图片网址（http/https，可留空）",
+                current == null ? "" : current.coverUrl());
+        String existingMarkdown = current == null ? "" : current.markdown();
+        String markdownInput = readLine(
+                "正文 Markdown（可直接输入一行；输入 @文件路径读取 UTF-8 文本；回车保留当前正文）：");
+        String markdown = markdownInput.isBlank()
+                ? existingMarkdown
+                : ChangelogInput.interactive(markdownInput,
+                        root.settingsFile().getParent());
+        return new PlayerNewsArticle(id, title, summary, date, coverUrl, markdown);
+    }
+
+    private String promptNewsDate(String defaultValue) {
+        while (true) {
+            String value = prompt("发布日期（YYYY-MM-DD）", defaultValue);
+            try {
+                LocalDate.parse(value);
+                return value;
+            } catch (DateTimeParseException ignored) {
+                root.out().println("日期必须使用 YYYY-MM-DD 格式，例如 2026-08-04。");
+            }
+        }
+    }
+
+    private PlayerCustomPage editCustomPage(PlayerCustomPage current) {
+        PlayerCustomPage defaults = current == null
+                ? PlayerCustomPage.disabled() : current;
+        boolean enabled = confirm("是否在玩家端顶部导航中启用自定义页面？",
+                defaults.enabled());
+        if (!enabled) {
+            return new PlayerCustomPage(false, defaults.navigationLabel(),
+                    defaults.eyebrow(), defaults.title(), defaults.lead(),
+                    defaults.markdown());
+        }
+        String label = prompt("顶部导航名称（最多 12 个字符）",
+                defaults.navigationLabel());
+        String eyebrow = prompt("页面顶部小标题", defaults.eyebrow());
+        String title = prompt("页面主标题", defaults.title());
+        String lead = prompt("页面引导语", defaults.lead());
+        String markdownInput = readLine(
+                "页面正文 Markdown（可直接输入一行；输入 @文件路径读取 UTF-8 文本；回车保留当前正文）：");
+        String markdown = markdownInput.isBlank()
+                ? defaults.markdown()
+                : ChangelogInput.interactive(markdownInput,
+                        root.settingsFile().getParent());
+        return new PlayerCustomPage(true, label, eyebrow, title, lead, markdown);
+    }
+
+    private int promptListIndex(String label, int size) {
+        if (size == 0) {
+            root.out().println("当前没有可操作的新闻。");
+            return -1;
+        }
+        while (true) {
+            String value = readLine(label + "（1-" + size + "，回车取消）：").trim();
+            if (value.isEmpty()) return -1;
+            try {
+                int index = Integer.parseInt(value) - 1;
+                if (index >= 0 && index < size) return index;
+            } catch (NumberFormatException ignored) {
+            }
+            root.out().println("请输入列表中的有效编号。");
+        }
     }
 
     private void scanAndPublish() {
@@ -744,6 +945,16 @@ final class InteractiveConsole {
                 : label + " [" + defaultValue + "]：";
         String value = readLine(shown).trim();
         return value.isEmpty() ? (defaultValue == null ? "" : defaultValue) : value;
+    }
+
+    private String promptColor(String label, String defaultValue) {
+        while (true) {
+            String value = prompt(label + "（#RRGGBB）", defaultValue);
+            if (value.matches("#[0-9a-fA-F]{6}")) {
+                return value.toLowerCase(Locale.ROOT);
+            }
+            root.out().println("颜色必须使用 #RRGGBB 格式，例如 #2ee8df。");
+        }
     }
 
     private int promptPort(String label, int defaultValue) {

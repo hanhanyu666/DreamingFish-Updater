@@ -107,11 +107,7 @@ public final class ProjectService {
         ProjectRecord current = database.requireProject(id);
         ObjectStore.ObjectInfo cover = objects.importFile(coverFile);
         Branding old = current.branding();
-        Branding branding = new Branding(
-                old.productName(), old.subtitle(), old.serverAddress(), cover.sha256(),
-                old.accentColor(), old.secondaryAccentColor(),
-                old.brandName(), old.brandEnglishName()
-        );
+        Branding branding = old.withCoverObject(cover.sha256());
         database.updateProject(id, current.displayName(), current.sourceDirectory(),
                 current.publicBaseUrl(), branding, current.rules());
         return database.requireProject(id);

@@ -98,20 +98,32 @@ function Copy-PlatformAdminJar(
     }
 }
 
-function Get-LinuxRuntimeArchive {
+function Get-LinuxJdkArchive {
     $downloadRoot = Join-Path $repoRoot ".tools\packaging"
-    $archive = Join-Path $downloadRoot "OpenJDK21U-jre_x64_linux_hotspot_21.0.12_8.tar.gz"
-    $checksum = "8a379a67c91a3ae61ffb33d46e0a40c7ba35e70713c4db31cfca30492f792eff"
-    $url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jre_x64_linux_hotspot_21.0.12_8.tar.gz"
+    $archive = Join-Path $downloadRoot "OpenJDK21U-jdk_x64_linux_hotspot_21.0.12_8.tar.gz"
+    $partial = "$archive.part"
+    $checksum = "e4446ff06a276155697597cc0f1b15da004ff083f4964a35271ecee567177370"
+    $url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12_8.tar.gz"
     New-Item -ItemType Directory -Force -Path $downloadRoot | Out-Null
-    if (-not (Test-Path -LiteralPath $archive)) {
-        Write-Host "Downloading the pinned Temurin 21 Linux x64 runtime..."
-        Invoke-Checked "curl.exe" @("--fail", "--location", "--output", $archive, $url)
+    if (Test-Path -LiteralPath $archive) {
+        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+        if ($actual -eq $checksum) { return $archive }
+        if (Test-Path -LiteralPath $partial) {
+            Remove-Item -Force -LiteralPath $archive
+        } else {
+            Move-Item -LiteralPath $archive -Destination $partial
+        }
     }
-    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+
+    Write-Host "Downloading the pinned Temurin 21 Linux x64 JDK for jlink..."
+    Invoke-Checked "curl.exe" @(
+        "--fail", "--location", "--retry", "5", "--retry-all-errors",
+        "--continue-at", "-", "--output", $partial, $url)
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $partial).Hash.ToLowerInvariant()
     if ($actual -ne $checksum) {
-        throw "The downloaded Linux runtime checksum is invalid: $archive"
+        throw "The downloaded Linux JDK checksum is invalid: $partial"
     }
+    Move-Item -LiteralPath $partial -Destination $archive
     return $archive
 }
 
@@ -276,6 +288,21 @@ if (Test-Path -LiteralPath $buildRoot) {
 }
 New-Item -ItemType Directory -Force -Path $distRoot, $buildRoot | Out-Null
 
+if (-not $PlayerOnly) {
+    # The admin preview embeds the exact same Vue UI as the local player.
+    # Build it before Maven so management-cli can package player-ui/dist as resources.
+    $playerUi = Join-Path $repoRoot "player-ui"
+    Push-Location $playerUi
+    try {
+        if (-not (Test-Path -LiteralPath (Join-Path $playerUi "node_modules"))) {
+            Invoke-Checked "npm.cmd" @("install")
+        }
+        Invoke-Checked "npm.cmd" @("run", "build")
+    } finally {
+        Pop-Location
+    }
+}
+
 $mavenArguments = @("clean", "package")
 if ($PlayerOnly) { $mavenArguments += @("-pl", "player-app", "-am") }
 if ($AdminOnly) { $mavenArguments += @("-pl", "management-cli", "-am") }
@@ -425,22 +452,35 @@ if (($adminVersionOutput -join " ").Trim() -ne $expectedAdminVersion) {
 New-Zip $adminWindows (Join-Path $distRoot "dfs-admin-windows-x64-$AdminVersion.zip")
 
 if (-not $SkipLinux) {
-    # Linux cannot use a Windows runtime. Package a verified upstream Linux Java 21 runtime instead.
-    $linuxArchive = Get-LinuxRuntimeArchive
+    # Link a Linux runtime from verified Linux jmods. jlink itself is platform independent,
+    # so the Windows build host can still produce Linux launchers and native libraries.
+    $linuxArchive = Get-LinuxJdkArchive
     $adminLinux = Join-Path $distRoot "dfs-admin-linux-x64"
-    $linuxExtract = Join-Path $buildRoot "linux-runtime"
+    $linuxExtract = Join-Path $buildRoot "linux-jdk"
+    $linuxRuntimeImage = Join-Path $buildRoot "linux-runtime-image"
     New-Item -ItemType Directory -Force -Path (Join-Path $adminLinux "app"), $linuxExtract | Out-Null
     Expand-TarGzipMaterialized $linuxArchive $linuxExtract
-    $linuxRuntimeSource = Get-ChildItem -Directory -LiteralPath $linuxExtract |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "bin\java") } |
+    $linuxJdkSource = Get-ChildItem -Directory -LiteralPath $linuxExtract |
+        Where-Object {
+            (Test-Path -LiteralPath (Join-Path $_.FullName "bin\java")) -and
+            (Test-Path -LiteralPath (Join-Path $_.FullName "jmods\java.base.jmod"))
+        } |
         Select-Object -First 1
-    if ($null -eq $linuxRuntimeSource) { throw "The Linux runtime archive has an unexpected layout." }
-    Copy-DirectoryContents $linuxRuntimeSource.FullName (Join-Path $adminLinux "runtime")
-    # The pre-generated CDS archives only improve startup time and add about 27 MB raw.
-    # The JVM safely starts without them and builds no persistent user cache here.
-    Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath `
-        (Join-Path $adminLinux "runtime\lib\server\classes.jsa"), `
-        (Join-Path $adminLinux "runtime\lib\server\classes_nocoops.jsa")
+    if ($null -eq $linuxJdkSource) { throw "The Linux JDK archive has an unexpected layout." }
+    Invoke-Checked $jlink @(
+        "--module-path", (Join-Path $linuxJdkSource.FullName "jmods"),
+        "--add-modules", "java.desktop,java.naming,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
+        "--strip-debug", "--no-man-pages", "--no-header-files", "--compress=2",
+        "--output", $linuxRuntimeImage
+    )
+    $linuxRelease = Get-Content -Raw -LiteralPath (Join-Path $linuxRuntimeImage "release")
+    $linuxJavaHeader = [System.IO.File]::ReadAllBytes(
+        (Join-Path $linuxRuntimeImage "bin\java"))[0..3]
+    if ($linuxRelease -match 'java\.compiler' -or
+            (($linuxJavaHeader | ForEach-Object { $_.ToString("X2") }) -join "") -ne "7F454C46") {
+        throw "jlink did not produce the expected minimal Linux runtime."
+    }
+    Copy-DirectoryContents $linuxRuntimeImage (Join-Path $adminLinux "runtime")
     Copy-PlatformAdminJar $adminJar (Join-Path $adminLinux "app\dfs-admin.jar") "Linux/x86_64"
     New-Item -ItemType Directory -Force -Path (Join-Path $adminLinux "support") | Out-Null
     Copy-Item -LiteralPath $agentJar.FullName -Destination `

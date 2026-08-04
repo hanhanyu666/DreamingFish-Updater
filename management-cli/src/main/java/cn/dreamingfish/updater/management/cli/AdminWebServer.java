@@ -12,6 +12,8 @@ import cn.dreamingfish.updater.management.StoredPlayerProgram;
 import cn.dreamingfish.updater.management.StoredRelease;
 import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.JsonCodec;
+import cn.dreamingfish.updater.protocol.PlayerCustomPage;
+import cn.dreamingfish.updater.protocol.PlayerNewsArticle;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -19,6 +21,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -45,6 +48,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 final class AdminWebServer implements AutoCloseable {
     private static final int MAX_REQUEST_BYTES = 1024 * 1024;
+    private static final long MAX_COVER_BYTES = 32L * 1024L * 1024L;
     private static final String TOKEN_HEADER = "X-DFS-Token";
     private static final String SESSION_COOKIE = "DFS_ADMIN_SESSION";
     private static final String LOGGED_OUT_COOKIE = "DFS_ADMIN_LOGGED_OUT";
@@ -135,12 +139,50 @@ final class AdminWebServer implements AutoCloseable {
             throw new WebApiException(405, "method_not_allowed", "此资源只允许读取");
         }
         String resourcePath = path.equals("/") ? "/index.html" : path;
+        if (resourcePath.startsWith("/player-preview/")) {
+            sendPlayerPreviewAsset(exchange, resourcePath);
+            return;
+        }
         StaticAsset asset = STATIC_ASSETS.get(resourcePath);
         if (asset == null) throw new WebApiException(404, "not_found", "页面不存在");
         securityHeaders(exchange.getResponseHeaders());
         exchange.getResponseHeaders().set("Content-Type", asset.contentType);
         exchange.getResponseHeaders().set("Cache-Control", "no-cache");
         sendBytes(exchange, 200, asset.bytes);
+    }
+
+    private void sendPlayerPreviewAsset(
+            HttpExchange exchange, String resourcePath) throws IOException {
+        if (resourcePath.contains("..") || resourcePath.contains("\\")
+                || !resourcePath.matches("/player-preview/[A-Za-z0-9_./-]+")) {
+            throw new WebApiException(404, "not_found", "预览资源不存在");
+        }
+        String classpath = "web" + resourcePath;
+        try (InputStream input = AdminWebServer.class.getResourceAsStream(classpath)) {
+            if (input == null) {
+                throw new WebApiException(404, "not_found", "预览资源不存在");
+            }
+            previewSecurityHeaders(exchange.getResponseHeaders());
+            exchange.getResponseHeaders().set(
+                    "Content-Type", assetContentType(resourcePath));
+            exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+            sendBytes(exchange, 200, input.readAllBytes());
+        }
+    }
+
+    private static String assetContentType(String path) {
+        String value = path.toLowerCase(Locale.ROOT);
+        if (value.endsWith(".html")) return "text/html; charset=utf-8";
+        if (value.endsWith(".css")) return "text/css; charset=utf-8";
+        if (value.endsWith(".js")) return "text/javascript; charset=utf-8";
+        if (value.endsWith(".json")) return "application/json; charset=utf-8";
+        if (value.endsWith(".md")) return "text/markdown; charset=utf-8";
+        if (value.endsWith(".png")) return "image/png";
+        if (value.endsWith(".jpg") || value.endsWith(".jpeg")) return "image/jpeg";
+        if (value.endsWith(".svg")) return "image/svg+xml";
+        if (value.endsWith(".ttf")) return "font/ttf";
+        if (value.endsWith(".woff2")) return "font/woff2";
+        return "application/octet-stream";
     }
 
     private void handleAuth(HttpExchange exchange, String path) throws IOException {
@@ -353,6 +395,19 @@ final class AdminWebServer implements AutoCloseable {
             ProjectRequest request = readJson(exchange, ProjectRequest.class);
             sendJson(exchange, 200, mutate(() -> configureProject(projectId, request)));
             return;
+        }
+        if (segments.size() == 4 && segments.get(3).equals("cover")) {
+            if (exchange.getRequestMethod().equals("GET")) {
+                sendProjectCover(exchange, projectId);
+                return;
+            }
+            if (exchange.getRequestMethod().equals("PUT")) {
+                sendJson(exchange, 200, mutate(() ->
+                        uploadProjectCover(exchange, projectId)));
+                return;
+            }
+            throw new WebApiException(
+                    405, "method_not_allowed", "背景图片只允许 GET 或 PUT");
         }
         if (segments.size() == 4 && segments.get(3).equals("files")
                 && exchange.getRequestMethod().equals("GET")) {
@@ -592,6 +647,123 @@ final class AdminWebServer implements AutoCloseable {
                     projectId, Path.of(request.coverPath.trim()));
         }
         return projectView(project);
+    }
+
+    private void sendProjectCover(HttpExchange exchange, String projectId)
+            throws IOException {
+        ManagementCli.Services services = root.services();
+        ProjectRecord project = services.database().requireProject(projectId);
+        String coverObject = project.branding().coverObject();
+        if (coverObject == null || coverObject.isBlank()) {
+            throw new WebApiException(
+                    404, "cover_not_found", "当前项目没有自定义背景图片");
+        }
+        Path cover = services.objects().require(coverObject);
+        long size = Files.size(cover);
+        if (size > MAX_COVER_BYTES) {
+            throw new WebApiException(
+                    413, "cover_too_large", "背景图片超过 32 MiB，无法在网页中预览");
+        }
+        byte[] bytes = Files.readAllBytes(cover);
+        String contentType = imageContentType(bytes);
+        if (contentType == null) {
+            throw new WebApiException(
+                    415, "unsupported_cover", "当前背景图片格式无法在网页中预览");
+        }
+        securityHeaders(exchange.getResponseHeaders());
+        exchange.getResponseHeaders().set("Content-Type", contentType);
+        exchange.getResponseHeaders().set("Cache-Control", "private, max-age=300");
+        sendBytes(exchange, 200, bytes);
+    }
+
+    private Map<String, Object> uploadProjectCover(
+            HttpExchange exchange, String projectId) throws IOException {
+        String contentType = defaultValue(
+                exchange.getRequestHeaders().getFirst("Content-Type"), "");
+        if (!contentType.toLowerCase(Locale.ROOT)
+                .startsWith("application/octet-stream")) {
+            throw new WebApiException(415, "unsupported_media_type",
+                    "背景图片上传必须使用 application/octet-stream");
+        }
+        long expectedBytes = contentLength(exchange);
+        if (expectedBytes == 0) {
+            throw new WebApiException(400, "empty_cover", "请选择要上传的背景图片");
+        }
+        if (expectedBytes > MAX_COVER_BYTES) {
+            throw new WebApiException(413, "cover_too_large",
+                    "背景图片不能超过 32 MiB");
+        }
+
+        Path temporaryDirectory = Files.createDirectories(
+                Path.of(root.settings().dataDirectory()).resolve("tmp"));
+        Path temporaryCover = Files.createTempFile(
+                temporaryDirectory, "cover-upload-", ".tmp");
+        try {
+            long total = 0;
+            try (InputStream input = exchange.getRequestBody();
+                 OutputStream output = Files.newOutputStream(temporaryCover)) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    total += read;
+                    if (total > MAX_COVER_BYTES) {
+                        throw new WebApiException(413, "cover_too_large",
+                                "背景图片不能超过 32 MiB");
+                    }
+                    output.write(buffer, 0, read);
+                }
+            }
+            if (total == 0) {
+                throw new WebApiException(
+                        400, "empty_cover", "请选择要上传的背景图片");
+            }
+            byte[] header;
+            try (InputStream input = Files.newInputStream(temporaryCover)) {
+                header = input.readNBytes(16);
+            }
+            if (imageContentType(header) == null) {
+                throw new WebApiException(415, "unsupported_cover",
+                        "请选择 PNG、JPEG、GIF、BMP 或 WebP 图片");
+            }
+            return projectView(root.services().projects().setCover(
+                    projectId, temporaryCover));
+        } finally {
+            Files.deleteIfExists(temporaryCover);
+        }
+    }
+
+    private static String imageContentType(byte[] bytes) {
+        if (bytes.length >= 8
+                && bytes[0] == (byte) 0x89 && bytes[1] == 0x50
+                && bytes[2] == 0x4e && bytes[3] == 0x47
+                && bytes[4] == 0x0d && bytes[5] == 0x0a
+                && bytes[6] == 0x1a && bytes[7] == 0x0a) {
+            return "image/png";
+        }
+        if (bytes.length >= 3
+                && bytes[0] == (byte) 0xff
+                && bytes[1] == (byte) 0xd8
+                && bytes[2] == (byte) 0xff) {
+            return "image/jpeg";
+        }
+        if (bytes.length >= 6
+                && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F'
+                && bytes[3] == '8'
+                && (bytes[4] == '7' || bytes[4] == '9')
+                && bytes[5] == 'a') {
+            return "image/gif";
+        }
+        if (bytes.length >= 2 && bytes[0] == 'B' && bytes[1] == 'M') {
+            return "image/bmp";
+        }
+        if (bytes.length >= 12
+                && bytes[0] == 'R' && bytes[1] == 'I'
+                && bytes[2] == 'F' && bytes[3] == 'F'
+                && bytes[8] == 'W' && bytes[9] == 'E'
+                && bytes[10] == 'B' && bytes[11] == 'P') {
+            return "image/webp";
+        }
+        return null;
     }
 
     private Map<String, Object> updateForcedFiles(
@@ -866,9 +1038,16 @@ final class AdminWebServer implements AutoCloseable {
                         : current.brandEnglishName());
         String coverObject = Boolean.TRUE.equals(request.removeCover)
                 ? null : current == null ? null : current.coverObject();
+        List<PlayerNewsArticle> newsArticles = request.newsArticles != null
+                ? request.newsArticles
+                : current == null ? List.of() : current.newsArticles();
+        PlayerCustomPage customPage = request.customPage != null
+                ? request.customPage
+                : current == null ? PlayerCustomPage.disabled() : current.customPage();
         return new Branding(
                 productName, subtitle, serverAddress,
-                coverObject, accent, secondary, brandName, brandEnglishName);
+                coverObject, accent, secondary, brandName, brandEnglishName,
+                newsArticles, customPage);
     }
 
     private Map<String, Object> projectSummary(
@@ -1094,7 +1273,18 @@ final class AdminWebServer implements AutoCloseable {
         headers.set("Content-Security-Policy",
                 "default-src 'self'; script-src 'self'; style-src 'self'; "
                         + "img-src 'self' data:; connect-src 'self'; "
-                        + "frame-ancestors 'none'; base-uri 'none'");
+                        + "frame-src 'self'; frame-ancestors 'none'; base-uri 'none'");
+    }
+
+    private static void previewSecurityHeaders(Headers headers) {
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.set("X-Frame-Options", "SAMEORIGIN");
+        headers.set("Referrer-Policy", "no-referrer");
+        headers.set("Cross-Origin-Resource-Policy", "same-origin");
+        headers.set("Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                        + "img-src 'self' data: http: https:; font-src 'self'; "
+                        + "connect-src 'self'; frame-ancestors 'self'; base-uri 'none'");
     }
 
     private String webAddress() {
@@ -1208,6 +1398,8 @@ final class AdminWebServer implements AutoCloseable {
             String secondaryAccentColor,
             String brandName,
             String brandEnglishName,
+            List<PlayerNewsArticle> newsArticles,
+            PlayerCustomPage customPage,
             String coverPath,
             Boolean removeCover
     ) {

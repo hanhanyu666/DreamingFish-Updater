@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -43,6 +44,10 @@ class AdminWebServerTest {
         root.saveSettings(root.settings().withHttp("127.0.0.1", publicPort));
         Path source = Files.createDirectories(temporary.resolve("pack/mods"));
         Files.writeString(source.resolve("example.jar"), "web-content");
+        Path cover = temporary.resolve("cover.png");
+        Files.write(cover, Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+                        + "AAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII="));
 
         try (AdminWebServer server = new AdminWebServer(
                 root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
@@ -53,6 +58,13 @@ class AdminWebServerTest {
             assertEquals(200, page.statusCode());
             assertTrue(page.body().contains("梦鱼更新管理"));
             assertTrue(page.body().contains("管理文件"));
+            assertTrue(page.body().contains("data-view=\"personalization\""));
+            assertTrue(page.body().contains("玩家端预览"));
+            assertTrue(page.body().contains("id=\"personalization-form\""));
+            assertTrue(page.body().contains("id=\"player-preview-stage\""));
+            assertTrue(page.body().contains("id=\"cover-upload-input\""));
+            assertTrue(page.body().contains("从本机选择图片"));
+            assertTrue(!page.body().contains("服务器上的新背景图片"));
             assertTrue(page.body().contains("管理强制同步目录"));
             assertTrue(page.body().contains("单文件强制同步"));
             assertTrue(page.body().contains("id=\"error-dialog\""));
@@ -65,6 +77,12 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("或者从管理端所在的服务器本身导入"));
             assertTrue(page.body().contains("name=\"brandName\""));
             assertTrue(page.body().contains("name=\"brandEnglishName\""));
+            assertTrue(page.body().contains("name=\"productName\""));
+            assertTrue(page.body().contains("name=\"subtitle\""));
+            assertTrue(page.body().contains("创建必备设置"));
+            assertTrue(page.body().contains("玩家端个性化"));
+            assertTrue(page.body().contains("显示在玩家端首页左侧的大号标题区域"));
+            assertTrue(page.body().contains("显示在玩家端首页主标题下方"));
             assertTrue(!page.body().contains("name=\"targetDirectory\""));
             assertTrue(!page.body().contains("data-view=\"files\""));
             assertTrue(page.body().contains("整合包文件"));
@@ -81,6 +99,14 @@ class AdminWebServerTest {
                     .firstValue("X-Frame-Options").orElseThrow());
             assertTrue(page.headers().firstValue("Content-Security-Policy")
                     .orElseThrow().contains("frame-ancestors 'none'"));
+
+            HttpResponse<String> playerPreview = send(
+                    base, "/player-preview/index.html?adminPreview=1",
+                    "GET", null, null);
+            assertEquals(200, playerPreview.statusCode(), playerPreview.body());
+            assertEquals("SAMEORIGIN", playerPreview.headers()
+                    .firstValue("X-Frame-Options").orElseThrow());
+            assertTrue(playerPreview.body().contains("type=\"module\""));
 
             HttpResponse<String> denied = send(
                     base, "/api/projects", "POST", "{}", null);
@@ -108,8 +134,11 @@ class AdminWebServerTest {
                     "sourceDirectory", source.getParent().toString(),
                     "publicBaseUrl", "http://127.0.0.1:8080",
                     "forcedSyncDirectories", new String[]{"mods"},
+                    "productName", "星河主标题",
+                    "subtitle", "星河副标题",
                     "brandName", "星河服",
-                    "brandEnglishName", "StarRiver"
+                    "brandEnglishName", "StarRiver",
+                    "coverPath", cover.toString()
             ));
             HttpResponse<String> created = send(
                     base, "/api/projects", "POST", createBody, token);
@@ -118,6 +147,66 @@ class AdminWebServerTest {
             assertTrue(created.body().contains("\"brandName\":\"星河服\""));
             assertTrue(created.body().contains(
                     "\"brandEnglishName\":\"StarRiver\""));
+            assertTrue(created.body().contains(
+                    "\"productName\":\"星河主标题\""));
+            assertTrue(created.body().contains(
+                    "\"subtitle\":\"星河副标题\""));
+
+            HttpResponse<String> coverPreview = send(
+                    base, "/api/projects/web-demo/cover", "GET", null, null);
+            assertEquals(200, coverPreview.statusCode(), coverPreview.body());
+            assertEquals("image/png", coverPreview.headers()
+                    .firstValue("Content-Type").orElseThrow());
+
+            HttpResponse<String> invalidCoverUpload = sendBytes(
+                    base, "/api/projects/web-demo/cover",
+                    "not-an-image".getBytes(StandardCharsets.UTF_8), token);
+            assertEquals(415, invalidCoverUpload.statusCode(),
+                    invalidCoverUpload.body());
+            Path uploadTemp = Path.of(root.settings().dataDirectory()).resolve("tmp");
+            try (var temporaryFiles = Files.list(uploadTemp)) {
+                assertEquals(0, temporaryFiles.count(),
+                        "失败的背景上传不应留下临时文件");
+            }
+
+            HttpResponse<String> uploadedCover = sendBytes(
+                    base, "/api/projects/web-demo/cover",
+                    Files.readAllBytes(cover), token);
+            assertEquals(200, uploadedCover.statusCode(), uploadedCover.body());
+            assertTrue(uploadedCover.body().contains("\"coverObject\""));
+
+            HttpResponse<String> personalized = send(
+                    base, "/api/projects/web-demo", "PUT",
+                    json.writeString(Map.ofEntries(
+                            Map.entry("productName", "星河新主页"),
+                            Map.entry("subtitle", "新的玩家端副标题"),
+                            Map.entry("brandName", "新星河服"),
+                            Map.entry("brandEnglishName", "NewStarRiver"),
+                            Map.entry("serverAddress", "play.example.com:25565"),
+                            Map.entry("accentColor", "#112233"),
+                            Map.entry("secondaryAccentColor", "#445566"),
+                            Map.entry("newsArticles", List.of(Map.of(
+                                    "id", "welcome",
+                                    "title", "欢迎来到星河服",
+                                    "summary", "第一条玩家端新闻",
+                                    "publishedOn", "2026-08-04",
+                                    "coverUrl", "https://example.com/cover.jpg",
+                                    "markdown", "# 欢迎\n正文"))),
+                            Map.entry("customPage", Map.of(
+                                    "enabled", true,
+                                    "navigationLabel", "玩法介绍",
+                                    "eyebrow", "GUIDE",
+                                    "title", "从这里开始",
+                                    "lead", "先看看这几件事",
+                                    "markdown", "- 安装整合包"))
+                    )), token);
+            assertEquals(200, personalized.statusCode(), personalized.body());
+            assertTrue(personalized.body().contains("\"productName\":\"星河新主页\""));
+            assertTrue(personalized.body().contains("\"brandName\":\"新星河服\""));
+            assertTrue(personalized.body().contains("\"title\":\"欢迎来到星河服\""));
+            assertTrue(personalized.body().contains("\"navigationLabel\":\"玩法介绍\""));
+            assertTrue(personalized.body().contains(source.getParent().toString()
+                    .replace("\\", "\\\\")));
 
             HttpResponse<String> scanned = send(
                     base, "/api/projects/web-demo/scan", "POST", "{}", token);

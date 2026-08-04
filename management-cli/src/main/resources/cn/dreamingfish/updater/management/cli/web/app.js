@@ -20,6 +20,11 @@ const app = {
   uploadTargetExpandedFolders: new Set(),
   activeUploads: new Set(),
   sourceUploadCancelled: false,
+  personalizationNewsLegacy: false,
+  personalizationNewsDirty: false,
+  pendingCoverFile: null,
+  pendingCoverPreviewUrl: null,
+  playerPreviewReady: false,
   pathBrowser: {
     targetInput: null,
     kind: "directory",
@@ -36,6 +41,7 @@ const app = {
 const titles = {
   dashboard: "运行概览",
   project: "项目设置",
+  personalization: "玩家端个性化",
   publish: "管理文件",
   player: "玩家端程序",
   instance: "玩家实例",
@@ -324,6 +330,7 @@ function renderDashboard() {
 
 function renderProjectDependentViews() {
   renderProjectForm();
+  renderPersonalizationForm();
   renderSourceFiles();
   renderPreview();
   renderForcedDirectories();
@@ -486,28 +493,273 @@ function renderProjectForm() {
   setFormValue(form, "displayName", app.project.displayName);
   setFormValue(form, "sourceDirectory", app.project.sourceDirectory);
   setFormValue(form, "publicBaseUrl", app.project.publicBaseUrl);
-  setFormValue(form, "productName", app.project.branding.productName);
-  setFormValue(form, "brandName", app.project.branding.brandName || "梦鱼服");
-  setFormValue(
-    form,
-    "brandEnglishName",
-    app.project.branding.brandEnglishName || "DreamingFish"
-  );
-  setFormValue(form, "subtitle", app.project.branding.subtitle);
-  setFormValue(form, "serverAddress", app.project.branding.serverAddress);
   setFormValue(
     form,
     "forcedSyncDirectories",
     (app.project.forcedSyncDirectories || []).join(", ")
   );
-  setColor(form, "accentColor", app.project.branding.accentColor);
+}
+
+function renderPersonalizationForm() {
+  if (!app.project) return;
+  const form = byId("personalization-form");
+  const branding = app.project.branding || {};
+  byId("personalization-identity").textContent =
+    `${app.project.displayName} · ${app.project.id}`;
+  setFormValue(form, "productName", branding.productName);
+  setFormValue(form, "brandName", branding.brandName || "梦鱼服");
+  setFormValue(
+    form,
+    "brandEnglishName",
+    branding.brandEnglishName || "DreamingFish"
+  );
+  setFormValue(form, "subtitle", branding.subtitle);
+  setFormValue(form, "serverAddress", branding.serverAddress);
+  setColor(form, "accentColor", branding.accentColor);
   setColor(
     form,
     "secondaryAccentColor",
-    app.project.branding.secondaryAccentColor
+    branding.secondaryAccentColor
   );
-  setFormValue(form, "coverPath", "");
+  clearPendingCover();
   form.elements.removeCover.checked = false;
+  app.personalizationNewsLegacy = branding.newsArticles == null;
+  app.personalizationNewsDirty = false;
+  byId("legacy-news-note").hidden = !app.personalizationNewsLegacy;
+  renderPlayerNewsEditor(branding.newsArticles || []);
+  const customPage = branding.customPage || {
+    enabled: false,
+    navigationLabel: "服务器介绍",
+    eyebrow: "WELCOME",
+    title: "欢迎来到服务器",
+    lead: "",
+    markdown: ""
+  };
+  form.elements.customPageEnabled.checked = Boolean(customPage.enabled);
+  setFormValue(form, "customPageNavigationLabel", customPage.navigationLabel);
+  setFormValue(form, "customPageEyebrow", customPage.eyebrow);
+  setFormValue(form, "customPageTitle", customPage.title);
+  setFormValue(form, "customPageLead", customPage.lead);
+  setFormValue(form, "customPageMarkdown", customPage.markdown);
+  updateCustomPageAvailability();
+  updatePlayerPreview();
+}
+
+function playerNewsField(label, value, options = {}) {
+  const wrapper = document.createElement("label");
+  wrapper.className = `field${options.wide ? " field-wide" : ""}`;
+  const caption = document.createElement("span");
+  caption.textContent = label;
+  const control = document.createElement(options.multiline ? "textarea" : "input");
+  control.dataset.newsField = options.name;
+  control.value = value || "";
+  if (options.type) control.type = options.type;
+  if (options.maxLength) control.maxLength = options.maxLength;
+  if (options.placeholder) control.placeholder = options.placeholder;
+  if (options.required) control.required = true;
+  if (options.multiline) control.rows = 7;
+  wrapper.append(caption, control);
+  return wrapper;
+}
+
+function renderPlayerNewsEditor(articles) {
+  const editor = byId("player-news-editor");
+  editor.replaceChildren();
+  if (articles.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "player-news-empty";
+    empty.textContent = "还没有自定义新闻。需要时点右上角“添加新闻”。";
+    editor.append(empty);
+    updatePlayerPreview();
+    return;
+  }
+  articles.forEach((article, index) => {
+    const card = document.createElement("section");
+    card.className = "player-news-card";
+    card.dataset.newsIndex = String(index);
+    const header = document.createElement("div");
+    header.className = "player-news-card-header";
+    const heading = document.createElement("strong");
+    heading.textContent = `新闻 ${index + 1}`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "danger-button";
+    remove.textContent = "删除";
+    remove.addEventListener("click", () => {
+      const next = readPlayerNewsEditor();
+      next.splice(index, 1);
+      app.personalizationNewsLegacy = false;
+      app.personalizationNewsDirty = true;
+      byId("legacy-news-note").hidden = true;
+      renderPlayerNewsEditor(next);
+    });
+    header.append(heading, remove);
+    const fields = document.createElement("div");
+    fields.className = "player-news-card-fields";
+    fields.append(
+      playerNewsField("标题（必填）", article.title, {
+        name: "title", maxLength: 120, required: true
+      }),
+      playerNewsField("发布日期（必填）", article.publishedOn, {
+        name: "publishedOn", type: "date", required: true
+      }),
+      playerNewsField("文章 ID（必填）", article.id, {
+        name: "id", maxLength: 64, required: true,
+        placeholder: "update-2026-08"
+      }),
+      playerNewsField("封面图片网址", article.coverUrl, {
+        name: "coverUrl", maxLength: 2048,
+        placeholder: "https://example.com/news.jpg"
+      }),
+      playerNewsField("摘要", article.summary, {
+        name: "summary", maxLength: 300, wide: true
+      }),
+      playerNewsField("正文（Markdown）", article.markdown, {
+        name: "markdown", maxLength: 131072, multiline: true, wide: true
+      })
+    );
+    fields.addEventListener("input", () => {
+      app.personalizationNewsLegacy = false;
+      app.personalizationNewsDirty = true;
+      byId("legacy-news-note").hidden = true;
+      updatePlayerPreview();
+    });
+    card.append(header, fields);
+    editor.append(card);
+  });
+  updatePlayerPreview();
+}
+
+function readPlayerNewsEditor() {
+  return [...byId("player-news-editor").querySelectorAll(".player-news-card")]
+    .map((card) => {
+      const value = (name) => String(
+        card.querySelector(`[data-news-field="${name}"]`)?.value || ""
+      ).trim();
+      return {
+        id: value("id"),
+        title: value("title"),
+        summary: value("summary"),
+        publishedOn: value("publishedOn"),
+        coverUrl: value("coverUrl"),
+        markdown: value("markdown")
+      };
+    });
+}
+
+function updateCustomPageAvailability() {
+  const form = byId("personalization-form");
+  const enabled = form.elements.customPageEnabled.checked;
+  const fields = byId("custom-page-fields");
+  fields.setAttribute("aria-disabled", String(!enabled));
+  fields.querySelectorAll("input, textarea").forEach((control) => {
+    control.disabled = !enabled;
+  });
+  form.elements.customPageNavigationLabel.required = enabled;
+  form.elements.customPageTitle.required = enabled;
+}
+
+function clearPendingCover(updatePreview = false) {
+  if (app.pendingCoverPreviewUrl) {
+    URL.revokeObjectURL(app.pendingCoverPreviewUrl);
+  }
+  app.pendingCoverFile = null;
+  app.pendingCoverPreviewUrl = null;
+  const input = byId("cover-upload-input");
+  if (input) input.value = "";
+  const label = byId("cover-upload-name");
+  if (label) label.textContent = "尚未选择新图片，将保留当前背景";
+  if (updatePreview) updatePlayerPreview();
+}
+
+function selectPendingCover(file) {
+  if (!file) {
+    clearPendingCover(true);
+    return;
+  }
+  if (file.size === 0) {
+    clearPendingCover(true);
+    showErrorDialog("所选图片是空文件，请重新选择。");
+    return;
+  }
+  if (file.size > 32 * 1024 * 1024) {
+    clearPendingCover(true);
+    showErrorDialog("背景图片不能超过 32 MiB。");
+    return;
+  }
+  if (app.pendingCoverPreviewUrl) {
+    URL.revokeObjectURL(app.pendingCoverPreviewUrl);
+  }
+  app.pendingCoverFile = file;
+  app.pendingCoverPreviewUrl = URL.createObjectURL(file);
+  byId("cover-upload-name").textContent = `已选择：${file.name}`;
+  const form = byId("personalization-form");
+  form.elements.removeCover.checked = false;
+  updatePlayerPreview();
+}
+
+function currentCustomPage() {
+  const form = byId("personalization-form");
+  return {
+    enabled: form.elements.customPageEnabled.checked,
+    navigationLabel: String(form.elements.customPageNavigationLabel.value || "").trim(),
+    eyebrow: String(form.elements.customPageEyebrow.value || "").trim(),
+    title: String(form.elements.customPageTitle.value || "").trim(),
+    lead: String(form.elements.customPageLead.value || "").trim(),
+    markdown: String(form.elements.customPageMarkdown.value || "").trim()
+  };
+}
+
+function updatePlayerPreview() {
+  if (!app.project) return;
+  const form = byId("personalization-form");
+  const value = (name, fallback) => {
+    const text = String(form.elements.namedItem(name)?.value || "").trim();
+    return text || fallback;
+  };
+  const hasCover = Boolean(app.project.branding?.coverObject);
+  const removeCover = form.elements.removeCover.checked;
+  const pendingCover = app.pendingCoverFile;
+  const coverState = byId("personalization-cover-state");
+  let backgroundUrl = null;
+  if (pendingCover && app.pendingCoverPreviewUrl) {
+    backgroundUrl = app.pendingCoverPreviewUrl;
+    coverState.textContent = `正在预览本机图片 ${pendingCover.name}；保存后将上传到管理端`;
+  } else if (hasCover && !removeCover) {
+    const projectId = encodeURIComponent(app.project.id);
+    const hash = encodeURIComponent(app.project.branding.coverObject);
+    backgroundUrl = `/api/projects/${projectId}/cover?v=${hash}`;
+    coverState.textContent = "当前正在预览已保存的自定义背景";
+  } else {
+    coverState.textContent = removeCover
+      ? "保存后将移除自定义背景并恢复内置默认背景"
+      : "当前未设置自定义背景，玩家端将使用内置默认背景";
+  }
+  const payload = {
+    type: "dfs-admin-preview",
+    branding: {
+      productName: value("productName", app.project.displayName),
+      subtitle: value("subtitle", "Minecraft 整合包更新"),
+      serverAddress: value("serverAddress", ""),
+      coverObject: app.project.branding?.coverObject || null,
+      accentColor: value("accentColorText", "#2ee8df"),
+      secondaryAccentColor: value("secondaryAccentColorText", "#b06cff"),
+      brandName: value("brandName", "服务器"),
+      brandEnglishName: value("brandEnglishName", "Minecraft"),
+      newsArticles: app.personalizationNewsLegacy && !app.personalizationNewsDirty
+        ? null : readPlayerNewsEditor(),
+      customPage: currentCustomPage()
+    },
+    backgroundUrl
+  };
+  byId("player-preview-frame")?.contentWindow?.postMessage(payload, location.origin);
+}
+
+function resizePlayerPreview() {
+  const stage = byId("player-preview-stage");
+  if (!stage) return;
+  const scale = Math.max(0.1, stage.clientWidth / 1180);
+  stage.style.setProperty("--player-preview-scale", String(scale));
 }
 
 function renderPreview() {
@@ -1024,6 +1276,7 @@ function bindEvents() {
   bindProjectCreate();
   bindErrorDialog();
   bindProjectForm();
+  bindPersonalizationForm();
   bindPathPickers();
   bindSourceFiles();
   bindPublish();
@@ -1787,6 +2040,7 @@ function bindProjectCreate() {
   const form = byId("create-project-form");
   byId("open-create-project").addEventListener("click", () => {
     form.reset();
+    setFormValue(form, "subtitle", "Minecraft 整合包更新");
     setFormValue(form, "brandName", "梦鱼服");
     setFormValue(form, "brandEnglishName", "DreamingFish");
     dialog.showModal();
@@ -1808,6 +2062,9 @@ function bindProjectCreate() {
         textValue(data, "forcedSyncDirectories")
       ),
       forcedSyncFiles: [],
+      productName: textValue(data, "productName")
+        || textValue(data, "displayName"),
+      subtitle: textValue(data, "subtitle"),
       serverAddress: textValue(data, "serverAddress"),
       brandName: textValue(data, "brandName"),
       brandEnglishName: textValue(data, "brandEnglishName")
@@ -1828,8 +2085,6 @@ function bindProjectCreate() {
 
 function bindProjectForm() {
   const form = byId("project-form");
-  bindColorPair(form, "accentColor");
-  bindColorPair(form, "secondaryAccentColor");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!app.project || !form.reportValidity()) return;
@@ -1838,19 +2093,10 @@ function bindProjectForm() {
       displayName: textValue(data, "displayName"),
       sourceDirectory: textValue(data, "sourceDirectory"),
       publicBaseUrl: textValue(data, "publicBaseUrl"),
-      productName: textValue(data, "productName"),
-      brandName: textValue(data, "brandName"),
-      brandEnglishName: textValue(data, "brandEnglishName"),
-      subtitle: textValue(data, "subtitle"),
-      serverAddress: textValue(data, "serverAddress"),
       forcedSyncDirectories: directoryList(
         textValue(data, "forcedSyncDirectories")
       ),
-      forcedSyncFiles: [...app.forcedFileSelection],
-      accentColor: textValue(data, "accentColorText"),
-      secondaryAccentColor: textValue(data, "secondaryAccentColorText"),
-      coverPath: textValue(data, "coverPath"),
-      removeCover: form.elements.removeCover.checked
+      forcedSyncFiles: [...app.forcedFileSelection]
     };
     await runBusy("正在保存项目设置", async () => {
       await api(`/api/projects/${encodeURIComponent(app.project.id)}`, {
@@ -1861,6 +2107,120 @@ function bindProjectForm() {
       toast("项目设置已保存");
     });
   });
+}
+
+function bindPersonalizationForm() {
+  const form = byId("personalization-form");
+  const coverInput = byId("cover-upload-input");
+  bindColorPair(form, "accentColor");
+  bindColorPair(form, "secondaryAccentColor");
+  byId("choose-cover-upload").addEventListener("click", () => coverInput.click());
+  coverInput.addEventListener("change", () => {
+    selectPendingCover(coverInput.files?.[0] || null);
+  });
+  form.addEventListener("input", updatePlayerPreview);
+  form.addEventListener("change", (event) => {
+    if (event.target === form.elements.customPageEnabled) {
+      updateCustomPageAvailability();
+    }
+    if (event.target === form.elements.removeCover
+        && form.elements.removeCover.checked) {
+      clearPendingCover();
+    }
+    updatePlayerPreview();
+  });
+  byId("add-player-news").addEventListener("click", () => {
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const articles = readPlayerNewsEditor();
+    let suffix = articles.length + 1;
+    let id = `news-${date}-${suffix}`;
+    const ids = new Set(articles.map((article) => article.id));
+    while (ids.has(id)) id = `news-${date}-${++suffix}`;
+    articles.push({
+      id,
+      title: "",
+      summary: "",
+      publishedOn: date,
+      coverUrl: "",
+      markdown: ""
+    });
+    app.personalizationNewsLegacy = false;
+    app.personalizationNewsDirty = true;
+    byId("legacy-news-note").hidden = true;
+    renderPlayerNewsEditor(articles);
+    byId("player-news-editor").lastElementChild?.scrollIntoView({
+      behavior: "smooth", block: "nearest"
+    });
+  });
+  const previewFrame = byId("player-preview-frame");
+  previewFrame.addEventListener("load", () => {
+    app.playerPreviewReady = true;
+    resizePlayerPreview();
+    updatePlayerPreview();
+  });
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin
+        || event.source !== previewFrame.contentWindow
+        || event.data?.type !== "dfs-player-preview-ready") return;
+    app.playerPreviewReady = true;
+    updatePlayerPreview();
+  });
+  window.addEventListener("resize", () => requestAnimationFrame(resizePlayerPreview));
+  resizePlayerPreview();
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!app.project || !form.reportValidity()) return;
+    const data = new FormData(form);
+    const payload = {
+      productName: textValue(data, "productName"),
+      brandName: textValue(data, "brandName"),
+      brandEnglishName: textValue(data, "brandEnglishName"),
+      subtitle: textValue(data, "subtitle"),
+      serverAddress: textValue(data, "serverAddress"),
+      accentColor: textValue(data, "accentColorText"),
+      secondaryAccentColor: textValue(data, "secondaryAccentColorText"),
+      removeCover: form.elements.removeCover.checked,
+      customPage: currentCustomPage()
+    };
+    if (!app.personalizationNewsLegacy || app.personalizationNewsDirty) {
+      payload.newsArticles = readPlayerNewsEditor();
+    }
+    await runBusy("正在保存玩家端个性化设置", async () => {
+      await api(`/api/projects/${encodeURIComponent(app.project.id)}`, {
+        method: "PUT",
+        body: payload
+      });
+      if (app.pendingCoverFile) {
+        await uploadCoverFile(app.pendingCoverFile);
+      }
+      await refreshState(app.project.id);
+      toast("玩家端个性化设置已保存");
+    });
+  });
+}
+
+async function uploadCoverFile(file) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(app.project.id)}/cover`,
+    {
+      method: "PUT",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/octet-stream",
+        "X-DFS-Token": app.token
+      },
+      body: file
+    }
+  );
+  const contentType = response.headers.get("Content-Type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : null;
+  if (!response.ok) {
+    throw new Error(data?.message || `背景图片上传失败：HTTP ${response.status}`);
+  }
+  return data;
 }
 
 function bindPublish() {
@@ -2178,6 +2538,9 @@ function showView(view) {
   });
   byId("page-title").textContent = titles[view];
   if (changed) byId("view-" + view).scrollTop = 0;
+  if (view === "personalization") {
+    requestAnimationFrame(resizePlayerPreview);
+  }
 }
 
 function capturePublishPosition() {

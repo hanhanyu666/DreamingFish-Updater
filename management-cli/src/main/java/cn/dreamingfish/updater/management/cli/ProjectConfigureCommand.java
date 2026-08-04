@@ -64,7 +64,8 @@ final class ProjectConfigureCommand implements Runnable {
                 secondaryAccent == null ? old.secondaryAccentColor() : secondaryAccent,
                 brandName == null ? old.brandName() : brandName,
                 brandEnglishName == null
-                        ? old.brandEnglishName() : brandEnglishName
+                        ? old.brandEnglishName() : brandEnglishName,
+                old.newsArticles(), old.customPage()
         );
         ProjectRules rules = rulesFile == null ? current.rules() : ProjectCreateCommand.readRules(services, rulesFile);
         if (clearForceSync && forcedSyncDirectories != null) {
