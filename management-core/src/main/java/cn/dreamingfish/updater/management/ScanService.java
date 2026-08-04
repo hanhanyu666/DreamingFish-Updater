@@ -288,7 +288,7 @@ public final class ScanService {
 
     private void save(PublishPreview preview) {
         try {
-            AtomicFiles.write(previewPath(preview.projectId()), json.write(preview));
+            AtomicFiles.write(previewPath(preview.projectId()), json.writePretty(preview));
         } catch (IOException e) {
             throw new ManagementException("Unable to persist publish preview", e);
         }

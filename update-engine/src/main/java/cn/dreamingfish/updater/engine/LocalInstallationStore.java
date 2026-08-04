@@ -153,8 +153,8 @@ final class LocalInstallationStore {
         AtomicFileSupport.write(paths.installedManifest(), release.bytes());
         AtomicFileSupport.write(paths.installedSignature(),
                 (release.signature() + "\n").getBytes(StandardCharsets.US_ASCII));
-        AtomicFileSupport.write(paths.installationState(), json.write(installation));
-        AtomicFileSupport.write(paths.trustState(), json.write(trust));
+        AtomicFileSupport.write(paths.installationState(), json.writePretty(installation));
+        AtomicFileSupport.write(paths.trustState(), json.writePretty(trust));
     }
 
     private VerifiedInstallation installationFor(SignedRelease release) {

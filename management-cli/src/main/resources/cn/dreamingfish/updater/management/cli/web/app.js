@@ -20,8 +20,6 @@ const app = {
   uploadTargetExpandedFolders: new Set(),
   activeUploads: new Set(),
   sourceUploadCancelled: false,
-  personalizationNewsLegacy: false,
-  personalizationNewsDirty: false,
   pendingCoverFile: null,
   pendingCoverPreviewUrl: null,
   playerPreviewReady: false,
@@ -523,35 +521,46 @@ function renderPersonalizationForm() {
   );
   clearPendingCover();
   form.elements.removeCover.checked = false;
-  app.personalizationNewsLegacy = branding.newsArticles == null;
-  app.personalizationNewsDirty = false;
-  byId("legacy-news-note").hidden = !app.personalizationNewsLegacy;
-  renderPlayerNewsEditor(branding.newsArticles || []);
-  const customPage = branding.customPage || {
-    enabled: false,
-    navigationLabel: "服务器介绍",
-    eyebrow: "WELCOME",
-    title: "欢迎来到服务器",
-    lead: "",
-    markdown: ""
-  };
-  form.elements.customPageEnabled.checked = Boolean(customPage.enabled);
-  setFormValue(form, "customPageNavigationLabel", customPage.navigationLabel);
-  setFormValue(form, "customPageEyebrow", customPage.eyebrow);
-  setFormValue(form, "customPageTitle", customPage.title);
-  setFormValue(form, "customPageLead", customPage.lead);
-  setFormValue(form, "customPageMarkdown", customPage.markdown);
-  updateCustomPageAvailability();
+  const legacy = branding.contentPages == null;
+  byId("legacy-news-note").hidden = !legacy;
+  renderPlayerPageEditor(legacyPlayerPages(branding));
   updatePlayerPreview();
 }
 
-function playerNewsField(label, value, options = {}) {
+function legacyPlayerPages(branding) {
+  if (Array.isArray(branding.contentPages)) return branding.contentPages;
+  const pages = [{
+    id: "news",
+    navigationLabel: "新闻",
+    announcementPage: true,
+    eyebrow: `${branding.brandEnglishName || "SERVER"} NEWS`,
+    title: `${branding.brandName || "服务器"}新闻`,
+    lead: "这里记录服务器动态、版本消息和想与玩家分享的内容。",
+    markdown: "",
+    articles: branding.newsArticles || []
+  }];
+  if (branding.customPage?.enabled) {
+    pages.push({
+      id: "custom",
+      navigationLabel: branding.customPage.navigationLabel,
+      announcementPage: false,
+      eyebrow: branding.customPage.eyebrow,
+      title: branding.customPage.title,
+      lead: branding.customPage.lead,
+      markdown: branding.customPage.markdown,
+      articles: []
+    });
+  }
+  return pages;
+}
+
+function playerPageField(label, value, options = {}) {
   const wrapper = document.createElement("label");
   wrapper.className = `field${options.wide ? " field-wide" : ""}`;
   const caption = document.createElement("span");
   caption.textContent = label;
   const control = document.createElement(options.multiline ? "textarea" : "input");
-  control.dataset.newsField = options.name;
+  control.dataset[options.scope || "pageField"] = options.name;
   control.value = value || "";
   if (options.type) control.type = options.type;
   if (options.maxLength) control.maxLength = options.maxLength;
@@ -562,67 +571,144 @@ function playerNewsField(label, value, options = {}) {
   return wrapper;
 }
 
-function renderPlayerNewsEditor(articles) {
-  const editor = byId("player-news-editor");
+function markdownEditor(label, value, scope, placeholder) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "field field-wide markdown-editor";
+  const caption = document.createElement("span");
+  caption.textContent = label;
+  const toolbar = document.createElement("div");
+  toolbar.className = "markdown-toolbar";
+  let savedSelectionStart = 0;
+  let savedSelectionEnd = 0;
+  [
+    ["标题", "## ", ""], ["加粗", "**", "**"], ["列表", "- ", ""],
+    ["引用", "> ", ""], ["链接", "[文字](", ")"], ["图片", "![说明](", ")"]
+  ].forEach(([text, before, after]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button markdown-tool";
+    button.textContent = text;
+    button.addEventListener("mousedown", (event) => {
+      savedSelectionStart = textarea.selectionStart;
+      savedSelectionEnd = textarea.selectionEnd;
+      event.preventDefault();
+    });
+    button.addEventListener("click", () => {
+      insertMarkdown(textarea, before, after, savedSelectionStart, savedSelectionEnd);
+      savedSelectionStart = textarea.selectionStart;
+      savedSelectionEnd = textarea.selectionEnd;
+    });
+    toolbar.append(button);
+  });
+  const textarea = document.createElement("textarea");
+  textarea.dataset[scope] = "markdown";
+  textarea.maxLength = 131072;
+  textarea.rows = 8;
+  textarea.value = value || "";
+  textarea.placeholder = placeholder;
+  const rememberSelection = () => {
+    savedSelectionStart = textarea.selectionStart;
+    savedSelectionEnd = textarea.selectionEnd;
+  };
+  textarea.addEventListener("select", rememberSelection);
+  textarea.addEventListener("keyup", rememberSelection);
+  textarea.addEventListener("click", rememberSelection);
+  textarea.addEventListener("focus", rememberSelection);
+  const help = document.createElement("small");
+  help.className = "field-help";
+  help.textContent = "选中文字后点快捷按钮即可排版，也可以直接粘贴 Markdown。";
+  wrapper.append(caption, toolbar, textarea, help);
+  return wrapper;
+}
+
+function insertMarkdown(textarea, before, after, savedStart, savedEnd) {
+  const start = Number.isInteger(savedStart) ? savedStart : textarea.selectionStart;
+  const end = Number.isInteger(savedEnd) ? savedEnd : textarea.selectionEnd;
+  const selected = textarea.value.slice(start, end);
+  textarea.setRangeText(`${before}${selected}${after}`, start, end, "end");
+  textarea.focus();
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function renderPlayerPageEditor(pages) {
+  const editor = byId("player-page-editor");
   editor.replaceChildren();
-  if (articles.length === 0) {
+  if (pages.length === 0) {
     const empty = document.createElement("div");
     empty.className = "player-news-empty";
-    empty.textContent = "还没有自定义新闻。需要时点右上角“添加新闻”。";
+    empty.textContent = "还没有添加页面。玩家端只会显示主页和“关于更新器”；需要公告、玩法介绍或服务器规则时，点右上角“添加页面”。";
     editor.append(empty);
     updatePlayerPreview();
     return;
   }
-  articles.forEach((article, index) => {
+  pages.forEach((page, index) => {
     const card = document.createElement("section");
-    card.className = "player-news-card";
-    card.dataset.newsIndex = String(index);
+    card.className = "player-news-card player-page-card";
+    card.dataset.pageIndex = String(index);
     const header = document.createElement("div");
     header.className = "player-news-card-header";
     const heading = document.createElement("strong");
-    heading.textContent = `新闻 ${index + 1}`;
+    heading.textContent = `页面 ${index + 1} · ${page.navigationLabel || "未命名"}`;
+    const actions = document.createElement("div");
+    actions.className = "button-row";
+    const moveUp = actionButton("↑", () => movePlayerPage(index, -1));
+    moveUp.disabled = index === 0;
+    const moveDown = actionButton("↓", () => movePlayerPage(index, 1));
+    moveDown.disabled = index === pages.length - 1;
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "danger-button";
     remove.textContent = "删除";
     remove.addEventListener("click", () => {
-      const next = readPlayerNewsEditor();
+      const next = readPlayerPageEditor();
       next.splice(index, 1);
-      app.personalizationNewsLegacy = false;
-      app.personalizationNewsDirty = true;
       byId("legacy-news-note").hidden = true;
-      renderPlayerNewsEditor(next);
+      renderPlayerPageEditor(next);
     });
-    header.append(heading, remove);
+    actions.append(moveUp, moveDown, remove);
+    header.append(heading, actions);
     const fields = document.createElement("div");
     fields.className = "player-news-card-fields";
+    const type = document.createElement("label");
+    type.className = "check-field field-wide announcement-page-toggle";
+    const typeInput = document.createElement("input");
+    typeInput.type = "checkbox";
+    typeInput.dataset.pageField = "announcementPage";
+    typeInput.checked = Boolean(page.announcementPage);
+    const typeText = document.createElement("span");
+    typeText.textContent = "设为公告页（可在本页连续添加多条新闻，最新一条会显示在主页）";
+    type.append(typeInput, typeText);
     fields.append(
-      playerNewsField("标题（必填）", article.title, {
+      playerPageField("页面 ID（必填）", page.id, {
+        name: "id", maxLength: 64, required: true, placeholder: "server-rules"
+      }),
+      playerPageField("顶部导航名称（必填）", page.navigationLabel, {
+        name: "navigationLabel", maxLength: 12, required: true, placeholder: "服务器规则"
+      }),
+      type,
+      playerPageField("页面顶部小标题", page.eyebrow, {
+        name: "eyebrow", maxLength: 48, placeholder: "WELCOME"
+      }),
+      playerPageField("页面主标题（必填）", page.title, {
         name: "title", maxLength: 120, required: true
       }),
-      playerNewsField("发布日期（必填）", article.publishedOn, {
-        name: "publishedOn", type: "date", required: true
-      }),
-      playerNewsField("文章 ID（必填）", article.id, {
-        name: "id", maxLength: 64, required: true,
-        placeholder: "update-2026-08"
-      }),
-      playerNewsField("封面图片网址", article.coverUrl, {
-        name: "coverUrl", maxLength: 2048,
-        placeholder: "https://example.com/news.jpg"
-      }),
-      playerNewsField("摘要", article.summary, {
-        name: "summary", maxLength: 300, wide: true
-      }),
-      playerNewsField("正文（Markdown）", article.markdown, {
-        name: "markdown", maxLength: 131072, multiline: true, wide: true
+      playerPageField("页面引导语", page.lead, {
+        name: "lead", maxLength: 300, wide: true
       })
     );
+    const body = document.createElement("div");
+    body.className = "player-page-body field-wide";
+    renderPlayerPageBody(body, page, index);
+    fields.append(body);
     fields.addEventListener("input", () => {
-      app.personalizationNewsLegacy = false;
-      app.personalizationNewsDirty = true;
       byId("legacy-news-note").hidden = true;
       updatePlayerPreview();
+    });
+    typeInput.addEventListener("change", () => {
+      const next = readPlayerPageEditor();
+      next[index].announcementPage = typeInput.checked;
+      next[index].articles ||= [];
+      renderPlayerPageEditor(next);
     });
     card.append(header, fields);
     editor.append(card);
@@ -630,33 +716,212 @@ function renderPlayerNewsEditor(articles) {
   updatePlayerPreview();
 }
 
-function readPlayerNewsEditor() {
-  return [...byId("player-news-editor").querySelectorAll(".player-news-card")]
+function renderPlayerPageBody(body, page, pageIndex) {
+  if (!page.announcementPage) {
+    body.append(markdownEditor("页面正文", page.markdown, "pageBodyField",
+      "可以写服务器介绍、玩法说明、规则或加入方式。"));
+    return;
+  }
+  const top = document.createElement("div");
+  top.className = "player-news-card-header announcement-list-header";
+  const label = document.createElement("strong");
+  label.textContent = `${(page.articles || []).length} 条新闻 / 公告`;
+  const add = actionButton("＋ 添加新闻", () => addAnnouncement(pageIndex));
+  top.append(label, add);
+  body.append(top);
+  if ((page.articles || []).length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "player-news-empty";
+    empty.textContent = "这个公告页还没有内容，点“添加新闻”开始写第一条。";
+    body.append(empty);
+  }
+  (page.articles || []).forEach((article, articleIndex) => {
+    const item = document.createElement("div");
+    item.className = "announcement-editor-card";
+    item.dataset.articleIndex = String(articleIndex);
+    const header = document.createElement("div");
+    header.className = "player-news-card-header";
+    const title = document.createElement("strong");
+    title.textContent = `新闻 ${articleIndex + 1}`;
+    const remove = actionButton("删除新闻", () => removeAnnouncement(pageIndex, articleIndex));
+    remove.className = "danger-button";
+    header.append(title, remove);
+    const fields = document.createElement("div");
+    fields.className = "player-news-card-fields";
+    fields.append(
+      playerPageField("标题（必填）", article.title, { scope: "articleField", name: "title", maxLength: 120, required: true }),
+      playerPageField("发布日期（必填）", article.publishedOn, { scope: "articleField", name: "publishedOn", type: "date", required: true }),
+      playerPageField("文章 ID（必填）", article.id, { scope: "articleField", name: "id", maxLength: 64, required: true }),
+      playerPageField("封面图片网址", article.coverUrl, { scope: "articleField", name: "coverUrl", maxLength: 2048 }),
+      playerPageField("摘要", article.summary, { scope: "articleField", name: "summary", maxLength: 300, wide: true }),
+      markdownEditor("正文", article.markdown, "articleBodyField", "写下完整公告内容。")
+    );
+    item.append(header, fields);
+    body.append(item);
+  });
+}
+
+function readPlayerPageEditor() {
+  return [...byId("player-page-editor").querySelectorAll(".player-page-card")]
     .map((card) => {
-      const value = (name) => String(
-        card.querySelector(`[data-news-field="${name}"]`)?.value || ""
-      ).trim();
+      const value = (name) => String(card.querySelector(`[data-page-field="${name}"]`)?.value || "").trim();
+      const announcementPage = Boolean(card.querySelector('[data-page-field="announcementPage"]')?.checked);
+      const articles = [...card.querySelectorAll(".announcement-editor-card")].map((item) => {
+        const articleValue = (name) => String(item.querySelector(`[data-article-field="${name}"]`)?.value || "").trim();
+        return {
+          id: articleValue("id"), title: articleValue("title"), summary: articleValue("summary"),
+          publishedOn: articleValue("publishedOn"), coverUrl: articleValue("coverUrl"),
+          markdown: String(item.querySelector('[data-article-body-field="markdown"]')?.value || "").trim()
+        };
+      });
       return {
-        id: value("id"),
-        title: value("title"),
-        summary: value("summary"),
-        publishedOn: value("publishedOn"),
-        coverUrl: value("coverUrl"),
-        markdown: value("markdown")
+        id: value("id"), navigationLabel: value("navigationLabel"), announcementPage,
+        eyebrow: value("eyebrow"), title: value("title"), lead: value("lead"),
+        markdown: announcementPage ? "" : String(card.querySelector('[data-page-body-field="markdown"]')?.value || "").trim(),
+        articles: announcementPage ? articles : []
       };
     });
 }
 
-function updateCustomPageAvailability() {
-  const form = byId("personalization-form");
-  const enabled = form.elements.customPageEnabled.checked;
-  const fields = byId("custom-page-fields");
-  fields.setAttribute("aria-disabled", String(!enabled));
-  fields.querySelectorAll("input, textarea").forEach((control) => {
-    control.disabled = !enabled;
+function movePlayerPage(index, offset) {
+  const pages = readPlayerPageEditor();
+  const target = index + offset;
+  if (target < 0 || target >= pages.length) return;
+  [pages[index], pages[target]] = [pages[target], pages[index]];
+  renderPlayerPageEditor(pages);
+}
+
+function addAnnouncement(pageIndex) {
+  const pages = readPlayerPageEditor();
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const articles = pages[pageIndex].articles || [];
+  let suffix = articles.length + 1;
+  let id = `news-${date}-${suffix}`;
+  const ids = new Set(articles.map((article) => article.id));
+  while (ids.has(id)) id = `news-${date}-${++suffix}`;
+  articles.push({ id, title: "", summary: "", publishedOn: date, coverUrl: "", markdown: "" });
+  pages[pageIndex].articles = articles;
+  renderPlayerPageEditor(pages);
+}
+
+function removeAnnouncement(pageIndex, articleIndex) {
+  const pages = readPlayerPageEditor();
+  pages[pageIndex].articles.splice(articleIndex, 1);
+  renderPlayerPageEditor(pages);
+}
+
+function playerPagesConfig() {
+  return {
+    schemaVersion: 1,
+    description: "DreamingFish Updater 玩家端页面配置",
+    pages: readPlayerPageEditor()
+  };
+}
+
+function exportPlayerPages() {
+  const json = `${JSON.stringify(playerPagesConfig(), null, 2)}\n`;
+  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${app.project?.id || "project"}-player-pages.json`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
+  toast("页面配置已导出");
+}
+
+function playerPagesAiPrompt() {
+  return `你正在帮助我修改 DreamingFish Updater 的玩家端页面配置。\n\n` +
+    `请只返回完整、有效的 JSON，不要使用 Markdown 代码块，也不要解释。必须保留 schemaVersion=1。` +
+    `pages 最多 12 项；id 只能使用英文字母、数字、点、下划线和短横线且不能重复；navigationLabel 最多 12 个字符。` +
+    `announcementPage=true 表示公告页，内容写入 articles；false 表示普通页面，正文写入 markdown。` +
+    `公告的 publishedOn 使用 YYYY-MM-DD，正文支持 Markdown。不要添加未知字段。\n\n` +
+    `我的修改要求：\n【请在这里写您想让 AI 修改的内容】\n\n` +
+    `当前配置：\n${JSON.stringify(playerPagesConfig(), null, 2)}`;
+}
+
+async function copyPlayerPagesAiPrompt() {
+  const prompt = playerPagesAiPrompt();
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(prompt);
+  } else {
+    const textarea = document.createElement("textarea");
+    textarea.value = prompt;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.append(textarea);
+    textarea.select();
+    if (!document.execCommand("copy")) {
+      textarea.remove();
+      throw new Error("浏览器不允许自动复制，请导出配置后手动复制给 AI。");
+    }
+    textarea.remove();
+  }
+  toast("AI 提示词和当前配置已复制，可以直接粘贴给 AI");
+}
+
+function validateImportedPlayerPages(value) {
+  if (!value || value.schemaVersion !== 1 || !Array.isArray(value.pages)) {
+    throw new Error("这不是有效的玩家端页面配置：缺少 schemaVersion=1 或 pages。 ");
+  }
+  if (value.pages.length > 12) throw new Error("玩家端页面最多只能添加 12 个。");
+  const ids = new Set();
+  value.pages.forEach((page, index) => {
+    if (!page || typeof page !== "object") throw new Error(`第 ${index + 1} 个页面格式不正确。`);
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(String(page.id || "")) || ids.has(page.id)) {
+      throw new Error(`第 ${index + 1} 个页面的 ID 无效或重复。`);
+    }
+    ids.add(page.id);
+    if (!String(page.navigationLabel || "").trim() || String(page.navigationLabel).length > 12) {
+      throw new Error(`第 ${index + 1} 个页面的导航名称不能为空且最多 12 个字符。`);
+    }
+    if (!String(page.title || "").trim()) throw new Error(`第 ${index + 1} 个页面缺少主标题。`);
+    page.announcementPage = Boolean(page.announcementPage);
+    page.eyebrow = String(page.eyebrow || "");
+    page.lead = String(page.lead || "");
+    page.markdown = String(page.markdown || "");
+    page.articles = page.announcementPage && Array.isArray(page.articles) ? page.articles : [];
+    if (page.articles.length > 50) throw new Error(`第 ${index + 1} 个公告页最多包含 50 条新闻。`);
+    const articleIds = new Set();
+    page.articles.forEach((article, articleIndex) => {
+      if (!article || !/^[A-Za-z0-9._-]{1,64}$/.test(String(article.id || ""))
+          || articleIds.has(article.id)) {
+        throw new Error(`第 ${index + 1} 个页面的第 ${articleIndex + 1} 条新闻 ID 无效或重复。`);
+      }
+      articleIds.add(article.id);
+      if (!String(article.title || "").trim()) {
+        throw new Error(`第 ${index + 1} 个页面的第 ${articleIndex + 1} 条新闻缺少标题。`);
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(article.publishedOn || ""))) {
+        throw new Error(`第 ${index + 1} 个页面的第 ${articleIndex + 1} 条新闻日期必须使用 YYYY-MM-DD。`);
+      }
+      article.title = String(article.title);
+      article.summary = String(article.summary || "");
+      article.coverUrl = String(article.coverUrl || "");
+      article.markdown = String(article.markdown || "");
+    });
   });
-  form.elements.customPageNavigationLabel.required = enabled;
-  form.elements.customPageTitle.required = enabled;
+  return value.pages;
+}
+
+async function importPlayerPages(file) {
+  if (file.size > 1024 * 1024) throw new Error("页面配置文件不能超过 1 MiB。");
+  let parsed;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch {
+    throw new Error("JSON 无法读取，请检查逗号、引号和括号是否完整。");
+  }
+  const pages = validateImportedPlayerPages(parsed);
+  const accepted = await ask(
+    "导入玩家端页面配置？",
+    `已读取 ${pages.length} 个页面。确认后会替换当前编辑区，仍需点击“保存个性化设置”才会写入项目。`,
+    "导入并预览"
+  );
+  if (!accepted) return;
+  byId("legacy-news-note").hidden = true;
+  renderPlayerPageEditor(pages);
+  toast("配置已导入，请检查右侧预览后保存");
 }
 
 function clearPendingCover(updatePreview = false) {
@@ -698,18 +963,6 @@ function selectPendingCover(file) {
   updatePlayerPreview();
 }
 
-function currentCustomPage() {
-  const form = byId("personalization-form");
-  return {
-    enabled: form.elements.customPageEnabled.checked,
-    navigationLabel: String(form.elements.customPageNavigationLabel.value || "").trim(),
-    eyebrow: String(form.elements.customPageEyebrow.value || "").trim(),
-    title: String(form.elements.customPageTitle.value || "").trim(),
-    lead: String(form.elements.customPageLead.value || "").trim(),
-    markdown: String(form.elements.customPageMarkdown.value || "").trim()
-  };
-}
-
 function updatePlayerPreview() {
   if (!app.project) return;
   const form = byId("personalization-form");
@@ -746,9 +999,9 @@ function updatePlayerPreview() {
       secondaryAccentColor: value("secondaryAccentColorText", "#b06cff"),
       brandName: value("brandName", "服务器"),
       brandEnglishName: value("brandEnglishName", "Minecraft"),
-      newsArticles: app.personalizationNewsLegacy && !app.personalizationNewsDirty
-        ? null : readPlayerNewsEditor(),
-      customPage: currentCustomPage()
+      newsArticles: [],
+      customPage: null,
+      contentPages: readPlayerPageEditor()
     },
     backgroundUrl
   };
@@ -2120,38 +2373,35 @@ function bindPersonalizationForm() {
   });
   form.addEventListener("input", updatePlayerPreview);
   form.addEventListener("change", (event) => {
-    if (event.target === form.elements.customPageEnabled) {
-      updateCustomPageAvailability();
-    }
     if (event.target === form.elements.removeCover
         && form.elements.removeCover.checked) {
       clearPendingCover();
     }
     updatePlayerPreview();
   });
-  byId("add-player-news").addEventListener("click", () => {
-    const now = new Date();
-    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const articles = readPlayerNewsEditor();
-    let suffix = articles.length + 1;
-    let id = `news-${date}-${suffix}`;
-    const ids = new Set(articles.map((article) => article.id));
-    while (ids.has(id)) id = `news-${date}-${++suffix}`;
-    articles.push({
-      id,
-      title: "",
-      summary: "",
-      publishedOn: date,
-      coverUrl: "",
-      markdown: ""
+  byId("add-player-page").addEventListener("click", () => {
+    const pages = readPlayerPageEditor();
+    const ids = new Set(pages.map((page) => page.id));
+    let suffix = pages.length + 1;
+    let id = `page-${suffix}`;
+    while (ids.has(id)) id = `page-${++suffix}`;
+    pages.push({
+      id, navigationLabel: "新页面", announcementPage: false,
+      eyebrow: "", title: "新页面", lead: "", markdown: "", articles: []
     });
-    app.personalizationNewsLegacy = false;
-    app.personalizationNewsDirty = true;
     byId("legacy-news-note").hidden = true;
-    renderPlayerNewsEditor(articles);
-    byId("player-news-editor").lastElementChild?.scrollIntoView({
+    renderPlayerPageEditor(pages);
+    byId("player-page-editor").lastElementChild?.scrollIntoView({
       behavior: "smooth", block: "nearest"
     });
+  });
+  byId("export-player-pages").addEventListener("click", exportPlayerPages);
+  byId("copy-player-pages-ai-prompt").addEventListener("click", copyPlayerPagesAiPrompt);
+  byId("import-player-pages").addEventListener("click", () => byId("import-player-pages-input").click());
+  byId("import-player-pages-input").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await importPlayerPages(file);
   });
   const previewFrame = byId("player-preview-frame");
   previewFrame.addEventListener("load", () => {
@@ -2181,11 +2431,10 @@ function bindPersonalizationForm() {
       accentColor: textValue(data, "accentColorText"),
       secondaryAccentColor: textValue(data, "secondaryAccentColorText"),
       removeCover: form.elements.removeCover.checked,
-      customPage: currentCustomPage()
+      newsArticles: [],
+      customPage: null,
+      contentPages: readPlayerPageEditor()
     };
-    if (!app.personalizationNewsLegacy || app.personalizationNewsDirty) {
-      payload.newsArticles = readPlayerNewsEditor();
-    }
     await runBusy("正在保存玩家端个性化设置", async () => {
       await api(`/api/projects/${encodeURIComponent(app.project.id)}`, {
         method: "PUT",

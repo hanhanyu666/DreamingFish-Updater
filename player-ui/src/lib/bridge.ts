@@ -248,6 +248,7 @@ class MockBridge implements PlayerBridge {
       brandEnglishName: "DreamingFish",
       newsArticles: null,
       customPage: null,
+      contentPages: [],
     } });
     this.emit({ type: "background", path: null });
     this.emit({ type: "logs", lines: [

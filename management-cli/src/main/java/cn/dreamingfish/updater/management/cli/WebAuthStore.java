@@ -119,7 +119,7 @@ final class WebAuthStore {
             Files.createDirectories(file.getParent());
             Path tmp = Files.createTempFile(file.getParent(), file.getFileName().toString(), ".tmp");
             try {
-                Files.write(tmp, json.write(value));
+                Files.write(tmp, json.writePretty(value));
                 try { Files.setPosixFilePermissions(tmp, Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)); }
                 catch (UnsupportedOperationException ignored) { }
                 try { Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }

@@ -17,6 +17,7 @@ import {
   type LocalFileEntry,
   type LocalModEntry,
   type ProgressEvent,
+  type PlayerContentPage,
   type ReleaseHistory,
   type SidecarCommand,
   type SidecarMessage,
@@ -25,7 +26,7 @@ import {
 import type { NewsArticle } from "../lib/news";
 import { loadBundledNews } from "../lib/news";
 
-export type Page = "HOME" | "NEWS" | "CUSTOM" | "ABOUT";
+export type Page = "HOME" | "NEWS" | "CUSTOM" | "ABOUT" | `CONTENT:${string}`;
 export type DrawerMode = "UPDATE" | "HISTORY" | "LOGS" | "FILES" | "PLAYER_MODS";
 export type LocalManagementMode = "FILES" | "MODS";
 
@@ -83,8 +84,10 @@ interface PlayerState {
   currentPathText: string;
   percent: string;
   byteSummary: string;
-  newsRequest: { kind: "list" | "article"; articleId: string | null; seq: number };
+  newsRequest: { kind: "list" | "article"; pageId: string | null; articleId: string | null; seq: number };
   latestArticle: NewsArticle | null;
+  latestArticlePageId: string | null;
+  contentPages: PlayerContentPage[];
   fileTreeExpanded: Map<string, boolean>;
   newsArticles: NewsArticle[];
   newsLoadError: string | null;
@@ -124,8 +127,10 @@ const state = reactive<PlayerState>({
   currentPathText: "准备本地环境",
   percent: "--",
   byteSummary: "-- / --",
-  newsRequest: { kind: "list", articleId: null, seq: 0 },
+  newsRequest: { kind: "list", pageId: null, articleId: null, seq: 0 },
   latestArticle: null,
+  latestArticlePageId: null,
+  contentPages: [],
   fileTreeExpanded: new Map<string, boolean>(),
   newsArticles: [],
   newsLoadError: null,
@@ -241,23 +246,10 @@ export function handleSidecarMessage(message: SidecarMessage): void {
 export function setBranding(branding: Branding | null): void {
   const display = displayBranding(branding);
   state.branding = display;
-  if (display.newsArticles != null) {
-    const articles = display.newsArticles.map((article) => ({
-      id: article.id,
-      title: article.title,
-      summary: article.summary,
-      publishedOn: article.publishedOn,
-      cover: safeCoverUrl(article.coverUrl),
-      markdown: article.markdown,
-    })).sort((left, right) => {
-      const date = right.publishedOn.localeCompare(left.publishedOn);
-      return date !== 0 ? date : left.title.localeCompare(right.title);
-    });
-    state.newsArticles = articles;
-    state.latestArticle = articles[0] ?? null;
-    state.newsLoadError = null;
-  }
-  if (state.page === "CUSTOM" && !display.customPage?.enabled) {
+  state.contentPages = normalizeContentPages(display);
+  refreshLatestArticle();
+  if ((state.page.startsWith("CONTENT:") || state.page === "NEWS" || state.page === "CUSTOM")
+      && !state.contentPages.some((page) => contentRoute(page.id) === state.page)) {
     state.page = "HOME";
   }
   document.documentElement.style.setProperty(
@@ -286,7 +278,72 @@ export function displayBranding(branding: Branding | null | undefined): Branding
       ? DEFAULT_BRANDING.brandEnglishName : branding.brandEnglishName,
     newsArticles: branding.newsArticles ?? null,
     customPage: branding.customPage ?? null,
+    contentPages: branding.contentPages ?? null,
   };
+}
+
+function contentRoute(id: string): Page {
+  if (id === "news") return "NEWS";
+  if (id === "custom") return "CUSTOM";
+  return `CONTENT:${id}`;
+}
+
+function normalizeContentPages(branding: Branding): PlayerContentPage[] {
+  if (branding.contentPages != null) {
+    return branding.contentPages.map((page) => ({
+      ...page,
+      articles: page.announcementPage ? [...(page.articles ?? [])] : [],
+    }));
+  }
+  const pages: PlayerContentPage[] = [{
+    id: "news",
+    navigationLabel: "新闻",
+    announcementPage: true,
+    eyebrow: `${branding.brandEnglishName} NEWS`,
+    title: `${branding.brandName}新闻`,
+    lead: "这里记录服务器动态、版本消息和想与玩家分享的内容。",
+    markdown: "",
+    articles: branding.newsArticles ?? null,
+  }];
+  if (branding.customPage?.enabled) {
+    pages.push({
+      id: "custom",
+      navigationLabel: branding.customPage.navigationLabel,
+      announcementPage: false,
+      eyebrow: branding.customPage.eyebrow,
+      title: branding.customPage.title,
+      lead: branding.customPage.lead,
+      markdown: branding.customPage.markdown,
+      articles: [],
+    });
+  }
+  return pages;
+}
+
+function uiArticles(page: PlayerContentPage): NewsArticle[] {
+  return (page.articles ?? []).map((article) => ({
+    id: article.id,
+    title: article.title,
+    summary: article.summary,
+    publishedOn: article.publishedOn,
+    cover: safeCoverUrl(article.coverUrl),
+    markdown: article.markdown,
+  })).sort((left, right) => {
+    const date = right.publishedOn.localeCompare(left.publishedOn);
+    return date !== 0 ? date : left.title.localeCompare(right.title);
+  });
+}
+
+function refreshLatestArticle(): void {
+  const newest = state.contentPages
+    .filter((page) => page.announcementPage)
+    .flatMap((page) => uiArticles(page).map((article) => ({ pageId: page.id, article })))
+    .sort((left, right) => right.article.publishedOn.localeCompare(left.article.publishedOn))[0];
+  state.latestArticle = newest?.article ?? null;
+  state.latestArticlePageId = newest?.pageId ?? null;
+  const firstAnnouncement = state.contentPages.find((page) => page.announcementPage);
+  state.newsArticles = firstAnnouncement ? uiArticles(firstAnnouncement) : [];
+  state.newsLoadError = null;
 }
 
 function safeCoverUrl(value: string | null | undefined): string {
@@ -573,8 +630,10 @@ export function showLocalMode(mode: LocalManagementMode): void {
 
 export function showPage(page: Page): void {
   if (state.page === page) {
-    if (page === "NEWS") {
-      state.newsRequest = { kind: "list", articleId: null, seq: state.newsRequest.seq + 1 };
+    if (page.startsWith("CONTENT:") || page === "NEWS" || page === "CUSTOM") {
+      const pageId = page === "NEWS" ? "news"
+        : page === "CUSTOM" ? "custom" : page.substring("CONTENT:".length);
+      state.newsRequest = { kind: "list", pageId, articleId: null, seq: state.newsRequest.seq + 1 };
     }
     return;
   }
@@ -583,9 +642,11 @@ export function showPage(page: Page): void {
 }
 
 export function openLatestNews(): void {
-  showPage("NEWS");
+  if (!state.latestArticlePageId) return;
+  showPage(contentRoute(state.latestArticlePageId));
   state.newsRequest = {
     kind: "article",
+    pageId: state.latestArticlePageId,
     articleId: null,
     seq: state.newsRequest.seq + 1,
   };
@@ -596,27 +657,29 @@ export function setLatestArticle(article: NewsArticle | null): void {
 }
 
 export async function loadNews(): Promise<void> {
-  if (state.branding.newsArticles != null || state.newsArticles.length > 0) return;
+  if (state.branding.contentPages != null || state.branding.newsArticles != null) return;
+  const legacyPage = state.contentPages.find((page) => page.id === "news" && page.announcementPage);
+  if (!legacyPage || legacyPage.articles != null) return;
   try {
     const articles = await loadBundledNews();
-    if (state.branding.newsArticles != null) return;
-    state.newsArticles = articles;
-    state.latestArticle = articles[0] ?? null;
+    if (state.branding.contentPages != null || state.branding.newsArticles != null) return;
+    legacyPage.articles = articles.map((article) => ({
+      id: article.id, title: article.title, summary: article.summary,
+      publishedOn: article.publishedOn, coverUrl: article.cover,
+      markdown: article.markdown,
+    }));
+    refreshLatestArticle();
   } catch (error) {
     state.newsLoadError = String(error);
   }
 }
 
 export function navigationPages(): Array<{ page: Page; label: string }> {
-  const pages: Array<{ page: Page; label: string }> = [
-    { page: "HOME", label: "主页" },
-    { page: "NEWS", label: "新闻" },
-  ];
-  const custom = state.branding.customPage;
-  if (custom?.enabled && custom.navigationLabel.trim().length > 0) {
-    pages.push({ page: "CUSTOM", label: custom.navigationLabel });
-  }
-  pages.push({ page: "ABOUT", label: "关于" });
+  const pages: Array<{ page: Page; label: string }> = [{ page: "HOME", label: "主页" }];
+  state.contentPages.forEach((content) => {
+    pages.push({ page: contentRoute(content.id), label: content.navigationLabel });
+  });
+  pages.push({ page: "ABOUT", label: "关于更新器" });
   return pages;
 }
 

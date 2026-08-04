@@ -271,7 +271,7 @@ final class PlayerView {
         return new Branding(branding.productName(), subtitle, branding.serverAddress(),
                 branding.coverObject(), branding.accentColor(), branding.secondaryAccentColor(),
                 branding.brandName(), branding.brandEnglishName(),
-                branding.newsArticles(), branding.customPage());
+                branding.newsArticles(), branding.customPage(), branding.contentPages());
     }
 
     private static boolean unusableText(String value) {

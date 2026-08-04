@@ -47,7 +47,7 @@ final class ManagementSettingsStore {
             if (parent != null) Files.createDirectories(parent);
             Path temporary = Files.createTempFile(parent, file.getFileName().toString(), ".tmp");
             try {
-                Files.write(temporary, json.write(normalized));
+                Files.write(temporary, json.writePretty(normalized));
                 try {
                     Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE,
                             StandardCopyOption.REPLACE_EXISTING);

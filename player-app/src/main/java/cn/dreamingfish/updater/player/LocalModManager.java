@@ -312,7 +312,7 @@ final class LocalModManager {
         Path temporary = preferencesFile.resolveSibling(
                 preferencesFile.getFileName() + ".tmp-" + UUID.randomUUID());
         try {
-            Files.write(temporary, json.write(preferences),
+            Files.write(temporary, json.writePretty(preferences),
                     StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
             moveReplace(temporary, preferencesFile);
         } finally {

@@ -267,47 +267,20 @@
 
                 <div class="form-section-heading span-2 personalization-section-toolbar">
                   <div>
-                    <strong>新闻管理</strong>
-                    <small>新闻会显示在玩家端首页和“新闻”页面，可添加多篇并随时修改。</small>
+                    <strong>玩家端页面</strong>
+                    <small>主页和“关于更新器”固定保留，其余页面都由您添加。普通页面适合写玩法与规则；公告页面可以连续发布多条新闻。</small>
                   </div>
-                  <button class="secondary-button" id="add-player-news" type="button">＋ 添加新闻</button>
+                  <div class="button-row">
+                    <button class="secondary-button" id="import-player-pages" type="button">导入配置</button>
+                    <button class="secondary-button" id="export-player-pages" type="button">导出配置</button>
+                    <button class="secondary-button" id="copy-player-pages-ai-prompt" type="button">复制 AI 提示词</button>
+                    <button class="primary-button" id="add-player-page" type="button">＋ 添加页面</button>
+                    <input id="import-player-pages-input" type="file" accept="application/json,.json" hidden>
+                  </div>
                 </div>
-                <div class="legacy-content-note span-2" id="legacy-news-note" hidden>当前项目仍在使用玩家端程序自带的旧新闻。添加或保存新闻后，玩家端会改用这里的内容。</div>
-                <div class="player-news-editor span-2" id="player-news-editor"></div>
-
-                <div class="form-section-heading span-2">
-                  <strong>自定义页面</strong>
-                  <small>启用后，玩家端顶部会多出一个导航标签；页面正文支持 Markdown。</small>
-                </div>
-                <label class="check-field span-2 custom-page-toggle">
-                  <input name="customPageEnabled" type="checkbox">
-                  <span>启用自定义页面</span>
-                </label>
-                <div class="form-grid span-2 custom-page-fields" id="custom-page-fields">
-                  <label class="field">
-                    <span>顶部导航名称（最多 12 个字符）</span>
-                    <input name="customPageNavigationLabel" maxlength="12" placeholder="服务器介绍">
-                    <small class="field-help">显示在“新闻”和“关于”旁边，例如“服务器介绍”或“玩法指南”。</small>
-                  </label>
-                  <label class="field">
-                    <span>页面顶部小标题</span>
-                    <input name="customPageEyebrow" maxlength="48" placeholder="WELCOME">
-                    <small class="field-help">显示在页面主标题上方，留空也可以。</small>
-                  </label>
-                  <label class="field">
-                    <span>页面主标题</span>
-                    <input name="customPageTitle" maxlength="120" placeholder="欢迎来到服务器">
-                  </label>
-                  <label class="field">
-                    <span>页面引导语</span>
-                    <input name="customPageLead" maxlength="300" placeholder="用一两句话告诉玩家这里有什么">
-                  </label>
-                  <label class="field span-2">
-                    <span>页面正文（Markdown）</span>
-                    <textarea name="customPageMarkdown" maxlength="131072" rows="10" placeholder="可以写服务器介绍、玩法说明、规则或加入方式。"></textarea>
-                    <small class="field-help">支持标题、列表、加粗、链接和图片；玩家端会使用和新闻正文相同的排版。</small>
-                  </label>
-                </div>
+                <div class="legacy-content-note span-2" id="legacy-news-note" hidden>这是旧版新闻与自定义页面，保存后会自动转成新的页面配置，不会丢失内容。</div>
+                <p class="panel-help span-2"><strong>不会排版也没关系。</strong>正文上方提供标题、加粗、列表、引用、链接和图片等快捷按钮；也可以导出 JSON，复制 AI 提示词让 AI 按您的要求修改，再导入这里预览确认。</p>
+                <div class="player-page-editor span-2" id="player-page-editor"></div>
               </div>
             </form>
 
@@ -315,7 +288,7 @@
               <div class="panel-header">
                 <div>
                   <h2>玩家端预览</h2>
-                  <span>直接运行玩家端同一套界面，可点击顶部导航检查新闻和自定义页面</span>
+                  <span>直接运行玩家端同一套界面，可点击顶部导航检查公告页和普通内容页</span>
                 </div>
               </div>
               <div class="player-preview-stage" id="player-preview-stage">

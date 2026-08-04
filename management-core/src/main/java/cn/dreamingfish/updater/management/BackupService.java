@@ -130,7 +130,7 @@ public final class BackupService {
     private void writeZip(Path zip, Path databaseSnapshot) throws IOException {
         try (ZipOutputStream output = new ZipOutputStream(new BufferedOutputStream(
                 Files.newOutputStream(zip, StandardOpenOption.TRUNCATE_EXISTING)))) {
-            putBytes(output, "backup-metadata.json", json.write(
+            putBytes(output, "backup-metadata.json", json.writePretty(
                     new BackupMetadata(BACKUP_FORMAT_VERSION, Instant.now(), "0.1.0")));
             putFile(output, databaseSnapshot, "management.db");
             putTree(output, paths.keys(), "keys");

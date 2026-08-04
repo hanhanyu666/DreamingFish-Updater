@@ -57,6 +57,7 @@ export interface Branding {
   brandEnglishName: string;
   newsArticles?: PlayerNewsArticle[] | null;
   customPage?: PlayerCustomPage | null;
+  contentPages?: PlayerContentPage[] | null;
 }
 
 export interface PlayerNewsArticle {
@@ -75,6 +76,17 @@ export interface PlayerCustomPage {
   title: string;
   lead: string;
   markdown: string;
+}
+
+export interface PlayerContentPage {
+  id: string;
+  navigationLabel: string;
+  announcementPage: boolean;
+  eyebrow: string;
+  title: string;
+  lead: string;
+  markdown: string;
+  articles: PlayerNewsArticle[] | null;
 }
 
 export interface AdminPreviewPayload {
@@ -186,4 +198,5 @@ export const DEFAULT_BRANDING: Branding = {
   brandEnglishName: "DreamingFish",
   newsArticles: null,
   customPage: null,
+  contentPages: [],
 };

@@ -143,7 +143,7 @@ public final class PlayerDeploymentService {
     private void writeBindingAndCover(ProjectRecord project, Path root) throws IOException {
         String bundledCover = project.branding().coverObject() == null
                 ? null : ".dreamingfish-bootstrap/project-cover";
-        byte[] binding = json.write(new ProjectService(paths, database)
+        byte[] binding = json.writePretty(new ProjectService(paths, database)
                 .bindingFor(project, PLAYER_HOME, bundledCover));
         Path bootstrap = root.resolve(".dreamingfish-bootstrap");
         AtomicFiles.write(bootstrap.resolve("project-binding.json"), binding);

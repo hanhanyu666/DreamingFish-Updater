@@ -94,6 +94,38 @@ describe("player store", () => {
     });
   });
 
+  it("uses server-owned dynamic pages and hides the removed news page", () => {
+    handleSidecarMessage({
+      type: "branding",
+      branding: {
+        productName: "星河整合包", subtitle: "一起探索", serverAddress: "",
+        coverObject: null, accentColor: "#123456", secondaryAccentColor: "#654321",
+        brandName: "星河服", brandEnglishName: "StarRiver",
+        newsArticles: [], customPage: null,
+        contentPages: [{
+          id: "notice", navigationLabel: "公告", announcementPage: true,
+          eyebrow: "NOTICE", title: "服务器公告", lead: "最近消息", markdown: "",
+          articles: [{
+            id: "maintenance", title: "维护完成", summary: "可以进入游戏了",
+            publishedOn: "2026-08-04", coverUrl: "", markdown: "## 欢迎回来",
+          }],
+        }, {
+          id: "rules", navigationLabel: "规则", announcementPage: false,
+          eyebrow: "RULES", title: "游玩规则", lead: "请先阅读", markdown: "- 友善交流",
+          articles: [],
+        }],
+      },
+    });
+
+    expect(store.navigationPages()).toEqual([
+      { page: "HOME", label: "主页" },
+      { page: "CONTENT:notice", label: "公告" },
+      { page: "CONTENT:rules", label: "规则" },
+      { page: "ABOUT", label: "关于更新器" },
+    ]);
+    expect(store.state.latestArticle?.id).toBe("maintenance");
+  });
+
   it("applies progress state", () => {
     handleSidecarMessage({
       type: "progress",

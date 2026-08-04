@@ -13,6 +13,7 @@ import cn.dreamingfish.updater.management.StoredRelease;
 import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.PlayerCustomPage;
+import cn.dreamingfish.updater.protocol.PlayerContentPage;
 import cn.dreamingfish.updater.protocol.PlayerNewsArticle;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
@@ -1044,10 +1045,13 @@ final class AdminWebServer implements AutoCloseable {
         PlayerCustomPage customPage = request.customPage != null
                 ? request.customPage
                 : current == null ? PlayerCustomPage.disabled() : current.customPage();
+        List<PlayerContentPage> contentPages = request.contentPages != null
+                ? request.contentPages
+                : current == null ? List.of() : current.contentPages();
         return new Branding(
                 productName, subtitle, serverAddress,
                 coverObject, accent, secondary, brandName, brandEnglishName,
-                newsArticles, customPage);
+                newsArticles, customPage, contentPages);
     }
 
     private Map<String, Object> projectSummary(
@@ -1400,6 +1404,7 @@ final class AdminWebServer implements AutoCloseable {
             String brandEnglishName,
             List<PlayerNewsArticle> newsArticles,
             PlayerCustomPage customPage,
+            List<PlayerContentPage> contentPages,
             String coverPath,
             Boolean removeCover
     ) {

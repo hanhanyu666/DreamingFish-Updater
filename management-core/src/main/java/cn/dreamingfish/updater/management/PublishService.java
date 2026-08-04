@@ -141,7 +141,7 @@ public final class PublishService {
     }
 
     private StoredRelease persistSignedManifest(ProjectRecord project, ReleaseManifest manifest) {
-        byte[] manifestBytes = json.write(manifest);
+        byte[] manifestBytes = json.writePretty(manifest);
         PrivateKey privateKey = keys.load(project);
         String signature = Base64.getEncoder().encodeToString(CryptoSupport.sign(manifestBytes, privateKey));
         String manifestHash = CryptoSupport.sha256(manifestBytes);

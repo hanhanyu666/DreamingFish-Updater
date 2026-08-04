@@ -25,6 +25,16 @@ class JsonCodecTest {
     }
 
     @Test
+    void prettyWriterKeepsFilesReadableAndRoundTrips() {
+        byte[] pretty = codec.writePretty(sampleManifest());
+        String text = new String(pretty, java.nio.charset.StandardCharsets.UTF_8);
+        org.junit.jupiter.api.Assertions.assertTrue(text.contains(System.lineSeparator())
+                || text.contains("\n"));
+        org.junit.jupiter.api.Assertions.assertTrue(text.contains("  \"schemaVersion\""));
+        assertEquals(sampleManifest(), codec.read(pretty, ReleaseManifest.class));
+    }
+
+    @Test
     void rejectsDuplicateJsonKeys() {
         byte[] duplicate = "{\"schemaVersion\":1,\"schemaVersion\":2}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         assertThrows(ProtocolException.class, () -> codec.read(duplicate, ProjectBinding.class));
@@ -46,6 +56,7 @@ class JsonCodecTest {
         assertEquals("DreamingFish", branding.brandEnglishName());
         assertNull(branding.newsArticles());
         assertNull(branding.customPage());
+        assertNull(branding.contentPages());
     }
 
     @Test
@@ -57,7 +68,9 @@ class JsonCodecTest {
                         "welcome", "欢迎", "第一条消息", "2026-08-04",
                         "https://example.com/cover.jpg", "# 欢迎\n正文")),
                 new PlayerCustomPage(true, "玩法介绍", "GUIDE",
-                        "从这里开始", "先看看这几件事", "- 安装整合包"));
+                        "从这里开始", "先看看这几件事", "- 安装整合包"),
+                List.of(new PlayerContentPage("rules", "服务器规则", false,
+                        "RULES", "游玩规则", "一起维护良好环境", "- 友善交流", List.of())));
 
         Branding restored = codec.read(codec.write(branding), Branding.class);
 

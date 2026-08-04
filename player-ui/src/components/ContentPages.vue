@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { usePlayerStore } from "../stores/player";
 import { getBridge } from "../lib/bridge";
 import NewsPage from "./NewsPage.vue";
@@ -8,6 +9,14 @@ const store = usePlayerStore();
 const bridge = getBridge();
 const VERSION = "0.1.27";
 const REPOSITORY_URL = "https://github.com/hanhanyu666/DreamingFish-Updater";
+const currentPage = computed(() => {
+  const id = store.state.page === "NEWS" ? "news"
+    : store.state.page === "CUSTOM" ? "custom"
+      : store.state.page.startsWith("CONTENT:")
+        ? store.state.page.substring("CONTENT:".length) : null;
+  if (id == null) return null;
+  return store.state.contentPages.find((page) => page.id === id) ?? null;
+});
 
 function openRepository(): void {
   bridge.openExternal(REPOSITORY_URL);
@@ -17,24 +26,24 @@ function openRepository(): void {
 <template>
   <div class="content-page-layer" :class="{ visible: store.state.page !== 'HOME' }">
     <div
-      v-if="store.state.page === 'NEWS'"
-      :key="'news-' + store.state.newsRequest.seq"
+      v-if="currentPage?.announcementPage"
+      :key="'announcements-' + currentPage.id + '-' + store.state.newsRequest.seq"
       class="content-page-host page-reveal"
     >
-      <NewsPage />
+      <NewsPage :page="currentPage" />
     </div>
     <div
-      v-else-if="store.state.page === 'CUSTOM' && store.state.branding.customPage?.enabled"
-      :key="'custom'"
+      v-else-if="currentPage"
+      :key="'content-' + currentPage.id"
       class="content-page-host page-reveal"
     >
       <div class="content-page-alignment">
         <div class="content-page">
-          <div v-if="store.state.branding.customPage.eyebrow" class="page-eyebrow">{{ store.state.branding.customPage.eyebrow }}</div>
-          <div class="page-title">{{ store.state.branding.customPage.title }}</div>
-          <div v-if="store.state.branding.customPage.lead" class="page-lead">{{ store.state.branding.customPage.lead }}</div>
+          <div v-if="currentPage.eyebrow" class="page-eyebrow">{{ currentPage.eyebrow }}</div>
+          <div class="page-title">{{ currentPage.title }}</div>
+          <div v-if="currentPage.lead" class="page-lead">{{ currentPage.lead }}</div>
           <div class="page-divider"></div>
-          <MarkdownBody :markdown="store.state.branding.customPage.markdown" />
+          <MarkdownBody :markdown="currentPage.markdown" />
         </div>
       </div>
     </div>
@@ -47,7 +56,7 @@ function openRepository(): void {
         <div class="content-page">
           <div class="page-eyebrow">DREAMINGFISH UPDATER</div>
           <div class="page-version">玩家端程序版本 {{ VERSION }}</div>
-          <div class="page-title">关于梦鱼更新器</div>
+          <div class="page-title">关于更新器</div>
           <div class="page-lead">为 Minecraft 整合包准备的一套开源自动更新工具</div>
           <div class="page-divider"></div>
           <div class="page-copy">梦鱼更新器由管理端、玩家端和启动引导程序组成。服主在管理端发布整合包文件，玩家端会在游戏启动前检查变化并完成更新。</div>

@@ -394,7 +394,7 @@ final class TransactionInstaller {
     }
 
     private void writeJournal(Path path, TransactionJournal journal) throws IOException {
-        AtomicFileSupport.write(path, json.write(journal));
+        AtomicFileSupport.write(path, json.writePretty(journal));
     }
 
     private static void deleteTree(Path root) throws IOException {

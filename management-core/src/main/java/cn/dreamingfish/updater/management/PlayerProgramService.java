@@ -403,7 +403,7 @@ public final class PlayerProgramService {
 
     private StoredPlayerProgram persist(ProjectRecord project, PlayerProgramManifest manifest,
                                         Path targetDirectory) throws IOException {
-        byte[] bytes = json.write(manifest);
+        byte[] bytes = json.writePretty(manifest);
         String signature = Base64.getEncoder().encodeToString(
                 CryptoSupport.sign(bytes, keys.load(project)));
         String hash = CryptoSupport.sha256(bytes);

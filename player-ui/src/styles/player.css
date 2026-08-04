@@ -239,12 +239,20 @@ input {
 
 .top-navigation {
   display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 24px;
+  gap: clamp(10px, 2vw, 24px);
   margin-left: 44px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.top-navigation::-webkit-scrollbar {
+  display: none;
 }
 
 .top-nav-button {
+  flex: none;
   height: 52px;
   padding: 2px 2px 0;
   background: transparent;

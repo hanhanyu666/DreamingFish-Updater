@@ -11,6 +11,7 @@ import cn.dreamingfish.updater.management.RemovalDecision;
 import cn.dreamingfish.updater.management.StoredRelease;
 import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.PlayerCustomPage;
+import cn.dreamingfish.updater.protocol.PlayerContentPage;
 import cn.dreamingfish.updater.protocol.PlayerNewsArticle;
 
 import java.io.IOException;
@@ -240,7 +241,8 @@ final class InteractiveConsole {
         String serverAddress = prompt("Minecraft 服务器地址（显示在服务器信息区域，可留空）", "");
 
         Branding branding = new Branding(productName, subtitle, serverAddress,
-                null, "#2ee8df", "#b06cff", brandName, brandEnglishName);
+                null, "#2ee8df", "#b06cff", brandName, brandEnglishName,
+                List.of(), null, List.of());
         var services = root.services();
         ProjectRules rules = ProjectRules.defaults().withForcedSyncDirectories(
                 ProjectCreateCommand.parsePaths(forcedInput));
@@ -325,34 +327,20 @@ final class InteractiveConsole {
             cover = requireRegularFile(coverInput, "背景图片");
         }
 
-        List<PlayerNewsArticle> newsArticles = old.newsArticles();
+        List<PlayerContentPage> contentPages = old.contentPages() == null
+                ? migrateLegacyPages(old) : old.contentPages();
         root.out().println();
-        root.out().println("【新闻】");
-        if (newsArticles == null) {
-            root.out().println("当前项目仍在使用玩家端程序内置的旧新闻；保存自定义新闻后将不再读取内置内容。");
-        } else {
-            root.out().println("当前已配置 " + newsArticles.size() + " 篇新闻。");
-        }
-        if (confirm("是否管理玩家端新闻？", false)) {
-            newsArticles = editPlayerNews(newsArticles == null ? List.of() : newsArticles);
-        }
-
-        PlayerCustomPage customPage = old.customPage();
-        root.out().println();
-        root.out().println("【自定义页面】");
-        root.out().println(customPage == null
-                ? "当前项目仍使用旧版内置介绍页面。"
-                : customPage.enabled()
-                        ? "当前已启用自定义页面：" + customPage.navigationLabel()
-                        : "当前未启用自定义页面。");
-        if (confirm("是否修改自定义页面？", false)) {
-            customPage = editCustomPage(customPage);
+        root.out().println("【玩家端页面】");
+        root.out().println("主页和“关于更新器”固定保留；普通页面适合玩法/规则，公告页可以发布多条新闻。");
+        root.out().println("当前已配置 " + contentPages.size() + " 个页面。Web 管理页还提供快捷排版、JSON 导入导出和 AI 提示词。");
+        if (confirm("是否管理玩家端页面？", false)) {
+            contentPages = editPlayerPages(contentPages);
         }
 
         Branding branding = new Branding(
                 productName, subtitle, serverAddress,
                 coverObject, accent, secondaryAccent,
-                brandName, brandEnglishName, newsArticles, customPage);
+                brandName, brandEnglishName, List.of(), null, contentPages);
         var services = root.services();
         ProjectRecord updated = services.projects().configure(
                 current.id(), current.displayName(), current.sourceDirectory(),
@@ -370,12 +358,84 @@ final class InteractiveConsole {
                 updated.branding().serverAddress()));
         root.out().println("  自定义背景："
                 + (updated.branding().coverObject() == null ? "未设置" : "已设置"));
-        root.out().println("  新闻：" + (updated.branding().newsArticles() == null
-                ? "使用旧版内置新闻"
-                : updated.branding().newsArticles().size() + " 篇"));
-        root.out().println("  自定义页面：" + (updated.branding().customPage() != null
-                && updated.branding().customPage().enabled()
-                ? updated.branding().customPage().navigationLabel() : "未启用"));
+        root.out().println("  玩家端页面：" + updated.branding().contentPages().size() + " 个");
+    }
+
+    private List<PlayerContentPage> migrateLegacyPages(Branding branding) {
+        List<PlayerContentPage> pages = new ArrayList<>();
+        pages.add(new PlayerContentPage("news", "新闻", true,
+                branding.brandEnglishName() + " NEWS", branding.brandName() + "新闻",
+                "这里记录服务器动态、版本消息和想与玩家分享的内容。", "",
+                branding.newsArticles() == null ? List.of() : branding.newsArticles()));
+        PlayerCustomPage custom = branding.customPage();
+        if (custom != null && custom.enabled()) {
+            pages.add(new PlayerContentPage("custom", custom.navigationLabel(), false,
+                    custom.eyebrow(), custom.title(), custom.lead(), custom.markdown(), List.of()));
+        }
+        return List.copyOf(pages);
+    }
+
+    private List<PlayerContentPage> editPlayerPages(List<PlayerContentPage> existing) {
+        List<PlayerContentPage> pages = new ArrayList<>(existing);
+        while (true) {
+            root.out().println();
+            root.out().println("玩家端页面（顺序就是顶部导航顺序）：");
+            if (pages.isEmpty()) root.out().println("  （未添加页面，只显示主页和关于更新器）");
+            for (int i = 0; i < pages.size(); i++) {
+                PlayerContentPage page = pages.get(i);
+                root.out().println("  [" + (i + 1) + "] " + page.navigationLabel()
+                        + (page.announcementPage() ? " · 公告页 · " + page.articles().size() + " 条" : " · 普通页面"));
+            }
+            root.out().println("  [A] 添加  [E] 编辑  [D] 删除  [U] 上移  [N] 下移  [Q] 完成");
+            String choice = readLine("请选择：").trim().toLowerCase(Locale.ROOT);
+            switch (choice) {
+                case "a" -> {
+                    if (pages.size() >= 12) root.out().println("最多只能添加 12 个页面。");
+                    else pages.add(promptContentPage(null, pages));
+                }
+                case "e" -> {
+                    int index = promptListIndex("要编辑的页面编号", pages.size());
+                    if (index >= 0) pages.set(index, promptContentPage(pages.get(index), pages));
+                }
+                case "d" -> {
+                    int index = promptListIndex("要删除的页面编号", pages.size());
+                    if (index >= 0 && confirm("确认删除“" + pages.get(index).navigationLabel() + "”？", false)) pages.remove(index);
+                }
+                case "u", "n" -> {
+                    int index = promptListIndex("要移动的页面编号", pages.size());
+                    int target = choice.equals("u") ? index - 1 : index + 1;
+                    if (index >= 0 && target >= 0 && target < pages.size()) java.util.Collections.swap(pages, index, target);
+                }
+                case "q", "" -> { return List.copyOf(pages); }
+                default -> root.out().println("请输入 A、E、D、U、N 或 Q。");
+            }
+        }
+    }
+
+    private PlayerContentPage promptContentPage(PlayerContentPage current, List<PlayerContentPage> pages) {
+        String id = prompt("页面 ID（英文字母、数字、点、下划线或短横线）", current == null ? "page-" + (pages.size() + 1) : current.id());
+        while (true) {
+            String candidate = id;
+            boolean duplicate = pages.stream().anyMatch(
+                    page -> page != current && page.id().equals(candidate));
+            if (id.matches("[A-Za-z0-9._-]{1,64}") && !duplicate) break;
+            root.out().println("页面 ID 格式无效或已经存在。");
+            id = promptRequired("页面 ID");
+        }
+        String label = prompt("顶部导航名称（最多 12 个字符）", current == null ? "新页面" : current.navigationLabel());
+        boolean announcement = confirm("是否设为公告页？公告页可以添加多条新闻", current != null && current.announcementPage());
+        String eyebrow = prompt("页面顶部小标题", current == null ? "" : current.eyebrow());
+        String title = prompt("页面主标题", current == null ? label : current.title());
+        String lead = prompt("页面引导语", current == null ? "" : current.lead());
+        if (announcement) {
+            List<PlayerNewsArticle> articles = editPlayerNews(current == null || current.articles() == null ? List.of() : current.articles());
+            return new PlayerContentPage(id, label, true, eyebrow, title, lead, "", articles);
+        }
+        String oldMarkdown = current == null ? "" : current.markdown();
+        String markdownInput = readLine("页面正文 Markdown（输入 @文件路径读取；回车保留）：");
+        String markdown = markdownInput.isBlank() ? oldMarkdown
+                : ChangelogInput.interactive(markdownInput, root.settingsFile().getParent());
+        return new PlayerContentPage(id, label, false, eyebrow, title, lead, markdown, List.of());
     }
 
     private List<PlayerNewsArticle> editPlayerNews(List<PlayerNewsArticle> existing) {
@@ -479,7 +539,7 @@ final class InteractiveConsole {
 
     private int promptListIndex(String label, int size) {
         if (size == 0) {
-            root.out().println("当前没有可操作的新闻。");
+            root.out().println("当前没有可操作的项目。");
             return -1;
         }
         while (true) {

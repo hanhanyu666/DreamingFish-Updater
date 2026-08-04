@@ -3,6 +3,7 @@ package cn.dreamingfish.updater.management.cli;
 import cn.dreamingfish.updater.management.ManagementDatabase;
 import cn.dreamingfish.updater.management.ManagementPaths;
 import cn.dreamingfish.updater.protocol.JsonCodec;
+import cn.dreamingfish.updater.protocol.ProjectBinding;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -126,9 +127,10 @@ class ManagementCliTest {
                 instance.resolve(".dreamingfish-bootstrap/project-binding.json")));
         assertEquals("desktop-cover", Files.readString(
                 instance.resolve(".dreamingfish-bootstrap/project-cover")));
-        assertTrue(Files.readString(instance.resolve(
-                ".dreamingfish-bootstrap/project-binding.json"))
-                .contains("\"bundledCoverPath\":\".dreamingfish-bootstrap/project-cover\""));
+        ProjectBinding writtenBinding = new JsonCodec().read(instance.resolve(
+                ".dreamingfish-bootstrap/project-binding.json"), ProjectBinding.class);
+        assertEquals(".dreamingfish-bootstrap/project-cover",
+                writtenBinding.bundledCoverPath());
         assertTrue(Files.isRegularFile(instance.resolve(
                 ".dreamingfish-bootstrap/bundled-release/manifest.json")));
         assertTrue(Files.isRegularFile(instance.resolve("mods/example.jar")));

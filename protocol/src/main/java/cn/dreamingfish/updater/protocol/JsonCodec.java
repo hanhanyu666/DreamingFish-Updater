@@ -46,6 +46,15 @@ public final class JsonCodec {
         }
     }
 
+    /** Deterministic, human-readable JSON for persisted .json files. */
+    public byte[] writePretty(Object value) {
+        try {
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(value);
+        } catch (IOException e) {
+            throw new ProtocolException("Unable to encode JSON", e);
+        }
+    }
+
     public String writeString(Object value) {
         try {
             return mapper.writeValueAsString(value);
@@ -56,7 +65,7 @@ public final class JsonCodec {
 
     public void write(Path target, Object value) throws IOException {
         Files.createDirectories(target.toAbsolutePath().normalize().getParent());
-        Files.write(target, write(value));
+        Files.write(target, writePretty(value));
     }
 
     public <T> T read(byte[] bytes, Class<T> type) {

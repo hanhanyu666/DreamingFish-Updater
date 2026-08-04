@@ -1,6 +1,7 @@
 package cn.dreamingfish.updater.management.cli;
 
 import cn.dreamingfish.updater.protocol.JsonCodec;
+import cn.dreamingfish.updater.protocol.ReleaseManifest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -280,8 +281,9 @@ class AdminWebServerTest {
                     URI.create("http://127.0.0.1:" + publicPort),
                     "/v1/projects/web-demo/latest", "GET", null, null);
             assertEquals(200, latest.statusCode(), latest.body());
-            assertTrue(latest.body().contains("\"displayVersion\":\"1.1.0\""),
-                    latest.body());
+            assertEquals("1.1.0", json.read(
+                    latest.body().getBytes(StandardCharsets.UTF_8),
+                    ReleaseManifest.class).displayVersion());
 
             HttpResponse<String> stopped = send(
                     base, "/api/public-service/stop", "POST", "{}", token);

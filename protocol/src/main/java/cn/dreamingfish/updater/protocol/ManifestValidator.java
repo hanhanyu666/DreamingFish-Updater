@@ -252,6 +252,34 @@ public final class ManifestValidator {
         validateColor(branding.secondaryAccentColor(), "secondary accent color");
         validateNews(branding.newsArticles());
         validateCustomPage(branding.customPage());
+        validateContentPages(branding.contentPages());
+    }
+
+    private static void validateContentPages(List<PlayerContentPage> pages) {
+        // null means a pre-page-management project; the player converts the
+        // legacy news/custom fields at runtime. An empty list is intentional.
+        if (pages == null) return;
+        if (pages.size() > 12) {
+            throw new ProtocolException("Too many player content pages");
+        }
+        Set<String> ids = new java.util.HashSet<>();
+        for (PlayerContentPage page : pages) {
+            if (page == null || page.id() == null
+                    || !NEWS_ID.matcher(page.id()).matches()
+                    || !ids.add(page.id())) {
+                throw new ProtocolException("Invalid or duplicate player content page ID");
+            }
+            requireText(page.navigationLabel(), "player page navigation label", 12);
+            requireLength(page.eyebrow(), "player page eyebrow", 48);
+            requireText(page.title(), "player page title", 120);
+            requireLength(page.lead(), "player page lead", 300);
+            requireLength(page.markdown(), "player page Markdown", 131_072);
+            if (page.announcementPage()) {
+                validateNews(page.articles() == null ? List.of() : page.articles());
+            } else if (page.articles() != null && !page.articles().isEmpty()) {
+                throw new ProtocolException("Normal player page cannot contain announcements");
+            }
+        }
     }
 
     private static void validateNews(List<PlayerNewsArticle> articles) {

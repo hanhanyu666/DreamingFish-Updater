@@ -65,7 +65,7 @@ final class ProjectConfigureCommand implements Runnable {
                 brandName == null ? old.brandName() : brandName,
                 brandEnglishName == null
                         ? old.brandEnglishName() : brandEnglishName,
-                old.newsArticles(), old.customPage()
+                old.newsArticles(), old.customPage(), old.contentPages()
         );
         ProjectRules rules = rulesFile == null ? current.rules() : ProjectCreateCommand.readRules(services, rulesFile);
         if (clearForceSync && forcedSyncDirectories != null) {
