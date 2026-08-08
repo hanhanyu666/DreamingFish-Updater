@@ -26,6 +26,13 @@ describe("player store", () => {
     expect(store.state.logs).toEqual(["hello"]);
   });
 
+  it("keeps startup music optional when the instance has no MP3", async () => {
+    store.stopStartupMusic();
+    await expect(store.initializeStartupMusic()).resolves.toBeUndefined();
+    expect(store.state.startupMusicUrl).toBeNull();
+    expect(store.state.musicPlaying).toBe(false);
+  });
+
   it("keeps custom title-bar branding and defaults legacy messages", () => {
     expect(displayBranding({
       productName: "测试整合包",

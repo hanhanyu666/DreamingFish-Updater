@@ -17,6 +17,30 @@ class ManifestValidatorTest {
     }
 
     @Test
+    void validatesOptionalPlayerMusicMetadataAndRejectsUnsafeNames() {
+        PlayerMusicTrack track = new PlayerMusicTrack(
+                "theme", "主题曲", "theme.mp3", "a".repeat(64), 42);
+        Branding branding = new Branding(
+                "Pack", "Subtitle", "", null, "#112233", "#445566",
+                "Brand", "BrandEN", List.of(), null, List.of(), List.of(track));
+        ReleaseManifest valid = new ReleaseManifest(
+                1, "dreamhaven", "release-music", 1, Instant.now(),
+                "1.0.0", "0.1.0", "", Set.of(), List.of(), List.of(),
+                List.of(), branding, List.of());
+        assertDoesNotThrow(() -> ManifestValidator.validateRelease(valid, Set.of()));
+
+        PlayerMusicTrack unsafe = new PlayerMusicTrack(
+                "unsafe", "Unsafe", "../theme.mp3", "b".repeat(64), 1);
+        Branding invalidBranding = branding.withMusicTracks(List.of(unsafe));
+        ReleaseManifest invalid = new ReleaseManifest(
+                1, "dreamhaven", "release-music-unsafe", 1, Instant.now(),
+                "1.0.0", "0.1.0", "", Set.of(), List.of(), List.of(),
+                List.of(), invalidBranding, List.of());
+        assertThrows(ProtocolException.class,
+                () -> ManifestValidator.validateRelease(invalid, Set.of()));
+    }
+
+    @Test
     void rejectsOverlongTitleBarBrandNames() {
         ReleaseManifest original = JsonCodecTest.sampleManifest();
         Branding invalid = new Branding(

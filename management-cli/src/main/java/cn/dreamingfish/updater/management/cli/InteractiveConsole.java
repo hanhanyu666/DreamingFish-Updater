@@ -340,7 +340,8 @@ final class InteractiveConsole {
         Branding branding = new Branding(
                 productName, subtitle, serverAddress,
                 coverObject, accent, secondaryAccent,
-                brandName, brandEnglishName, List.of(), null, contentPages);
+                brandName, brandEnglishName, List.of(), null, contentPages,
+                old.musicTracks());
         var services = root.services();
         ProjectRecord updated = services.projects().configure(
                 current.id(), current.displayName(), current.sourceDirectory(),

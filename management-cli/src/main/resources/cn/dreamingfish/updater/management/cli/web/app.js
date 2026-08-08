@@ -524,7 +524,34 @@ function renderPersonalizationForm() {
   const legacy = branding.contentPages == null;
   byId("legacy-news-note").hidden = !legacy;
   renderPlayerPageEditor(legacyPlayerPages(branding));
+  renderMusicTracks(branding.musicTracks || []);
   updatePlayerPreview();
+}
+
+function renderMusicTracks(tracks) {
+  const list = byId("music-track-list");
+  const empty = byId("music-empty");
+  if (!list || !empty) return;
+  list.replaceChildren();
+  empty.classList.toggle("visible", !tracks.length);
+  tracks.forEach((track) => {
+    const item = document.createElement("div");
+    item.className = "music-track-row";
+    const label = document.createElement("span");
+    label.textContent = `${track.title} · ${track.fileName}`;
+    label.title = label.textContent;
+    const remove = actionButton("删除", async () => {
+      if (!app.project) return;
+      const accepted = await ask("删除音乐", `确认删除“${track.title}”吗？发布后玩家端也会移除这首歌。`, "删除", true);
+      if (!accepted) return;
+      await runBusy("正在删除音乐", async () => {
+        await api(`/api/projects/${encodeURIComponent(app.project.id)}/music/${encodeURIComponent(track.id)}`, { method: "DELETE" });
+        await refreshState(app.project.id);
+      });
+    });
+    item.append(label, remove);
+    list.append(item);
+  });
 }
 
 function legacyPlayerPages(branding) {
@@ -2370,6 +2397,33 @@ function bindPersonalizationForm() {
   byId("choose-cover-upload").addEventListener("click", () => coverInput.click());
   coverInput.addEventListener("change", () => {
     selectPendingCover(coverInput.files?.[0] || null);
+  });
+  const musicInput = byId("music-upload-input");
+  byId("choose-music-upload").addEventListener("click", () => musicInput.click());
+  musicInput.addEventListener("change", async () => {
+    const file = musicInput.files?.[0];
+    musicInput.value = "";
+    if (!file || !app.project) return;
+    if (!file.name.toLowerCase().endsWith(".mp3")) {
+      showErrorDialog("只能上传 MP3 文件。");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      showErrorDialog("单首音乐不能超过 20 MiB。");
+      return;
+    }
+    await runBusy("正在上传音乐", async () => {
+      const titleInput = byId("music-upload-title");
+      const title = titleInput.value.trim() || file.name.replace(/\.mp3$/i, "");
+      const response = await fetch(`/api/projects/${encodeURIComponent(app.project.id)}/music/upload?fileName=${encodeURIComponent(file.name)}&title=${encodeURIComponent(title)}`, {
+        method: "PUT", headers: { "Accept": "application/json", "Content-Type": "audio/mpeg", "X-DFS-Token": app.token }, body: file
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.message || `音乐上传失败：HTTP ${response.status}`);
+      await refreshState(app.project.id);
+      titleInput.value = "";
+      toast(`已添加音乐：${title}`);
+    });
   });
   form.addEventListener("input", updatePlayerPreview);
   form.addEventListener("change", (event) => {

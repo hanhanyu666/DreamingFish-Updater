@@ -5,6 +5,7 @@ import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.ManifestFile;
 import cn.dreamingfish.updater.protocol.ManifestValidator;
 import cn.dreamingfish.updater.protocol.PathSafety;
+import cn.dreamingfish.updater.protocol.PlayerMusicTrack;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
 import cn.dreamingfish.updater.protocol.ReleaseManifest;
 
@@ -62,6 +63,7 @@ public final class PublishService {
             if (project.branding().coverObject() != null) {
                 objects.require(project.branding().coverObject());
             }
+            verifyMusicObjects(project.branding().musicTracks());
 
             List<ScannedFile> finalScan = scanner.scan(project);
             if (!preview.files().equals(finalScan)) {
@@ -113,6 +115,7 @@ public final class PublishService {
             if (old.branding().coverObject() != null) {
                 objects.require(old.branding().coverObject());
             }
+            verifyMusicObjects(old.branding().musicTracks());
 
             Instant now = Instant.now();
             long sequence = project.nextSequence();
@@ -283,6 +286,18 @@ public final class PublishService {
 
     private static String fold(String path) {
         return path.replace('\\', '/').toLowerCase(Locale.ROOT);
+    }
+
+    private void verifyMusicObjects(List<PlayerMusicTrack> tracks) {
+        if (tracks == null) return;
+        for (PlayerMusicTrack track : tracks) {
+            Path object = objects.require(track.sha256());
+            try {
+                objects.verify(object, track.sha256(), track.size());
+            } catch (IOException e) {
+                throw new ManagementException("Unable to verify music object: " + track.title(), e);
+            }
+        }
     }
 
     private static String releaseId(long sequence, Instant createdAt) {

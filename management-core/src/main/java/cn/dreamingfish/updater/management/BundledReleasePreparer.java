@@ -77,6 +77,7 @@ public final class BundledReleasePreparer {
                 .orElseThrow(() -> new ManagementException("Unknown release: " + releaseId));
         SignedManifest signed = readAndVerify(project, stored);
         validateProtectedPaths(instance, home, signed.manifest());
+        verifyMusicObjects(signed.manifest());
 
         List<PreparedFile> files = preflightFiles(instance, signed.manifest());
         if (materializeManagedFiles) {
@@ -148,6 +149,18 @@ public final class BundledReleasePreparer {
                 throw new ManagementException("Unable to verify instance file: " + file.path(), e);
             }
         }).toList();
+    }
+
+    private void verifyMusicObjects(ReleaseManifest manifest) {
+        if (manifest.branding().musicTracks() == null) return;
+        for (var track : manifest.branding().musicTracks()) {
+            try {
+                Path object = objects.require(track.sha256());
+                objects.verify(object, track.sha256(), track.size());
+            } catch (IOException e) {
+                throw new ManagementException("Unable to verify music object: " + track.title(), e);
+            }
+        }
     }
 
     private void rejectFilesManagedByOtherReleases(Path instance, ReleaseManifest selected) {

@@ -4,6 +4,7 @@ import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.ManifestFile;
 import cn.dreamingfish.updater.protocol.ReleaseManifest;
+import cn.dreamingfish.updater.protocol.PlayerMusicTrack;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -269,6 +270,14 @@ public final class ManagementDatabase {
                     objectStatement.setLong(2, file.size());
                     objectStatement.setString(3, manifest.createdAt().toString());
                     objectStatement.addBatch();
+                }
+                if (manifest.branding().musicTracks() != null) {
+                    for (PlayerMusicTrack track : manifest.branding().musicTracks()) {
+                        objectStatement.setString(1, track.sha256());
+                        objectStatement.setLong(2, track.size());
+                        objectStatement.setString(3, manifest.createdAt().toString());
+                        objectStatement.addBatch();
+                    }
                 }
                 fileStatement.executeBatch();
                 objectStatement.executeBatch();

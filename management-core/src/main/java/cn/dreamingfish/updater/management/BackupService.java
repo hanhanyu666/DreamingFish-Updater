@@ -256,6 +256,14 @@ public final class BackupService {
                             throw new ManagementException("Backup contains a corrupt cover object");
                         }
                     }
+                    if (manifest.branding().musicTracks() != null) {
+                        for (var track : manifest.branding().musicTracks()) {
+                            if (verifiedObjects.add(track.sha256())) {
+                                Path music = restoredObjects.require(track.sha256());
+                                restoredObjects.verify(music, track.sha256(), track.size());
+                            }
+                        }
+                    }
                 } catch (IOException | IllegalArgumentException e) {
                     throw new ManagementException("Unable to verify restored release " + release.releaseId(), e);
                 }

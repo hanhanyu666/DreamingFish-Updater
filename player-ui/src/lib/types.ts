@@ -58,6 +58,13 @@ export interface Branding {
   newsArticles?: PlayerNewsArticle[] | null;
   customPage?: PlayerCustomPage | null;
   contentPages?: PlayerContentPage[] | null;
+  musicTracks?: PlayerMusicTrack[] | null;
+}
+
+export interface PlayerMusicTrack {
+  id: string;
+  title: string;
+  fileName: string;
 }
 
 export interface PlayerNewsArticle {
@@ -199,4 +206,5 @@ export const DEFAULT_BRANDING: Branding = {
   newsArticles: null,
   customPage: null,
   contentPages: [],
+  musicTracks: null,
 };

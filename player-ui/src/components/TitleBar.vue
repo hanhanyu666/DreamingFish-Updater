@@ -20,6 +20,7 @@ function close(): void {
 function minimize(): void {
   bridge.window.minimize();
 }
+
 </script>
 
 <template>

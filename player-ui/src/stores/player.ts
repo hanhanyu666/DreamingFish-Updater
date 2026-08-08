@@ -22,6 +22,7 @@ import {
   type SidecarCommand,
   type SidecarMessage,
   type UpdateResultDto,
+  type PlayerMusicTrack,
 } from "../lib/types";
 import type { NewsArticle } from "../lib/news";
 import { loadBundledNews } from "../lib/news";
@@ -48,6 +49,45 @@ export interface ErrorState {
   title: string;
   detail: string;
   allowContinue: boolean;
+}
+
+const MUSIC_MUTED_STORAGE_KEY = "dfs-background-music-muted";
+const MUSIC_LOOP_STORAGE_KEY = "dfs-background-music-loop";
+
+function readMusicMutedPreference(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(MUSIC_MUTED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeMusicMutedPreference(muted: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MUSIC_MUTED_STORAGE_KEY, muted ? "1" : "0");
+  } catch {
+    // A restricted WebView storage area must not break the music control.
+  }
+}
+
+function readMusicLoopPreference(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(MUSIC_LOOP_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeMusicLoopPreference(loop: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MUSIC_LOOP_STORAGE_KEY, loop ? "1" : "0");
+  } catch {
+    // A restricted WebView storage area must not break the music control.
+  }
 }
 
 interface PlayerState {
@@ -91,6 +131,12 @@ interface PlayerState {
   fileTreeExpanded: Map<string, boolean>;
   newsArticles: NewsArticle[];
   newsLoadError: string | null;
+  startupMusicUrl: string | null;
+  musicMuted: boolean;
+  musicPlaying: boolean;
+  musicTracks: PlayerMusicTrack[];
+  selectedMusicTrackId: string | null;
+  musicLoop: boolean;
 }
 
 const state = reactive<PlayerState>({
@@ -134,9 +180,17 @@ const state = reactive<PlayerState>({
   fileTreeExpanded: new Map<string, boolean>(),
   newsArticles: [],
   newsLoadError: null,
+  startupMusicUrl: null,
+  musicMuted: readMusicMutedPreference(),
+  musicPlaying: false,
+  musicTracks: [],
+  selectedMusicTrackId: null,
+  musicLoop: readMusicLoopPreference(),
 });
 
 const bridge = getBridge();
+let startupAudio: HTMLAudioElement | null = null;
+let startupMusicGeneration = 0;
 
 interface PendingConfirmation {
   request: ConfirmRequest;
@@ -246,6 +300,16 @@ export function handleSidecarMessage(message: SidecarMessage): void {
 export function setBranding(branding: Branding | null): void {
   const display = displayBranding(branding);
   state.branding = display;
+  state.musicTracks = (display.musicTracks ?? []).filter((track) =>
+    track.id.trim().length > 0 && track.fileName.trim().length > 0,
+  );
+  if (!state.musicTracks.some((track) => track.id === state.selectedMusicTrackId)) {
+    state.selectedMusicTrackId = state.musicTracks[0]?.id ?? null;
+  }
+  if (state.musicTracks.length > 0 && !state.preview) {
+    stopStartupMusic();
+    void initializeStartupMusic();
+  }
   state.contentPages = normalizeContentPages(display);
   refreshLatestArticle();
   if ((state.page.startsWith("CONTENT:") || state.page === "NEWS" || state.page === "CUSTOM")
@@ -279,6 +343,7 @@ export function displayBranding(branding: Branding | null | undefined): Branding
     newsArticles: branding.newsArticles ?? null,
     customPage: branding.customPage ?? null,
     contentPages: branding.contentPages ?? null,
+    musicTracks: branding.musicTracks ?? null,
   };
 }
 
@@ -774,11 +839,98 @@ export function countdownTick(): void {
 
 export function startPreview(): void {
   state.preview = true;
+  stopStartupMusic();
   bridge.startPreview();
 }
 
 export function setMaximized(maximized: boolean): void {
   state.maximized = maximized;
+}
+
+export async function initializeStartupMusic(): Promise<void> {
+  if (startupAudio != null || state.preview) return;
+  const generation = ++startupMusicGeneration;
+  try {
+    const url = state.musicTracks.length > 0
+      ? await bridge.musicTrackUrl(state.musicTracks[0].fileName)
+      : await bridge.startupMusic();
+    if (!url || generation !== startupMusicGeneration || state.preview) return;
+    const audio = attachMusicAudio(url);
+    if (!state.musicMuted) {
+      await audio.play().catch(() => undefined);
+    }
+  } catch {
+    // Music is optional; a missing or unreadable file must never block startup.
+  }
+}
+
+function attachMusicAudio(url: string): HTMLAudioElement {
+  const audio = new Audio(url);
+  audio.preload = "auto";
+  audio.loop = state.musicLoop;
+  audio.volume = 0.42;
+  audio.addEventListener("play", () => { if (startupAudio === audio) state.musicPlaying = true; });
+  audio.addEventListener("pause", () => { if (startupAudio === audio) state.musicPlaying = false; });
+  audio.addEventListener("ended", () => { if (startupAudio === audio) state.musicPlaying = false; });
+  audio.addEventListener("error", () => { if (startupAudio === audio) stopStartupMusic(); });
+  startupAudio?.pause();
+  startupAudio = audio;
+  state.startupMusicUrl = url;
+  return audio;
+}
+
+export async function selectMusicTrack(id: string): Promise<void> {
+  const track = state.musicTracks.find((entry) => entry.id === id);
+  if (!track) return;
+  state.selectedMusicTrackId = track.id;
+  try {
+    const url = await bridge.musicTrackUrl(track.fileName);
+    if (url) {
+      const wasPlaying = state.musicPlaying;
+      attachMusicAudio(url);
+      if (wasPlaying && !state.musicMuted) await startupAudio?.play().catch(() => undefined);
+    }
+  } catch {
+    // A missing track is ignored; the rest of the updater remains usable.
+  }
+}
+
+export function toggleMusicLoop(): void {
+  state.musicLoop = !state.musicLoop;
+  writeMusicLoopPreference(state.musicLoop);
+  if (startupAudio) startupAudio.loop = state.musicLoop;
+}
+
+export function toggleStartupMusic(): void {
+  const audio = startupAudio;
+  if (audio == null) return;
+  if (audio.paused) {
+    void audio.play().then(() => {
+      state.musicMuted = false;
+      writeMusicMutedPreference(false);
+    }).catch(() => undefined);
+  } else {
+    audio.pause();
+    state.musicMuted = true;
+    writeMusicMutedPreference(true);
+  }
+}
+
+export function stopStartupMusic(): void {
+  startupMusicGeneration++;
+  const audio = startupAudio;
+  startupAudio = null;
+  state.startupMusicUrl = null;
+  state.musicPlaying = false;
+  if (audio != null) {
+    audio.pause();
+    audio.removeAttribute("src");
+    try {
+      audio.load();
+    } catch {
+      // Some embedded WebViews do not implement load() for an empty source.
+    }
+  }
 }
 
 export function usePlayerStore() {
@@ -810,6 +962,11 @@ export function usePlayerStore() {
     countdownTick,
     startPreview,
     setMaximized,
+    selectMusicTrack,
+    toggleMusicLoop,
+    initializeStartupMusic,
+    toggleStartupMusic,
+    stopStartupMusic,
     playerAddedMods: () => playerAddedMods(state.mods, state.unmanaged?.mods),
     drawerLabels: DRAWER_LABELS,
     sendCommand,

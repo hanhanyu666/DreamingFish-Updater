@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import ContentPages from "./components/ContentPages.vue";
 import DetailsDrawer from "./components/DetailsDrawer.vue";
+import MusicPlayer from "./components/MusicPlayer.vue";
 import TitleBar from "./components/TitleBar.vue";
 import UpdateArea from "./components/UpdateArea.vue";
 import { getBridge } from "./lib/bridge";
@@ -44,6 +45,7 @@ onMounted(() => {
   void bridge.window.isMaximized().then((maximized) => setMaximized(maximized));
   window.addEventListener("resize", updateLatestNewsVisibility);
   void store.loadNews();
+  void store.initializeStartupMusic();
 
   if (!bridge.isTauri) startPreview();
   if (adminPreview) {
@@ -56,6 +58,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", updateLatestNewsVisibility);
   window.removeEventListener("message", onPreviewMessage);
   if (countdownTimer != null) window.clearInterval(countdownTimer);
+  store.stopStartupMusic();
 });
 
 function updateLatestNewsVisibility(): void {
@@ -177,7 +180,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.1.28" }}
+        DreamingFish Updater {{ "0.1.29" }}
       </div>
 
       <ContentPages />
@@ -191,6 +194,8 @@ function formatNewsDate(value: string): string {
           <span class="launch-notice-text">{{ store.state.launchNotice }}</span>
         </div>
       </div>
+
+      <MusicPlayer />
 
       <DetailsDrawer v-if="store.state.drawerOpen" />
       <TitleBar />

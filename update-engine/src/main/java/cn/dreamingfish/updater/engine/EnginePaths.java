@@ -63,6 +63,20 @@ record EnginePaths(
         return downloads.resolve(sha256 + ".part");
     }
 
+    Path musicDirectory() {
+        return instanceRoot.resolve(".dreamingfish-bootstrap/music");
+    }
+
+    Path musicTrack(String fileName) {
+        try {
+            return cn.dreamingfish.updater.protocol.PathSafety.resolveInside(
+                    musicDirectory(), fileName);
+        } catch (IOException | cn.dreamingfish.updater.protocol.ProtocolException e) {
+            throw new UpdateException(UpdateErrorCode.PATH_UNSAFE,
+                    "Unsafe music track path: " + fileName, e);
+        }
+    }
+
     private static void createSafeDirectory(Path root, Path directory) throws IOException {
         Path normalizedRoot = root.toAbsolutePath().normalize();
         Path normalizedDirectory = directory.toAbsolutePath().normalize();

@@ -19,6 +19,7 @@ public final class ManifestValidator {
     private static final Pattern CSS_COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
     private static final Pattern COMPONENT_ID = Pattern.compile("[A-Za-z0-9_.-]{1,128}");
     private static final Pattern NEWS_ID = Pattern.compile("[a-z0-9][a-z0-9-]{0,63}");
+    private static final Pattern MUSIC_ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
     private static final Pattern ISO_DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
 
     private ManifestValidator() {
@@ -253,6 +254,37 @@ public final class ManifestValidator {
         validateNews(branding.newsArticles());
         validateCustomPage(branding.customPage());
         validateContentPages(branding.contentPages());
+        validateMusic(branding.musicTracks());
+    }
+
+    private static void validateMusic(List<PlayerMusicTrack> tracks) {
+        // null preserves compatibility with manifests created before music was
+        // supported; an empty list explicitly means that no managed music is
+        // published.
+        if (tracks == null) return;
+        if (tracks.size() > 100) {
+            throw new ProtocolException("Too many player music tracks");
+        }
+        Set<String> ids = new java.util.HashSet<>();
+        Set<String> paths = new java.util.HashSet<>();
+        for (PlayerMusicTrack track : tracks) {
+            if (track == null || track.id() == null
+                    || !MUSIC_ID.matcher(track.id()).matches()
+                    || !ids.add(track.id())) {
+                throw new ProtocolException("Invalid or duplicate player music track ID");
+            }
+            requireText(track.title(), "player music title", 120);
+            String fileName = PathSafety.normalizeManifestPath(track.fileName());
+            if (fileName.indexOf('/') >= 0
+                    || !fileName.toLowerCase(Locale.ROOT).endsWith(".mp3")
+                    || !paths.add(fileName.toLowerCase(Locale.ROOT))) {
+                throw new ProtocolException("Player music file names must be unique MP3 file names");
+            }
+            if (!Hex.isSha256(track.sha256()) || track.size() < 0
+                    || track.size() > 20L * 1024 * 1024) {
+                throw new ProtocolException("Invalid player music object metadata");
+            }
+        }
     }
 
     private static void validateContentPages(List<PlayerContentPage> pages) {

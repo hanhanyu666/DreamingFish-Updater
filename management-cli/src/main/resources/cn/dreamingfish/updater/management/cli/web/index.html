@@ -267,6 +267,22 @@
 
                 <div class="form-section-heading span-2 personalization-section-toolbar">
                   <div>
+                    <strong>玩家端音乐</strong>
+                    <small>可上传多首 MP3。保存后还要扫描并发布一次，玩家更新时会自动下载；单首不超过 20 MiB。</small>
+                  </div>
+                  <div class="button-row">
+                    <button class="secondary-button" id="choose-music-upload" type="button">＋ 添加 MP3</button>
+                    <input id="music-upload-input" type="file" accept="audio/mpeg,.mp3" hidden>
+                  </div>
+                  <input id="music-upload-title" class="music-title-input" placeholder="歌曲显示名称（可选，默认使用文件名）" maxlength="120">
+                </div>
+                <div class="music-management span-2" id="music-management">
+                  <div class="empty-state visible" id="music-empty">还没有上传音乐</div>
+                  <div class="music-track-list" id="music-track-list"></div>
+                </div>
+
+                <div class="form-section-heading span-2 personalization-section-toolbar">
+                  <div>
                     <strong>玩家端页面</strong>
                     <small>主页和“关于更新器”固定保留，其余页面都由您添加。普通页面适合写玩法与规则；公告页面可以连续发布多条新闻。</small>
                   </div>

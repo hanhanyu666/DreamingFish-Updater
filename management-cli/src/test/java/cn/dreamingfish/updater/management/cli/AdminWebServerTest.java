@@ -579,6 +579,47 @@ class AdminWebServerTest {
         }
     }
 
+    @Test
+    void uploadsListsAndRemovesOptionalMusicThroughTheWebApi() throws Exception {
+        ManagementCli root = new ManagementCli(
+                temporary.resolve("music-admin/management-settings.json"),
+                new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("music-pack"));
+        Files.writeString(source.resolve("options.txt"), "base");
+
+        try (AdminWebServer server = new AdminWebServer(
+                root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
+            server.start();
+            URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            String token = json.read(send(base, "/api/session", "GET", null, null)
+                    .body().getBytes(StandardCharsets.UTF_8), Map.class)
+                    .get("token").toString();
+            assertEquals(201, send(base, "/api/projects", "POST", json.writeString(Map.of(
+                    "id", "music-demo", "displayName", "Music Demo",
+                    "sourceDirectory", source.toString(),
+                    "publicBaseUrl", "http://127.0.0.1:8080")), token).statusCode());
+
+            HttpResponse<String> uploaded = sendBytes(base,
+                    "/api/projects/music-demo/music/upload?fileName=theme.mp3"
+                            + "&id=theme&title=Theme", new byte[]{'I', 'D', '3', 1, 2, 3}, token);
+            assertEquals(201, uploaded.statusCode(), uploaded.body());
+            assertTrue(uploaded.body().contains("\"musicTracks\""));
+            try (var files = Files.list(Path.of(root.settings().dataDirectory()).resolve("tmp"))) {
+                assertEquals(0, files.count());
+            }
+
+            HttpResponse<String> list = send(base,
+                    "/api/projects/music-demo/music", "GET", null, null);
+            assertEquals(200, list.statusCode(), list.body());
+            assertTrue(list.body().contains("theme.mp3"));
+
+            HttpResponse<String> cleared = send(base,
+                    "/api/projects/music-demo/music/clear", "POST", "{}", token);
+            assertEquals(200, cleared.statusCode(), cleared.body());
+            assertTrue(cleared.body().contains("\"musicTracks\":[]"));
+        }
+    }
+
     private HttpResponse<String> send(
             URI base, String path, String method, String body, String token)
             throws Exception {

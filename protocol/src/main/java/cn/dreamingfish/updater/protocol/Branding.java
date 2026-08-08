@@ -13,7 +13,8 @@ public record Branding(
         String brandEnglishName,
         List<PlayerNewsArticle> newsArticles,
         PlayerCustomPage customPage,
-        List<PlayerContentPage> contentPages
+        List<PlayerContentPage> contentPages,
+        List<PlayerMusicTrack> musicTracks
 ) {
     public static final String DEFAULT_BRAND_NAME = "梦鱼服";
     public static final String DEFAULT_BRAND_ENGLISH_NAME = "DreamingFish";
@@ -24,6 +25,7 @@ public record Branding(
                 brandEnglishName, DEFAULT_BRAND_ENGLISH_NAME);
         if (newsArticles != null) newsArticles = List.copyOf(newsArticles);
         if (contentPages != null) contentPages = List.copyOf(contentPages);
+        if (musicTracks != null) musicTracks = List.copyOf(musicTracks);
     }
 
     /** Backward-compatible constructor used by pre-page-management callers. */
@@ -35,7 +37,7 @@ public record Branding(
     ) {
         this(productName, subtitle, serverAddress, coverObject, accentColor,
                 secondaryAccentColor, brandName, brandEnglishName,
-                newsArticles, customPage, null);
+                newsArticles, customPage, null, null);
     }
 
     public Branding(
@@ -50,7 +52,7 @@ public record Branding(
     ) {
         this(productName, subtitle, serverAddress, coverObject, accentColor,
                 secondaryAccentColor, brandName, brandEnglishName,
-                List.of(), PlayerCustomPage.disabled(), List.of());
+                List.of(), PlayerCustomPage.disabled(), List.of(), List.of());
     }
 
     public Branding(
@@ -74,7 +76,26 @@ public record Branding(
     public Branding withCoverObject(String value) {
         return new Branding(productName, subtitle, serverAddress, value,
                 accentColor, secondaryAccentColor, brandName,
-                brandEnglishName, newsArticles, customPage, contentPages);
+                brandEnglishName, newsArticles, customPage, contentPages, musicTracks);
+    }
+
+    public Branding withMusicTracks(List<PlayerMusicTrack> value) {
+        return new Branding(productName, subtitle, serverAddress, coverObject,
+                accentColor, secondaryAccentColor, brandName, brandEnglishName,
+                newsArticles, customPage, contentPages, value);
+    }
+
+    /** Compatibility constructor for callers that already provide content pages. */
+    public Branding(
+            String productName, String subtitle, String serverAddress,
+            String coverObject, String accentColor, String secondaryAccentColor,
+            String brandName, String brandEnglishName,
+            List<PlayerNewsArticle> newsArticles, PlayerCustomPage customPage,
+            List<PlayerContentPage> contentPages
+    ) {
+        this(productName, subtitle, serverAddress, coverObject, accentColor,
+                secondaryAccentColor, brandName, brandEnglishName,
+                newsArticles, customPage, contentPages, null);
     }
 
     private static String defaultText(String value, String fallback) {

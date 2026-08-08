@@ -50,6 +50,7 @@ import java.util.concurrent.locks.ReentrantLock;
 final class AdminWebServer implements AutoCloseable {
     private static final int MAX_REQUEST_BYTES = 1024 * 1024;
     private static final long MAX_COVER_BYTES = 32L * 1024L * 1024L;
+    private static final long MAX_MUSIC_BYTES = 20L * 1024L * 1024L;
     private static final String TOKEN_HEADER = "X-DFS-Token";
     private static final String SESSION_COOKIE = "DFS_ADMIN_SESSION";
     private static final String LOGGED_OUT_COOKIE = "DFS_ADMIN_LOGGED_OUT";
@@ -410,6 +411,45 @@ final class AdminWebServer implements AutoCloseable {
             throw new WebApiException(
                     405, "method_not_allowed", "背景图片只允许 GET 或 PUT");
         }
+        if (segments.size() == 4 && segments.get(3).equals("music")
+                && exchange.getRequestMethod().equals("GET")) {
+            ProjectRecord project = root.services().database().requireProject(projectId);
+            List<?> tracks = project.branding().musicTracks() == null
+                    ? List.of() : project.branding().musicTracks();
+            sendJson(exchange, 200, Map.of("musicTracks", tracks));
+            return;
+        }
+        if (segments.size() == 5 && segments.get(3).equals("music")) {
+            switch (segments.get(4)) {
+                case "upload" -> {
+                    if (!exchange.getRequestMethod().equals("PUT")
+                            && !exchange.getRequestMethod().equals("POST")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "音乐上传只允许 PUT 或 POST");
+                    }
+                    sendJson(exchange, 201, mutate(() ->
+                            uploadMusicTrack(exchange, projectId)));
+                }
+                case "clear" -> {
+                    if (!exchange.getRequestMethod().equals("POST")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "音乐清空只允许 POST");
+                    }
+                    sendJson(exchange, 200, mutate(() -> projectView(
+                            root.services().projects().clearMusicTracks(projectId))));
+                }
+                default -> {
+                    if (!exchange.getRequestMethod().equals("DELETE")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "音乐删除只允许 DELETE");
+                    }
+                    sendJson(exchange, 200, mutate(() -> projectView(
+                            root.services().projects().removeMusicTrack(
+                                    projectId, segments.get(4)))));
+                }
+            }
+            return;
+        }
         if (segments.size() == 4 && segments.get(3).equals("files")
                 && exchange.getRequestMethod().equals("GET")) {
             sendJson(exchange, 200, sourceFilesView(projectId));
@@ -733,6 +773,70 @@ final class AdminWebServer implements AutoCloseable {
         }
     }
 
+    private Map<String, Object> uploadMusicTrack(
+            HttpExchange exchange, String projectId) throws IOException {
+        String contentType = defaultValue(
+                exchange.getRequestHeaders().getFirst("Content-Type"), "");
+        if (!contentType.isBlank()
+                && !contentType.toLowerCase(Locale.ROOT).startsWith("audio/mpeg")
+                && !contentType.toLowerCase(Locale.ROOT).startsWith("application/octet-stream")) {
+            throw new WebApiException(415, "unsupported_media_type",
+                    "音乐上传必须使用 audio/mpeg 或 application/octet-stream");
+        }
+        String fileName = query(exchange.getRequestURI(), "fileName");
+        if (!present(fileName)) fileName = query(exchange.getRequestURI(), "filename");
+        if (!present(fileName)) {
+            String disposition = exchange.getRequestHeaders().getFirst("Content-Disposition");
+            if (disposition != null) {
+                java.util.regex.Matcher matcher = java.util.regex.Pattern
+                        .compile("(?i)(?:filename|name)=\\\"?([^\\\";]+)")
+                        .matcher(disposition);
+                if (matcher.find()) fileName = matcher.group(1);
+            }
+        }
+        fileName = required(fileName, "音乐文件名");
+        if (!fileName.toLowerCase(Locale.ROOT).endsWith(".mp3")) {
+            throw new WebApiException(415, "unsupported_music", "只支持 MP3 音乐文件");
+        }
+        long expectedBytes = contentLength(exchange);
+        if (expectedBytes == 0) {
+            throw new WebApiException(400, "empty_music", "请选择要上传的 MP3 文件");
+        }
+        if (expectedBytes > MAX_MUSIC_BYTES) {
+            throw new WebApiException(413, "music_too_large", "单首音乐不能超过 20 MiB");
+        }
+        Path temporaryDirectory = Files.createDirectories(
+                Path.of(root.settings().dataDirectory()).resolve("tmp"));
+        Path temporaryMusic = Files.createTempFile(temporaryDirectory, "music-upload-", ".mp3");
+        try {
+            long total = 0;
+            try (InputStream input = exchange.getRequestBody();
+                 OutputStream output = Files.newOutputStream(temporaryMusic)) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    if (read == 0) continue;
+                    total += read;
+                    if (total > MAX_MUSIC_BYTES) {
+                        throw new WebApiException(413, "music_too_large", "单首音乐不能超过 20 MiB");
+                    }
+                    output.write(buffer, 0, read);
+                }
+            }
+            if (total == 0) {
+                throw new WebApiException(400, "empty_music", "请选择要上传的 MP3 文件");
+            }
+            String id = query(exchange.getRequestURI(), "id");
+            String title = query(exchange.getRequestURI(), "title");
+            boolean overwrite = Boolean.parseBoolean(defaultValue(
+                    query(exchange.getRequestURI(), "overwrite"), "false"));
+            return projectView(root.services().projects().addMusicTrack(
+                    projectId, id, title, fileName, temporaryMusic, overwrite));
+        } finally {
+            Files.deleteIfExists(temporaryMusic);
+        }
+    }
+
     private static String imageContentType(byte[] bytes) {
         if (bytes.length >= 8
                 && bytes[0] == (byte) 0x89 && bytes[1] == 0x50
@@ -1051,7 +1155,8 @@ final class AdminWebServer implements AutoCloseable {
         return new Branding(
                 productName, subtitle, serverAddress,
                 coverObject, accent, secondary, brandName, brandEnglishName,
-                newsArticles, customPage, contentPages);
+                newsArticles, customPage, contentPages,
+                current == null ? null : current.musicTracks());
     }
 
     private Map<String, Object> projectSummary(

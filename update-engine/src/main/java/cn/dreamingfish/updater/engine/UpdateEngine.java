@@ -4,6 +4,7 @@ import cn.dreamingfish.updater.protocol.ManifestValidator;
 import cn.dreamingfish.updater.protocol.ProjectBinding;
 import cn.dreamingfish.updater.protocol.ProtocolException;
 import cn.dreamingfish.updater.protocol.SemanticVersion;
+import cn.dreamingfish.updater.protocol.PlayerMusicTrack;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,6 +13,9 @@ import java.nio.file.Path;
 import java.security.PublicKey;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class UpdateEngine {
     private final LocalInstallationStore localStore;
@@ -76,6 +80,10 @@ public final class UpdateEngine {
                     request.cancellationToken());
             boolean sameRelease = local != null && local.release().sha256().equals(target.sha256());
             if (sameRelease && plan.operations().isEmpty()) {
+                if (gameUpdateLock != null) {
+                    syncMusicTracks(request, paths, target.manifest().branding().musicTracks(),
+                            progress, local == null ? null : local.release().manifest().branding().musicTracks());
+                }
                 persistBundledBaseline(paths, local);
                 storageMaintenance.cleanObjectCache(paths);
                 progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
@@ -88,6 +96,8 @@ public final class UpdateEngine {
             if (gameUpdateLock == null) throw gameRunning();
 
             long downloaded = downloader.download(request, paths, plan.requiredObjects(), progress);
+            syncMusicTracks(request, paths, target.manifest().branding().musicTracks(),
+                    progress, local == null ? null : local.release().manifest().branding().musicTracks());
             progress.onProgress(new ProgressEvent(UpdateStage.PREPARING,
                     "Preparing update transaction", null, 0, plan.operations().size()));
             InstallResult installResult = installer.install(
@@ -101,6 +111,60 @@ public final class UpdateEngine {
                     installResult.archivedFiles(), installResult.archiveDirectory(),
                     plan.paths(OperationKind.INSTALL), plan.paths(OperationKind.DELETE),
                     plan.releasedPaths());
+        }
+    }
+
+    /** Synchronizes optional player music independently of managed Minecraft files. */
+    private void syncMusicTracks(UpdateRequest request, EnginePaths paths,
+                                 java.util.List<PlayerMusicTrack> tracks,
+                                 ProgressListener listener,
+                                 java.util.List<PlayerMusicTrack> previousTracks) {
+        if (tracks == null) return;
+        Set<String> retained = new HashSet<>();
+        for (PlayerMusicTrack track : tracks) {
+            retained.add(track.fileName().toLowerCase(java.util.Locale.ROOT));
+            try {
+                java.nio.file.Path target = paths.musicTrack(track.fileName());
+                if (isValidMusic(target, track)) {
+                    listener.onProgress(new ProgressEvent(UpdateStage.INSTALLING,
+                            "音乐已是最新：" + track.title(), track.fileName(), 0, 0));
+                    continue;
+                }
+                downloader.download(request, paths,
+                        Map.of(track.sha256(), track.size()), listener);
+                java.nio.file.Path source = paths.cacheObject(track.sha256());
+                java.nio.file.Files.createDirectories(target.getParent());
+                AtomicFileSupport.copyReplace(source, target);
+                listener.onProgress(new ProgressEvent(UpdateStage.INSTALLING,
+                        "已更新音乐：" + track.title(), track.fileName(), 0, 0));
+            } catch (UpdateException error) {
+                if (error.code() == UpdateErrorCode.CANCELLED) throw error;
+                listener.onProgress(new ProgressEvent(UpdateStage.INSTALLING,
+                        "音乐下载失败，已跳过：" + track.title(), track.fileName(), 0, 0));
+            } catch (RuntimeException | java.io.IOException error) {
+                listener.onProgress(new ProgressEvent(UpdateStage.INSTALLING,
+                        "音乐下载失败，已跳过：" + track.title(), track.fileName(), 0, 0));
+            }
+        }
+        if (previousTracks == null) return;
+        for (PlayerMusicTrack previous : previousTracks) {
+            if (retained.contains(previous.fileName().toLowerCase(java.util.Locale.ROOT))) continue;
+            try {
+                java.nio.file.Files.deleteIfExists(paths.musicTrack(previous.fileName()));
+            } catch (RuntimeException | java.io.IOException ignored) {
+                // Stale optional music is best-effort cleanup only.
+            }
+        }
+    }
+
+    private boolean isValidMusic(java.nio.file.Path path, PlayerMusicTrack track) {
+        try {
+            return java.nio.file.Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                    && java.nio.file.Files.size(path) == track.size()
+                    && cn.dreamingfish.updater.protocol.CryptoSupport.sha256(path)
+                    .equals(track.sha256());
+        } catch (java.io.IOException e) {
+            return false;
         }
     }
 

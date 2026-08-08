@@ -9,6 +9,7 @@ use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const ALLOW_DEVELOPMENT_OVERRIDES: bool = cfg!(debug_assertions);
+const MAX_STARTUP_MUSIC_BYTES: u64 = 20 * 1024 * 1024;
 
 struct Sidecar {
     child: Child,
@@ -149,6 +150,116 @@ fn instance_root_from_args() -> Result<PathBuf, String> {
 fn read_local_image(path: String) -> Result<String, String> {
     let instance_root = instance_root_from_args()?;
     read_local_image_from_root(Path::new(&path), &instance_root)
+}
+
+fn read_startup_music_from_root(instance_root: &Path) -> Result<Option<String>, String> {
+    let root = instance_root
+        .canonicalize()
+        .map_err(|error| format!("无法读取 Minecraft 实例目录: {error}"))?;
+    // Keep the persistent path first. The legacy names are accepted so a music
+    // file from the former JavaFX player can be reused without renaming it.
+    let candidates = [
+        "DreamingFishUpdater/startup-music.mp3",
+        "DreamingFishUpdater/bg_music.mp3",
+        "DreamingFishUpdater/audio/bg_music.mp3",
+        ".dreamingfish-bootstrap/startup-music.mp3",
+        ".dreamingfish-bootstrap/bg_music.mp3",
+        ".dreamingfish-bootstrap/audio/bg_music.mp3",
+    ];
+    for relative in candidates {
+        let candidate = root.join(relative);
+        if !candidate.is_file() {
+            continue;
+        }
+        let is_mp3 = candidate
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.eq_ignore_ascii_case("mp3"))
+            .unwrap_or(false);
+        if !is_mp3 {
+            continue;
+        }
+        let canonical = candidate
+            .canonicalize()
+            .map_err(|error| format!("无法读取启动音乐: {error}"))?;
+        if !canonical.starts_with(&root) {
+            continue;
+        }
+        let metadata =
+            std::fs::metadata(&canonical).map_err(|error| format!("无法读取启动音乐: {error}"))?;
+        if metadata.len() > MAX_STARTUP_MUSIC_BYTES {
+            return Err("启动音乐不能超过 20 MiB".to_string());
+        }
+        let bytes =
+            std::fs::read(&canonical).map_err(|error| format!("无法读取启动音乐: {error}"))?;
+        return Ok(Some(format!(
+            "data:audio/mpeg;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        )));
+    }
+    Ok(None)
+}
+
+fn read_music_track_from_root(
+    instance_root: &Path,
+    file_name: &str,
+) -> Result<Option<String>, String> {
+    let relative = Path::new(file_name);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("音乐文件名必须是音乐目录内的相对路径".to_string());
+    }
+    if relative
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.eq_ignore_ascii_case("mp3"))
+        != Some(true)
+    {
+        return Err("音乐文件仅支持 MP3 格式".to_string());
+    }
+    let root = instance_root
+        .canonicalize()
+        .map_err(|error| format!("无法读取 Minecraft 实例目录: {error}"))?;
+    for directory in [
+        root.join(".dreamingfish-bootstrap/music"),
+        root.join("DreamingFishUpdater/music"),
+    ] {
+        let candidate = directory.join(relative);
+        if !candidate.is_file() {
+            continue;
+        }
+        let canonical = candidate
+            .canonicalize()
+            .map_err(|error| format!("无法读取音乐文件: {error}"))?;
+        if !canonical.starts_with(&directory) {
+            continue;
+        }
+        let metadata =
+            std::fs::metadata(&canonical).map_err(|error| format!("无法读取音乐文件: {error}"))?;
+        if metadata.len() > 20 * 1024 * 1024 {
+            return Err("音乐文件不能超过 20 MiB".to_string());
+        }
+        let bytes =
+            std::fs::read(&canonical).map_err(|error| format!("无法读取音乐文件: {error}"))?;
+        return Ok(Some(format!(
+            "data:audio/mpeg;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        )));
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+fn read_music_track(file_name: String) -> Result<Option<String>, String> {
+    read_music_track_from_root(&instance_root_from_args()?, &file_name)
+}
+
+#[tauri::command]
+fn read_startup_music() -> Result<Option<String>, String> {
+    read_startup_music_from_root(&instance_root_from_args()?)
 }
 
 fn read_local_image_from_root(path: &Path, instance_root: &Path) -> Result<String, String> {
@@ -449,6 +560,8 @@ pub fn run() {
             open_path,
             open_external,
             read_local_image,
+            read_startup_music,
+            read_music_track,
             quit_application
         ])
         .build(tauri::generate_context!())
@@ -496,8 +609,9 @@ pub fn run() {
 mod tests {
     use super::{
         format_sidecar_crash, is_explicit_exit_message, read_local_image_from_root,
-        redacted_argument_names, resolve_java_executable, resolve_sidecar_jar,
-        should_force_native_close, write_close_command,
+        read_startup_music_from_root, redacted_argument_names, resolve_java_executable,
+        resolve_sidecar_jar, should_force_native_close, write_close_command,
+        MAX_STARTUP_MUSIC_BYTES,
     };
     use std::collections::VecDeque;
     use std::io::Cursor;
@@ -572,6 +686,30 @@ mod tests {
             .starts_with("data:image/png;base64,"));
         assert!(read_local_image_from_root(&outside, &base).is_err());
 
+        let _ = std::fs::remove_dir_all(base.parent().unwrap());
+    }
+
+    #[test]
+    fn startup_music_reader_accepts_only_instance_mp3_and_size_limit() {
+        let (base, external) = fixture();
+        assert!(read_startup_music_from_root(&base).unwrap().is_none());
+        std::fs::create_dir_all(base.join(".dreamingfish-bootstrap")).unwrap();
+        std::fs::write(
+            base.join(".dreamingfish-bootstrap/startup-music.mp3"),
+            b"mp3",
+        )
+        .unwrap();
+        assert!(read_startup_music_from_root(&base)
+            .unwrap()
+            .unwrap()
+            .starts_with("data:audio/mpeg;base64,"));
+        std::fs::write(external.join("startup-music.mp3"), b"outside").unwrap();
+        std::fs::write(
+            base.join(".dreamingfish-bootstrap/startup-music.mp3"),
+            vec![0_u8; (MAX_STARTUP_MUSIC_BYTES + 1) as usize],
+        )
+        .unwrap();
+        assert!(read_startup_music_from_root(&base).is_err());
         let _ = std::fs::remove_dir_all(base.parent().unwrap());
     }
 

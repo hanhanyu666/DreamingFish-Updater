@@ -41,4 +41,11 @@ describe("custom title bar dragging", () => {
       /\.brand-chinese,\s*\.brand-english\s*\{[\s\S]*?text-overflow:\s*ellipsis/,
     );
   });
+
+  it("keeps music controls out of the draggable title bar", () => {
+    expect(titleBarSource).not.toContain("music-select");
+    expect(titleBarSource).not.toContain("music-button");
+    expect(titleBarSource).not.toContain("store.toggleStartupMusic()");
+    expect(playerStyles).toMatch(/\.music-player\s*\{/);
+  });
 });

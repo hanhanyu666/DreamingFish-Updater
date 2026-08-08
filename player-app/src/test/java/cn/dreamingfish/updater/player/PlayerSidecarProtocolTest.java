@@ -13,6 +13,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -95,7 +96,10 @@ class PlayerSidecarProtocolTest {
                 "--preview")
                 .redirectErrorStream(false)
                 .start();
-        List<JsonNode> messages = java.util.Collections.synchronizedList(new ArrayList<>());
+        // The reader thread appends while the polling thread inspects the
+        // sequence. A copy-on-write list keeps the test's read path safe and
+        // still preserves the ordering asserted below.
+        List<JsonNode> messages = new CopyOnWriteArrayList<>();
         Thread readerThread = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                     process.getInputStream(), StandardCharsets.UTF_8))) {

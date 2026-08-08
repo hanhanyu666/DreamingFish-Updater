@@ -911,6 +911,36 @@ input[readonly] {
   white-space: nowrap;
 }
 
+.music-track-list {
+  display: grid;
+  gap: 6px;
+}
+
+.music-track-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.music-track-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-title-input {
+  flex: 1 1 220px;
+  min-width: 180px;
+  max-width: 360px;
+  min-height: 32px;
+}
+
 .color-field input[type="color"] {
   height: 36px;
   padding: 4px;

@@ -2,6 +2,8 @@ package cn.dreamingfish.updater.management;
 
 import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.ManifestValidator;
+import cn.dreamingfish.updater.protocol.PathSafety;
+import cn.dreamingfish.updater.protocol.PlayerMusicTrack;
 import cn.dreamingfish.updater.protocol.ProjectBinding;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
 
@@ -10,11 +12,15 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.LinkOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.ArrayList;
 
 public final class ProjectService {
+    private static final int MAX_MUSIC_TRACKS = 100;
+    private static final long MAX_MUSIC_BYTES = 20L * 1024L * 1024L;
     private final ManagementPaths paths;
     private final ManagementDatabase database;
     private final ProjectKeyStore keys;
@@ -111,6 +117,147 @@ public final class ProjectService {
         database.updateProject(id, current.displayName(), current.sourceDirectory(),
                 current.publicBaseUrl(), branding, current.rules());
         return database.requireProject(id);
+    }
+
+    /** Imports an MP3 into the content-addressed object store and adds it to the project playlist. */
+    public ProjectRecord addMusicTrack(String id, String trackId, String title,
+                                       String fileName, Path source, boolean overwrite) {
+        ProjectRecord current = database.requireProject(id);
+        if (source == null || !Files.isRegularFile(source)) {
+            throw new ManagementException("Music source file does not exist: " + source);
+        }
+        if (Files.isSymbolicLink(source)) {
+            throw new ManagementException("Music source file cannot be a symbolic link: " + source);
+        }
+        try {
+            long size = Files.size(source);
+            if (size == 0 || size > MAX_MUSIC_BYTES) {
+                throw new ManagementException("Music file must be between 1 byte and 20 MiB");
+            }
+            if (!looksLikeMp3(source)) {
+                throw new ManagementException("Music source is not a valid MP3 file");
+            }
+        } catch (IOException e) {
+            throw new ManagementException("Unable to inspect music source: " + source, e);
+        }
+        String normalizedFileName = normalizeMusicFileName(fileName);
+        String normalizedTitle = normalizeMusicTitle(title, normalizedFileName);
+        ObjectStore.ObjectInfo object = objects.importFile(source);
+        String normalizedId = normalizeMusicId(trackId, normalizedFileName, object.sha256());
+
+        List<PlayerMusicTrack> tracks = current.branding().musicTracks() == null
+                ? new ArrayList<>() : new ArrayList<>(current.branding().musicTracks());
+        if (tracks.size() > MAX_MUSIC_TRACKS) {
+            throw new ManagementException("A project cannot contain more than "
+                    + MAX_MUSIC_TRACKS + " music tracks");
+        }
+        int existing = -1;
+        for (int index = 0; index < tracks.size(); index++) {
+            PlayerMusicTrack track = tracks.get(index);
+            if (track.id().equalsIgnoreCase(normalizedId)) existing = index;
+            if (track.fileName().equalsIgnoreCase(normalizedFileName)
+                    && (existing < 0 || index != existing)) {
+                throw new ManagementException("Music file name is already in use: "
+                        + normalizedFileName);
+            }
+        }
+        if (existing >= 0 && !overwrite) {
+            throw new ManagementException("Music track already exists: " + normalizedId);
+        }
+        PlayerMusicTrack next = new PlayerMusicTrack(normalizedId, normalizedTitle,
+                normalizedFileName, object.sha256(), object.size());
+        if (existing >= 0) tracks.set(existing, next);
+        else tracks.add(next);
+        if (tracks.size() > MAX_MUSIC_TRACKS) {
+            throw new ManagementException("A project cannot contain more than "
+                    + MAX_MUSIC_TRACKS + " music tracks");
+        }
+        Branding branding = current.branding().withMusicTracks(List.copyOf(tracks));
+        return configure(id, current.displayName(), current.sourceDirectory(),
+                current.publicBaseUrl(), branding, current.rules());
+    }
+
+    public ProjectRecord removeMusicTrack(String id, String trackId) {
+        ProjectRecord current = database.requireProject(id);
+        String normalizedId = requiredMusicId(trackId);
+        List<PlayerMusicTrack> tracks = current.branding().musicTracks() == null
+                ? new ArrayList<>() : new ArrayList<>(current.branding().musicTracks());
+        boolean removed = tracks.removeIf(track -> track.id().equalsIgnoreCase(normalizedId));
+        if (!removed) throw new ManagementException("Unknown music track: " + normalizedId);
+        return configure(id, current.displayName(), current.sourceDirectory(),
+                current.publicBaseUrl(), current.branding().withMusicTracks(List.copyOf(tracks)),
+                current.rules());
+    }
+
+    /** Explicitly clears managed music. A null list remains reserved for legacy manifests. */
+    public ProjectRecord clearMusicTracks(String id) {
+        ProjectRecord current = database.requireProject(id);
+        return configure(id, current.displayName(), current.sourceDirectory(),
+                current.publicBaseUrl(), current.branding().withMusicTracks(List.of()),
+                current.rules());
+    }
+
+    private static String normalizeMusicFileName(String value) {
+        if (value == null || value.isBlank()) {
+            throw new ManagementException("Music file name cannot be empty");
+        }
+        String normalized;
+        try {
+            normalized = PathSafety.normalizeManifestPath(value.trim());
+        } catch (RuntimeException e) {
+            throw new ManagementException("Music file name is not safe: " + value, e);
+        }
+        if (normalized.indexOf('/') >= 0
+                || !normalized.toLowerCase(Locale.ROOT).endsWith(".mp3")) {
+            throw new ManagementException("Music file name must be a single .mp3 file name");
+        }
+        return normalized;
+    }
+
+    private static String normalizeMusicTitle(String value, String fileName) {
+        String result = value == null || value.isBlank()
+                ? fileName.substring(0, fileName.length() - 4) : value.trim();
+        if (result.isBlank() || result.length() > 120
+                || result.chars().anyMatch(Character::isISOControl)) {
+            throw new ManagementException("Music title is empty, too long, or contains control characters");
+        }
+        return result;
+    }
+
+    private static boolean looksLikeMp3(Path source) throws IOException {
+        byte[] header;
+        try (var input = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS)) {
+            header = input.readNBytes(3);
+        }
+        if (header.length >= 3 && header[0] == 'I' && header[1] == 'D' && header[2] == '3') {
+            return true;
+        }
+        return header.length >= 2
+                && (header[0] & 0xff) == 0xff
+                && (header[1] & 0xe0) == 0xe0;
+    }
+
+    private static String normalizeMusicId(String value, String fileName, String hash) {
+        String raw = value == null || value.isBlank()
+                ? fileName.substring(0, fileName.length() - 4) : value.trim();
+        String normalized = raw.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9._-]+", "-")
+                .replaceAll("^-+|-+$", "");
+        if (!normalized.matches("[a-z0-9][a-z0-9._-]{0,63}")) {
+            normalized = "track-" + hash.substring(0, 8);
+        }
+        return normalized;
+    }
+
+    private static String requiredMusicId(String value) {
+        if (value == null || value.isBlank()) {
+            throw new ManagementException("Music track ID cannot be empty");
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (!normalized.matches("[a-z0-9][a-z0-9._-]{0,63}")) {
+            throw new ManagementException("Invalid music track ID: " + value);
+        }
+        return normalized;
     }
 
     private Path validateSource(Path sourceDirectory) {

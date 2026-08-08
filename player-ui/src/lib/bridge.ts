@@ -11,6 +11,8 @@ export interface PlayerBridge {
   openExternal(uri: string): void;
   openPath(path: string): void;
   assetUrl(path: string | null): Promise<string | null>;
+  startupMusic(): Promise<string | null>;
+  musicTrackUrl(fileName: string): Promise<string | null>;
   window: {
     minimize(): void;
     toggleMaximize(): void;
@@ -133,6 +135,16 @@ class TauriBridge implements PlayerBridge {
     return invoke<string>("read_local_image", { path });
   }
 
+  async startupMusic(): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string | null>("read_startup_music");
+  }
+
+  async musicTrackUrl(fileName: string): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string | null>("read_music_track", { fileName });
+  }
+
   window = {
     minimize(): void {
       void import("@tauri-apps/api/core").then(({ invoke }) => invoke("window_minimize"));
@@ -195,6 +207,14 @@ class MockBridge implements PlayerBridge {
 
   async assetUrl(path: string | null): Promise<string | null> {
     return path;
+  }
+
+  async startupMusic(): Promise<string | null> {
+    return null;
+  }
+
+  async musicTrackUrl(): Promise<string | null> {
+    return null;
   }
 
   window = {

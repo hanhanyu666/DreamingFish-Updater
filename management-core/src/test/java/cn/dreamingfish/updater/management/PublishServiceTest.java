@@ -4,6 +4,7 @@ import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.FilePolicy;
 import cn.dreamingfish.updater.protocol.ReleaseManifest;
+import cn.dreamingfish.updater.protocol.PlayerMusicTrack;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -53,6 +55,41 @@ class PublishServiceTest {
         Branding published = fixture.database.readManifest(release).branding();
         assertEquals("星河服", published.brandName());
         assertEquals("StarRiver", published.brandEnglishName());
+    }
+
+    @Test
+    void importsMultipleMusicTracksAndPublishesVerifiedObjects() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary);
+        ProjectRecord project = fixture.createProject();
+        Path first = temporary.resolve("theme.mp3");
+        Path second = temporary.resolve("ambient.mp3");
+        Files.write(first, new byte[]{'I', 'D', '3', 1, 2, 3, 4});
+        Files.write(second, new byte[]{'I', 'D', '3', 5, 6, 7, 8});
+
+        project = fixture.projects.addMusicTrack(
+                project.id(), "theme", "主题曲", "theme.mp3", first, false);
+        project = fixture.projects.addMusicTrack(
+                project.id(), "ambient", "环境音乐", "ambient.mp3", second, false);
+        assertEquals(2, project.branding().musicTracks().size());
+        assertEquals("theme", project.branding().musicTracks().getFirst().id());
+
+        Files.writeString(fixture.source.resolve("options.txt"), "music");
+        fixture.scanner.createPreview(project.id());
+        StoredRelease release = fixture.publisher.publish(
+                project.id(), "1.0.0", "0.1.0", "Music");
+        List<PlayerMusicTrack> tracks = fixture.database.readManifest(release)
+                .branding().musicTracks();
+        assertEquals(2, tracks.size());
+        for (PlayerMusicTrack track : tracks) {
+            fixture.objects.verify(fixture.objects.require(track.sha256()),
+                    track.sha256(), track.size());
+        }
+
+        project = fixture.projects.removeMusicTrack(project.id(), "theme");
+        assertEquals(List.of("ambient.mp3"), project.branding().musicTracks().stream()
+                .map(PlayerMusicTrack::fileName).toList());
+        project = fixture.projects.clearMusicTracks(project.id());
+        assertTrue(project.branding().musicTracks().isEmpty());
     }
 
     @Test

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.28",
-    [string]$AdminVersion = "0.1.18",
+    [string]$Version = "0.1.29",
+    [string]$AdminVersion = "0.1.19",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
