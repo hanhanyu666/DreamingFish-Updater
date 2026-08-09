@@ -294,8 +294,21 @@ input {
   position: absolute;
   left: 56px;
   bottom: 104px;
-  z-index: 30;
+  z-index: 25;
   color: var(--dfs-text);
+}
+
+.music-player.on-content-page {
+  top: 5px;
+  right: 120px;
+  left: auto;
+  bottom: auto;
+  z-index: 60;
+}
+
+/* Keep the expanded panel below the title bar, leaving the window controls clear. */
+.music-player.on-content-page.expanded {
+  top: 58px;
 }
 
 .music-player-collapsed {
@@ -484,6 +497,17 @@ input {
 @media (max-height: 620px) {
   .music-player {
     bottom: 92px;
+  }
+
+  .music-player.on-content-page {
+    top: 5px;
+    right: 120px;
+    left: auto;
+    bottom: auto;
+  }
+
+  .music-player.on-content-page.expanded {
+    top: 58px;
   }
 }
 

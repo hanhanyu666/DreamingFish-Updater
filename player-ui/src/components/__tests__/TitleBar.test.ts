@@ -48,4 +48,14 @@ describe("custom title bar dragging", () => {
     expect(titleBarSource).not.toContain("store.toggleStartupMusic()");
     expect(playerStyles).toMatch(/\.music-player\s*\{/);
   });
+
+  it("places the content-page music card beside the window controls", () => {
+    expect(playerStyles).toMatch(
+      /\.music-player\.on-content-page\s*\{[\s\S]*?top:\s*5px;[\s\S]*?right:\s*120px;[\s\S]*?left:\s*auto;[\s\S]*?bottom:\s*auto;/,
+    );
+    expect(playerStyles).toMatch(
+      /\.music-player\.on-content-page\.expanded\s*\{[\s\S]*?top:\s*58px;/,
+    );
+    expect(playerStyles).not.toContain("padding-bottom: 188px");
+  });
 });

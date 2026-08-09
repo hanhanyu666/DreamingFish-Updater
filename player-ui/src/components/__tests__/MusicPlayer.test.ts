@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp, nextTick } from "vue";
 import MusicPlayer from "../MusicPlayer.vue";
-import { handleSidecarMessage, stopStartupMusic } from "../../stores/player";
+import { handleSidecarMessage, showPage, stopStartupMusic } from "../../stores/player";
 
 describe("MusicPlayer", () => {
   let app: ReturnType<typeof createApp> | null = null;
@@ -27,6 +27,7 @@ describe("MusicPlayer", () => {
         musicTracks: [],
       },
     });
+    showPage("HOME");
   });
 
   it("stays compact until clicked, then exposes playlist controls", async () => {
@@ -42,7 +43,7 @@ describe("MusicPlayer", () => {
         brandName: "测试服",
         brandEnglishName: "Test",
         musicTracks: [
-          { id: "first", title: "第一首", fileName: "first.mp3" },
+          { id: "first", title: "启动音乐", fileName: "first.mp3" },
           { id: "second", title: "第二首", fileName: "second.mp3" },
         ],
       },
@@ -57,11 +58,18 @@ describe("MusicPlayer", () => {
     const collapsed = root.querySelector<HTMLButtonElement>(".music-player-collapsed");
     expect(collapsed).not.toBeNull();
     expect(root.querySelector(".music-player-expanded")).toBeNull();
+    expect(root.querySelector(".music-player-collapsed-track")?.textContent).toContain("first.mp3");
 
     collapsed?.click();
     await nextTick();
     expect(root.querySelector(".music-player-expanded")).not.toBeNull();
     expect(root.querySelector(".music-player-select")).not.toBeNull();
+
+    showPage("ABOUT");
+    await nextTick();
+    const contentPlayer = root.querySelector<HTMLElement>(".music-player");
+    expect(contentPlayer?.classList.contains("on-content-page")).toBe(true);
+    expect(contentPlayer?.classList.contains("expanded")).toBe(true);
 
     root.querySelector<HTMLButtonElement>(".music-player-collapse")?.click();
     await nextTick();

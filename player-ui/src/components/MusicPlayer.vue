@@ -15,6 +15,13 @@ const selectedTrack = computed(() =>
     ?? null,
 );
 
+const selectedTrackLabel = computed(() => trackLabel(selectedTrack.value));
+
+function trackLabel(track: { title: string; fileName: string } | null): string {
+  if (track == null) return "startup-music.mp3";
+  return track.title.trim() === "启动音乐" ? track.fileName : track.title;
+}
+
 function toggleExpanded(): void {
   expanded.value = !expanded.value;
 }
@@ -37,7 +44,7 @@ function toggleLoop(): void {
   <section
     v-if="hasMusic"
     class="music-player"
-    :class="{ expanded }"
+    :class="{ expanded, 'on-content-page': store.state.page !== 'HOME' }"
     aria-label="音乐播放器"
     @click.stop
   >
@@ -52,8 +59,8 @@ function toggleLoop(): void {
       <span class="music-player-note" aria-hidden="true">{{ store.state.musicPlaying ? '♪' : '♫' }}</span>
       <span class="music-player-collapsed-copy">
         <span class="music-player-collapsed-label">音乐</span>
-        <span class="music-player-collapsed-track" :title="selectedTrack?.title ?? '启动音乐'">
-          {{ selectedTrack?.title ?? '启动音乐' }}
+        <span class="music-player-collapsed-track" :title="selectedTrackLabel">
+          {{ selectedTrackLabel }}
         </span>
       </span>
       <span class="music-player-expand-glyph" aria-hidden="true">⌃</span>
@@ -65,8 +72,8 @@ function toggleLoop(): void {
         <span class="music-player-heading-icon" aria-hidden="true">♫</span>
         <div class="music-player-copy">
           <span class="music-player-label">正在播放</span>
-          <span class="music-player-track" :title="selectedTrack?.title ?? '启动音乐'">
-            {{ selectedTrack?.title ?? '启动音乐' }}
+          <span class="music-player-track" :title="selectedTrackLabel">
+            {{ selectedTrackLabel }}
           </span>
         </div>
         <button
@@ -86,7 +93,7 @@ function toggleLoop(): void {
         @change="selectTrack"
       >
         <option v-for="track in store.state.musicTracks" :key="track.id" :value="track.id">
-          {{ track.title }}
+          {{ trackLabel(track) }}
         </option>
       </select>
 

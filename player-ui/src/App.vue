@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import ContentPages from "./components/ContentPages.vue";
 import DetailsDrawer from "./components/DetailsDrawer.vue";
@@ -73,6 +73,7 @@ function openLatestNews(): void {
 function playEntrance(): void {
   if (entrancePlayed.value) return;
   entrancePlayed.value = true;
+  void nextTick(() => bridge.window.show());
 }
 
 function onResizeGripDown(event: PointerEvent): void {
@@ -89,6 +90,13 @@ watch(
     if (ready) playEntrance();
   },
   { immediate: true },
+);
+
+watch(
+  () => store.state.error,
+  (error) => {
+    if (error != null) void nextTick(() => bridge.window.show());
+  },
 );
 
 watch(
@@ -180,7 +188,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.1.29" }}
+        DreamingFish Updater {{ "0.1.31" }}
       </div>
 
       <ContentPages />

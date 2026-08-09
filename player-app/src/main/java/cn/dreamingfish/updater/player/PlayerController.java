@@ -23,11 +23,13 @@ import cn.dreamingfish.updater.protocol.ProjectBinding;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
 import cn.dreamingfish.updater.protocol.ReleaseHistory;
 import cn.dreamingfish.updater.protocol.ReleaseHistoryEntry;
+import cn.dreamingfish.updater.protocol.ReleaseManifest;
 import cn.dreamingfish.updater.player.PlayerViewPort.DialogTone;
 
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -46,6 +48,7 @@ public final class PlayerController {
 
     private final JsonCodec json = new JsonCodec();
     private final AtomicBoolean cancelled = new AtomicBoolean();
+    private final AtomicBoolean viewportReady = new AtomicBoolean();
     private final Object localPreferenceLock = new Object();
     private final ReleaseHistoryClient releaseHistoryClient = new ReleaseHistoryClient();
     private final PlayerArguments arguments;
@@ -99,8 +102,8 @@ public final class PlayerController {
         try {
             loadConfiguration();
             permitClient.ready();
-            viewport.ready();
             refreshLocalManagementAsync();
+            if (arguments.preview()) readyViewport();
             startUpdate();
         } catch (Exception e) {
             initializationFailed = true;
@@ -255,7 +258,7 @@ public final class PlayerController {
         localModManager = new LocalModManager(arguments.instanceRoot(), playerHome);
         localFileManager = new LocalFileManager(playerHome);
         viewport.setPlayerIdentity(arguments.playerName());
-        viewport.setBranding(binding.fallbackBranding());
+        viewport.setBranding(loadInitialBranding());
         viewport.setBackground(resolveBundledCover(binding));
         viewport.setReleaseHistory(releaseHistoryClient.loadCached(binding, playerHome));
         log.info("Player updater started for project " + binding.projectId());
@@ -288,6 +291,11 @@ public final class PlayerController {
                     restartWithUpdatedProgram(programResult);
                     return;
                 }
+
+                // The Tauri shell starts hidden. Showing it only after the program
+                // update check prevents the old process from flashing before a
+                // self-update restart.
+                readyViewport();
 
                 UpdateResult result = null;
                 UpdateEngine engine = new UpdateEngine();
@@ -341,6 +349,7 @@ public final class PlayerController {
                 refreshReleaseHistory();
             } catch (Exception e) {
                 working = false;
+                readyViewport();
                 if (handleUnverifiedOfflineLaunch(e)) return;
                 log.error("Update failed", e);
                 showFailure(errorTitle(e), e);
@@ -524,7 +533,30 @@ public final class PlayerController {
         viewport.showError(error instanceof BootstrapPermitClient.PermitException
                         ? "启动许可已失效" : "更新器无法启动",
                 error.getMessage(), false);
-        viewport.ready();
+        readyViewport();
+    }
+
+    private void readyViewport() {
+        if (viewportReady.compareAndSet(false, true)) viewport.ready();
+    }
+
+    private Branding loadInitialBranding() {
+        ReleaseManifest installed = localModManager.loadInstalledManifest(binding.projectId());
+        if (installed != null) return installed.branding();
+
+        Path bundled = arguments.instanceRoot()
+                .resolve(".dreamingfish-bootstrap/bundled-release/manifest.json");
+        try {
+            if (Files.isRegularFile(bundled, LinkOption.NOFOLLOW_LINKS)
+                    && !Files.isSymbolicLink(bundled)) {
+                ReleaseManifest release = json.read(bundled, ReleaseManifest.class);
+                if (binding.projectId().equals(release.projectId())) return release.branding();
+            }
+        } catch (Exception ignored) {
+            // The bundled manifest is only a startup hint; the signed manifest
+            // received by the update engine remains authoritative.
+        }
+        return binding.fallbackBranding();
     }
 
     private void closeAndDeny(String reason) {

@@ -25,11 +25,11 @@ DreamingFish Updater 是一套面向 Minecraft 整合包服务器的自托管更
 
 ## 下载
 
-当前版本：**玩家端 0.1.29 / 管理端 0.1.19**。两个组件独立更新，因此版本号不要求一致。所有发行包都自带精简运行环境，使用者不需要另外安装 Java。
+当前版本：**玩家端 0.1.31 / 管理端 0.1.19**。两个组件独立更新，因此版本号不要求一致。所有发行包都自带精简运行环境，使用者不需要另外安装 Java。
 
 | 发行包 | 适用场景 | 下载 |
 | --- | --- | --- |
-| 玩家端 0.1.29 · Windows x64 | 随整合包交给玩家，负责启动前检查、更新与本地管理 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dreamingfish-player-windows-x64-0.1.29.zip) |
+| 玩家端 0.1.31 · Windows x64 | 随整合包交给玩家，负责启动前检查、更新与本地管理 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dreamingfish-player-windows-x64-0.1.31.zip) |
 | 管理端 0.1.19 · Windows x64 | 部署到 Windows Server 或长期运行的 Windows 主机，提供管理与玩家下载服务 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-windows-x64-0.1.19.zip) |
 | 管理端 0.1.19 · Linux x64 | 部署到 Minecraft 服务器或 VPS | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-linux-x64-0.1.19.zip) |
 
@@ -148,13 +148,13 @@ cargo test --manifest-path .\src-tauri\Cargo.toml
 Set-Location ..
 
 .\packaging\build-distributions.ps1 `
-  -Version 0.1.29 `
+  -Version 0.1.31 `
   -AdminVersion 0.1.19 `
   -TauriPlayer `
   -SkipTests
 
 .\packaging\smoke-test-distributions.ps1 `
-  -Version 0.1.29 `
+  -Version 0.1.31 `
   -AdminVersion 0.1.19
 ```
 

@@ -7,7 +7,7 @@ import MarkdownBody from "./MarkdownBody.vue";
 
 const store = usePlayerStore();
 const bridge = getBridge();
-const VERSION = "0.1.29";
+const VERSION = "0.1.31";
 const REPOSITORY_URL = "https://github.com/hanhanyu666/DreamingFish-Updater";
 const currentPage = computed(() => {
   const id = store.state.page === "NEWS" ? "news"
@@ -17,14 +17,16 @@ const currentPage = computed(() => {
   if (id == null) return null;
   return store.state.contentPages.find((page) => page.id === id) ?? null;
 });
-
 function openRepository(): void {
   bridge.openExternal(REPOSITORY_URL);
 }
 </script>
 
 <template>
-  <div class="content-page-layer" :class="{ visible: store.state.page !== 'HOME' }">
+  <div
+    class="content-page-layer"
+    :class="{ visible: store.state.page !== 'HOME' }"
+  >
     <div
       v-if="currentPage?.announcementPage"
       :key="'announcements-' + currentPage.id + '-' + store.state.newsRequest.seq"

@@ -496,6 +496,14 @@ fn should_force_native_close(previous_millis: u64, current_millis: u64) -> bool 
 }
 
 #[tauri::command]
+fn window_show(app: AppHandle) -> Result<(), String> {
+    app.get_webview_window("main")
+        .ok_or_else(|| "找不到主窗口".to_string())?
+        .show()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn window_minimize(app: AppHandle) -> Result<(), String> {
     app.get_webview_window("main")
         .ok_or_else(|| "找不到主窗口".to_string())?
@@ -553,6 +561,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             spawn_sidecar,
             send_command,
+            window_show,
             window_minimize,
             window_toggle_maximize,
             window_close,
