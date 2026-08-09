@@ -183,10 +183,12 @@ public final class PlayerProgramUpdater {
                     throw new UpdateException(UpdateErrorCode.HTTP_ERROR,
                             "Player program request failed with HTTP " + response.statusCode());
                 }
-                String signature = response.headers().firstValue(ProtocolConstants.SIGNATURE_HEADER)
+                byte[] bytes = readLimited(input);
+                String signature = SignedPayloadSupport.resolveSignature(
+                                ManifestFetcher.client(request), response, uri,
+                                request.requestTimeout())
                         .orElseThrow(() -> new UpdateException(UpdateErrorCode.INVALID_SIGNATURE,
                                 "Player program manifest has no signature"));
-                byte[] bytes = readLimited(input);
                 LocalInstallationStore.verifySignature(bytes, signature, publicKey);
                 PlayerProgramManifest manifest;
                 try {

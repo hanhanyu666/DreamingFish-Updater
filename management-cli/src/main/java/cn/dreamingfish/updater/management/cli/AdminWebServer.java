@@ -10,6 +10,9 @@ import cn.dreamingfish.updater.management.RemovalAction;
 import cn.dreamingfish.updater.management.SourceFileService;
 import cn.dreamingfish.updater.management.StoredPlayerProgram;
 import cn.dreamingfish.updater.management.StoredRelease;
+import cn.dreamingfish.updater.management.S3AddressingStyle;
+import cn.dreamingfish.updater.management.S3UploadConfiguration;
+import cn.dreamingfish.updater.management.WebDavUploadConfiguration;
 import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.PlayerCustomPage;
@@ -597,6 +600,89 @@ final class AdminWebServer implements AutoCloseable {
                             prepared.releaseDisplayVersion());
                     result.put("playerVersion", prepared.playerVersion());
                     return result;
+                }));
+            }
+            case "distribution-export" -> {
+                StaticDistributionRequest request = readJson(
+                        exchange, StaticDistributionRequest.class);
+                sendJson(exchange, 201, mutate(() -> {
+                    var exported = root.services().staticDistribution().exportProject(
+                            projectId,
+                            Path.of(required(request.outputDirectory, "静态分发目录")));
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("projectId", exported.projectId());
+                    result.put("outputDirectory",
+                            exported.outputDirectory().toString());
+                    result.put("generatedAt", exported.generatedAt());
+                    result.put("releaseCount", exported.releaseCount());
+                    result.put("playerProgramCount",
+                            exported.playerProgramCount());
+                    result.put("objectCount", exported.objectCount());
+                    result.put("copiedObjectCount",
+                            exported.copiedObjectCount());
+                    result.put("reusedObjectCount",
+                            exported.reusedObjectCount());
+                    result.put("totalObjectBytes",
+                            exported.totalObjectBytes());
+                    result.put("copiedObjectBytes",
+                            exported.copiedObjectBytes());
+                    return result;
+                }));
+            }
+            case "distribution-webdav" -> {
+                DistributionWebDavRequest request = readJson(
+                        exchange, DistributionWebDavRequest.class);
+                sendJson(exchange, 200, mutate(() -> {
+                    Path output = Path.of(required(
+                            request.outputDirectory, "静态分发目录"));
+                    if (!Boolean.FALSE.equals(request.exportFirst)) {
+                        root.services().staticDistribution()
+                                .exportProject(projectId, output);
+                    }
+                    var result = root.services().distributionUploader().uploadWebDav(
+                            output,
+                            new WebDavUploadConfiguration(
+                                    URI.create(required(request.baseUrl,
+                                            "WebDAV / HTTP PUT 地址")),
+                                    defaultValue(request.username, ""),
+                                    request.password == null ? "" : request.password));
+                    return distributionUploadView(result);
+                }));
+            }
+            case "distribution-s3" -> {
+                DistributionS3Request request = readJson(
+                        exchange, DistributionS3Request.class);
+                sendJson(exchange, 200, mutate(() -> {
+                    Path output = Path.of(required(
+                            request.outputDirectory, "静态分发目录"));
+                    if (!Boolean.FALSE.equals(request.exportFirst)) {
+                        root.services().staticDistribution()
+                                .exportProject(projectId, output);
+                    }
+                    S3AddressingStyle style;
+                    try {
+                        style = S3AddressingStyle.valueOf(defaultValue(
+                                request.addressingStyle, "PATH")
+                                .toUpperCase(Locale.ROOT));
+                    } catch (IllegalArgumentException e) {
+                        throw new ManagementException("S3 寻址方式无效");
+                    }
+                    var result = root.services().distributionUploader().uploadS3(
+                            output,
+                            new S3UploadConfiguration(
+                                    URI.create(required(request.endpoint,
+                                            "S3 API Endpoint")),
+                                    required(request.region, "S3 Region"),
+                                    required(request.bucket, "S3 Bucket"),
+                                    defaultValue(request.prefix, ""),
+                                    required(request.accessKeyId,
+                                            "Access Key ID"),
+                                    request.secretAccessKey == null
+                                            ? "" : request.secretAccessKey,
+                                    request.sessionToken == null
+                                            ? "" : request.sessionToken,
+                                    style));
+                    return distributionUploadView(result);
                 }));
             }
             default -> throw new WebApiException(404, "not_found", "API 不存在");
@@ -1300,6 +1386,20 @@ final class AdminWebServer implements AutoCloseable {
         );
     }
 
+    private static Map<String, Object> distributionUploadView(
+            cn.dreamingfish.updater.management.DistributionUploadResult result) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("provider", result.provider());
+        view.put("destination", result.destination());
+        view.put("completedAt", result.completedAt());
+        view.put("fileCount", result.fileCount());
+        view.put("uploadedFileCount", result.uploadedFileCount());
+        view.put("skippedFileCount", result.skippedFileCount());
+        view.put("totalBytes", result.totalBytes());
+        view.put("uploadedBytes", result.uploadedBytes());
+        return view;
+    }
+
     private Object mutate(Callable<Object> operation) throws Exception {
         if (!mutationLock.tryLock()) {
             throw new WebApiException(
@@ -1582,6 +1682,32 @@ final class AdminWebServer implements AutoCloseable {
             String outputDirectory,
             String platform,
             String releaseId
+    ) {
+    }
+
+    private record StaticDistributionRequest(String outputDirectory) {
+    }
+
+    private record DistributionWebDavRequest(
+            String outputDirectory,
+            String baseUrl,
+            String username,
+            String password,
+            Boolean exportFirst
+    ) {
+    }
+
+    private record DistributionS3Request(
+            String outputDirectory,
+            String endpoint,
+            String region,
+            String bucket,
+            String prefix,
+            String accessKeyId,
+            String secretAccessKey,
+            String sessionToken,
+            String addressingStyle,
+            Boolean exportFirst
     ) {
     }
 

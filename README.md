@@ -25,13 +25,13 @@ DreamingFish Updater 是一套面向 Minecraft 整合包服务器的自托管更
 
 ## 下载
 
-当前版本：**玩家端 0.1.34 / 管理端 0.1.20**。两个组件独立更新，因此版本号不要求一致。所有发行包都自带精简运行环境，使用者不需要另外安装 Java。
+当前版本：**玩家端 0.1.35 / 管理端 0.1.21**。两个组件独立更新，因此版本号不要求一致。所有发行包都自带精简运行环境，使用者不需要另外安装 Java。
 
 | 发行包 | 适用场景 | 下载 |
 | --- | --- | --- |
-| 玩家端 0.1.34 · Windows x64 | 随整合包交给玩家，负责启动前检查、更新与本地管理 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dreamingfish-player-windows-x64-0.1.34.zip) |
-| 管理端 0.1.20 · Windows x64 | 部署到 Windows Server 或长期运行的 Windows 主机，提供管理与玩家下载服务 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-windows-x64-0.1.20.zip) |
-| 管理端 0.1.20 · Linux x64 | 部署到 Minecraft 服务器或 VPS | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-linux-x64-0.1.20.zip) |
+| 玩家端 0.1.35 · Windows x64 | 随整合包交给玩家，负责启动前检查、更新与本地管理 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dreamingfish-player-windows-x64-0.1.35.zip) |
+| 管理端 0.1.21 · Windows x64 | 部署到 Windows Server 或长期运行的 Windows 主机，提供管理与玩家下载服务 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-windows-x64-0.1.21.zip) |
+| 管理端 0.1.21 · Linux x64 | 部署到 Minecraft 服务器或 VPS | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-linux-x64-0.1.21.zip) |
 
 第一次使用请打开[梦鱼更新器官网文档](https://dreamingfish-studio.github.io/DreamingFish-Updater-Website/)。网站里提供完整界面示例、Web 与命令行两种操作路径，以及从管理端第一次启动到玩家首次进入游戏的全部步骤。
 
@@ -57,6 +57,7 @@ DreamingFish Updater 是一套面向 Minecraft 整合包服务器的自托管更
 | Web 管理端 | 文件上传、目录树管理、差异预览、发布、回滚、玩家程序和首次部署包都能在网页中处理。 |
 | 玩家本地控制 | 普通同步下，玩家可让文件、目录或模组不再受服务器管理，选择只保存在自己的电脑上。 |
 | 玩家端自更新 | 更新器程序与整合包内容使用两条独立发布线，程序升级无需重新分发整个客户端。 |
+| 外部托管分发 | 可增量导出完整静态更新目录，也可由管理端直接上传到 WebDAV、OSS、S3、R2，再通过普通 HTTP 或 CDN 让玩家下载。 |
 | 个性化界面 | 每个项目都能配置服务器名称、封面、标题、副标题、颜色、公告、新闻、规则和玩法页面。 |
 | 离线启动 | 服务器临时离线时，可以复用最近一次已经验证的完整安装；安全错误不会被伪装成普通断网。 |
 
@@ -148,14 +149,14 @@ cargo test --manifest-path .\src-tauri\Cargo.toml
 Set-Location ..
 
 .\packaging\build-distributions.ps1 `
-  -Version 0.1.34 `
-  -AdminVersion 0.1.20 `
+  -Version 0.1.35 `
+  -AdminVersion 0.1.21 `
   -TauriPlayer `
   -SkipTests
 
 .\packaging\smoke-test-distributions.ps1 `
-  -Version 0.1.34 `
-  -AdminVersion 0.1.20
+  -Version 0.1.35 `
+  -AdminVersion 0.1.21
 ```
 
 发行包烟雾测试会重新解压真实 ZIP，模拟历史发布、签名验证、篡改拒绝、首次部署包与 HTTP 下载服务；测试数据位于 `target/`，成功后自动清理，不会接触现有 Minecraft 实例。

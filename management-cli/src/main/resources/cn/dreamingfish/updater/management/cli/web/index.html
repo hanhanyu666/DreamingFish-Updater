@@ -54,6 +54,7 @@
         <button class="nav-button requires-project" data-view="personalization"><span>✦</span>玩家端个性化</button>
         <button class="nav-button requires-project" data-view="publish"><span>↑</span>管理文件</button>
         <button class="nav-button requires-project" data-view="player"><span>▣</span>玩家端程序</button>
+        <button class="nav-button requires-project" data-view="distribution"><span>⇄</span>外部托管</button>
         <button class="nav-button requires-project" data-view="instance"><span>◇</span>玩家实例</button>
         <button class="nav-button" data-view="settings"><span>⚙</span>服务设置</button>
       </nav>
@@ -510,7 +511,7 @@
                   <input name="sourceDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择玩家端发行包解压根目录">浏览</button>
                 </div>
-                <small class="field-help">这是管理服务器上的路径，例如 /srv/minecraft/updater/player-0.1.34；不是玩家电脑上的路径。</small>
+                <small class="field-help">这是管理服务器上的路径，例如 /srv/minecraft/updater/player-0.1.35；不是玩家电脑上的路径。</small>
               </label>
             </div>
           </form>
@@ -526,6 +527,133 @@
                 <tbody id="program-table"></tbody>
               </table>
               <div class="empty-state" id="program-empty">尚未发布玩家端程序</div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-distribution">
+          <form class="panel form-panel" id="distribution-form">
+            <div class="panel-header">
+              <div><h2>导出外部托管目录</h2><span>适用于普通 HTTP、对象存储（OSS）和 CDN</span></div>
+              <button class="primary-button" type="submit">开始导出</button>
+            </div>
+            <p class="panel-help"><strong>管理端会把当前项目转换成一份可以直接上传的静态目录。</strong>其中包含整合包更新、玩家端自更新、个性化内容、签名文件和内容对象；不会包含管理密码、对象存储密码或项目签名私钥。</p>
+            <div class="form-grid">
+              <label class="field span-2">
+                <span>静态分发目录（必填）</span>
+                <div class="path-input-row">
+                  <input name="outputDirectory" required>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="outputDirectory" data-path-title="选择静态分发目录">浏览</button>
+                </div>
+                <small class="field-help">第一次请选择空目录，或填写一个尚不存在的新目录；以后继续选择同一目录即可增量导出，只复制新增或损坏的对象。请勿选择管理端 data 或整合包文件目录。</small>
+              </label>
+            </div>
+            <div class="notice-line"><strong>上传时请保留目录结构：</strong>把导出目录中的全部文件原样上传到公开根目录，不要只上传 latest。上传完成后，项目中的“玩家端更新器访问地址”应填写该公开根地址，例如 https://update.example.com/。</div>
+            <div class="notice-line"><strong>已经分发过整合包时不要直接更换下载域名：</strong>旧玩家端会继续访问实例里原先绑定的地址。最稳妥的做法是始终使用自己的固定更新域名，只把该域名的解析或反向代理切换到新的对象存储/CDN；首次制作整合包则可以直接填写新的公开地址。</div>
+            <div class="notice-line distribution-result" id="distribution-result" hidden></div>
+          </form>
+
+          <form class="panel form-panel" id="webdav-upload-form">
+            <div class="panel-header">
+              <div><h2>上传到 WebDAV / HTTP PUT</h2><span>适合 WebDAV 网盘、NAS 和支持 PUT 的文件空间</span></div>
+              <button class="primary-button" type="submit">导出并上传</button>
+            </div>
+            <p class="panel-help"><strong>管理端会先刷新静态目录，再从服务器直接上传。</strong>浏览器只负责发出管理指令；即使上传过程中关闭网页，已经开始的管理端上传仍会继续。远程地址使用账户时必须是 HTTPS。</p>
+            <div class="form-grid">
+              <label class="field span-2">
+                <span>静态分发目录（必填）</span>
+                <div class="path-input-row">
+                  <input name="outputDirectory" required>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="outputDirectory" data-path-title="选择静态分发目录">浏览</button>
+                </div>
+                <small class="field-help">与上方导出使用同一个目录。首次使用时可以填写尚不存在的新目录。</small>
+              </label>
+              <label class="field span-2">
+                <span>WebDAV / HTTP PUT 根地址（必填）</span>
+                <input name="baseUrl" type="url" placeholder="https://dav.example.com/updater/" required>
+                <small class="field-help">这是管理端上传文件的地址，不一定等于玩家下载地址。末尾是否带 / 都可以。</small>
+              </label>
+              <label class="field">
+                <span>用户名（匿名上传可留空）</span>
+                <input name="username" autocomplete="off">
+              </label>
+              <label class="field">
+                <span>密码（匿名上传可留空）</span>
+                <input name="password" type="password" autocomplete="new-password">
+                <small class="field-help">只用于本次上传，不写入管理端配置、导出目录或玩家端。</small>
+              </label>
+              <label class="check-field span-2"><input name="exportFirst" type="checkbox" checked><span>上传前重新导出，确保整合包、玩家端程序和个性化内容都是最新的（推荐）</span></label>
+            </div>
+            <div class="notice-line distribution-result" id="webdav-upload-result" hidden></div>
+          </form>
+
+          <form class="panel form-panel" id="s3-upload-form">
+            <div class="panel-header">
+              <div><h2>上传到 OSS / S3 / R2</h2><span>使用标准 S3 Signature V4，不额外安装云厂商 SDK</span></div>
+              <button class="primary-button" type="submit">导出并上传</button>
+            </div>
+            <p class="panel-help"><strong>阿里云 OSS、AWS S3、Cloudflare R2、MinIO 等可使用这一入口。</strong>API Endpoint 用于管理端上传；玩家访问的公开域名请在项目设置中单独填写。Bucket 需要允许玩家匿名读取，或通过 CDN 提供公开读取。</p>
+            <div class="form-grid">
+              <label class="field span-2">
+                <span>静态分发目录（必填）</span>
+                <div class="path-input-row">
+                  <input name="outputDirectory" required>
+                  <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="outputDirectory" data-path-title="选择静态分发目录">浏览</button>
+                </div>
+              </label>
+              <label class="field span-2">
+                <span>S3 API Endpoint（必填）</span>
+                <input name="endpoint" type="url" placeholder="https://s3.oss-cn-hangzhou.aliyuncs.com" required>
+                <small class="field-help">阿里云 OSS 示例：https://s3.oss-cn-hangzhou.aliyuncs.com；R2 示例：https://账户ID.r2.cloudflarestorage.com。</small>
+              </label>
+              <label class="field">
+                <span>Region（必填）</span>
+                <input name="region" value="auto" required>
+                <small class="field-help">R2 使用 auto；阿里云填写 cn-hangzhou 等 Bucket 所在地域。</small>
+              </label>
+              <label class="field">
+                <span>Bucket（必填）</span>
+                <input name="bucket" required>
+              </label>
+              <label class="field">
+                <span>对象前缀</span>
+                <input name="prefix" placeholder="updater">
+                <small class="field-help">相当于 Bucket 内的文件夹，可留空。玩家公开地址也要包含此前缀。</small>
+              </label>
+              <label class="field">
+                <span>寻址方式（必填）</span>
+                <select name="addressingStyle" required>
+                  <option value="PATH">路径寻址（R2、MinIO 常用）</option>
+                  <option value="VIRTUAL_HOST">虚拟主机寻址（阿里云 OSS、AWS S3 常用）</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Access Key ID（必填）</span>
+                <input name="accessKeyId" autocomplete="off" required>
+              </label>
+              <label class="field">
+                <span>Secret Access Key（必填）</span>
+                <input name="secretAccessKey" type="password" autocomplete="new-password" required>
+                <small class="field-help">建议创建只允许写入这个 Bucket/前缀的专用密钥；本工具不会保存。</small>
+              </label>
+              <label class="field span-2">
+                <span>临时 Session Token</span>
+                <input name="sessionToken" type="password" autocomplete="new-password">
+                <small class="field-help">只有使用 STS 临时凭据时填写；永久 Access Key 请留空。</small>
+              </label>
+              <label class="check-field span-2"><input name="exportFirst" type="checkbox" checked><span>上传前重新导出最新内容（推荐）</span></label>
+            </div>
+            <div class="notice-line distribution-result" id="s3-upload-result" hidden></div>
+          </form>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div><h2>怎么选择分发方式</h2><span>下载流量由托管平台承担</span></div>
+            </div>
+            <div class="form-grid distribution-guide">
+              <div class="field"><span>HTTP 文件空间 / WebDAV</span><small class="field-help">适合已有网盘、NAS 或 WebDAV 服务的服主。上传导出目录后，确保玩家可以匿名读取。</small></div>
+              <div class="field"><span>对象存储（OSS / S3 / R2）</span><small class="field-help">按使用量计费，适合服务器带宽较小的情况。请开启公开读取或通过 CDN 暴露公开下载域名。</small></div>
+              <div class="field span-2"><span>CDN</span><small class="field-help">CDN 不是另一套文件格式，而是给 HTTP 或对象存储加一层就近缓存。内容对象可以长期缓存；latest、presentation 和对应 .sig 应及时刷新。</small></div>
             </div>
           </section>
         </section>

@@ -58,6 +58,13 @@ class PublicFileServerTest {
                     manifest.body(), Base64.getDecoder().decode(signature),
                     CryptoSupport.decodePublicKey(project.publicKey())));
 
+            HttpResponse<String> manifestSidecar = client.send(
+                    HttpRequest.newBuilder(URI.create(base + "/v1/projects/demo/latest.sig"))
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, manifestSidecar.statusCode());
+            assertEquals(signature, manifestSidecar.body().trim());
+
             HttpResponse<byte[]> presentationResponse = client.send(
                     HttpRequest.newBuilder(URI.create(base
                                     + "/v1/projects/demo/presentation"))
@@ -70,6 +77,12 @@ class PublicFileServerTest {
                     presentationResponse.body(),
                     Base64.getDecoder().decode(presentationSignature),
                     CryptoSupport.decodePublicKey(project.publicKey())));
+            HttpResponse<String> presentationSidecar = client.send(
+                    HttpRequest.newBuilder(URI.create(base
+                                    + "/v1/projects/demo/presentation.sig"))
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(presentationSignature, presentationSidecar.body().trim());
             PlayerPresentation presentation = new JsonCodec().read(
                     presentationResponse.body(), PlayerPresentation.class);
             assertEquals("守望梦屿", presentation.branding().productName());
@@ -121,6 +134,12 @@ class PublicFileServerTest {
             assertTrue(CryptoSupport.verify(
                     playerManifestResponse.body(), Base64.getDecoder().decode(playerSignature),
                     CryptoSupport.decodePublicKey(project.publicKey())));
+            HttpResponse<String> playerSidecar = client.send(
+                    HttpRequest.newBuilder(URI.create(base
+                                    + "/v1/projects/demo/player/windows-x64/latest.sig"))
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(playerSignature, playerSidecar.body().trim());
             PlayerProgramManifest playerManifest = new JsonCodec().read(
                     playerManifestResponse.body(), PlayerProgramManifest.class);
             assertEquals("0.2.0", playerManifest.version());

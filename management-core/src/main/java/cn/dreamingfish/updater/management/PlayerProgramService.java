@@ -339,6 +339,26 @@ public final class PlayerProgramService {
         }
     }
 
+    public List<String> listPlatforms(String projectId) {
+        validateIdentifier(projectId, "project ID");
+        Path projectRoot = paths.playerPrograms().resolve(projectId);
+        if (!Files.isDirectory(projectRoot, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(projectRoot)) {
+            return List.of();
+        }
+        try (var stream = Files.list(projectRoot)) {
+            return stream
+                    .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                    .filter(path -> !Files.isSymbolicLink(path))
+                    .map(path -> path.getFileName().toString())
+                    .filter(platform -> IDENTIFIER.matcher(platform).matches())
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            throw new ManagementException("Unable to list player program platforms", e);
+        }
+    }
+
     public void verifyAllPublishedPrograms() {
         for (ProjectRecord project : database.listProjects()) {
             Path projectRoot = paths.playerPrograms().resolve(project.id());

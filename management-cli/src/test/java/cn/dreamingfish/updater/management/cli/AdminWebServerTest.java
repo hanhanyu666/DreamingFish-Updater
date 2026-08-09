@@ -82,6 +82,12 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("name=\"subtitle\""));
             assertTrue(page.body().contains("创建必备设置"));
             assertTrue(page.body().contains("玩家端个性化"));
+            assertTrue(page.body().contains("data-view=\"distribution\""));
+            assertTrue(page.body().contains("id=\"distribution-form\""));
+            assertTrue(page.body().contains("id=\"webdav-upload-form\""));
+            assertTrue(page.body().contains("id=\"s3-upload-form\""));
+            assertTrue(page.body().contains("Secret Access Key"));
+            assertTrue(page.body().contains("普通 HTTP、对象存储（OSS）和 CDN"));
             assertTrue(page.body().contains("显示在玩家端首页左侧的大号标题区域"));
             assertTrue(page.body().contains("显示在玩家端首页主标题下方"));
             assertTrue(!page.body().contains("name=\"targetDirectory\""));
@@ -241,6 +247,47 @@ class AdminWebServerTest {
                     "POST", publishBody, token);
             assertEquals(201, published.statusCode(), published.body());
             assertTrue(published.body().contains("\"displayVersion\":\"1.0.0\""));
+
+            Path staticOutput = temporary.resolve("web-static-output");
+            HttpResponse<String> exported = send(
+                    base, "/api/projects/web-demo/distribution-export", "POST",
+                    json.writeString(Map.of(
+                            "outputDirectory", staticOutput.toString())), token);
+            assertEquals(201, exported.statusCode(), exported.body());
+            assertTrue(exported.body().contains("\"releaseCount\":1"));
+            assertTrue(exported.body().contains("\"copiedObjectCount\""));
+            assertTrue(Files.isRegularFile(
+                    staticOutput.resolve("v1/projects/web-demo/latest")));
+            assertTrue(Files.isRegularFile(
+                    staticOutput.resolve("v1/projects/web-demo/latest.sig")));
+
+            HttpResponse<String> insecureWebDav = send(
+                    base, "/api/projects/web-demo/distribution-webdav", "POST",
+                    json.writeString(Map.of(
+                            "outputDirectory", staticOutput.toString(),
+                            "baseUrl", "http://example.com/dav/",
+                            "username", "admin",
+                            "password", "do-not-leak-this-password",
+                            "exportFirst", false)), token);
+            assertEquals(400, insecureWebDav.statusCode(), insecureWebDav.body());
+            assertTrue(insecureWebDav.body().contains("HTTPS"));
+            assertTrue(!insecureWebDav.body().contains("do-not-leak-this-password"));
+
+            HttpResponse<String> insecureS3 = send(
+                    base, "/api/projects/web-demo/distribution-s3", "POST",
+                    json.writeString(Map.ofEntries(
+                            Map.entry("outputDirectory", staticOutput.toString()),
+                            Map.entry("endpoint", "http://example.com/"),
+                            Map.entry("region", "auto"),
+                            Map.entry("bucket", "demo-bucket"),
+                            Map.entry("prefix", "updater"),
+                            Map.entry("accessKeyId", "access"),
+                            Map.entry("secretAccessKey", "do-not-leak-this-secret"),
+                            Map.entry("addressingStyle", "PATH"),
+                            Map.entry("exportFirst", false))), token);
+            assertEquals(400, insecureS3.statusCode(), insecureS3.body());
+            assertTrue(insecureS3.body().contains("HTTPS"));
+            assertTrue(!insecureS3.body().contains("do-not-leak-this-secret"));
 
             HttpResponse<String> details = send(
                     base, "/api/projects/web-demo", "GET", null, null);

@@ -173,6 +173,26 @@ class PlayerProgramUpdaterTest {
         }
     }
 
+    @Test
+    void installsPlayerProgramFromStaticSignatureSidecar() throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(temporary.resolve("static-player-instance"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            PlayerProgramFile launcher = server.playerFile(
+                    "player.cmd", "static-player", true);
+            server.servePlayerProgram(server.playerProgram(
+                    "0.2.0", "player.cmd", launcher));
+            server.signatureSidecarsOnly = true;
+
+            PlayerProgramUpdateResult result = new PlayerProgramUpdater().checkAndInstall(
+                    request(instance, playerHome, server),
+                    "0.1.0", "windows-x64", null);
+
+            assertEquals(PlayerProgramUpdateOutcome.INSTALLED_RESTART_REQUIRED,
+                    result.outcome());
+        }
+    }
+
     private UpdateRequest request(Path instance, Path playerHome, TestUpdateServer server) {
         return request(instance, playerHome, server, "0.1.0");
     }

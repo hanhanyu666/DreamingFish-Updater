@@ -19,6 +19,7 @@ import java.security.KeyPair;
 import java.util.Base64;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -40,6 +41,7 @@ class PlayerPresentationClientTest {
                 CryptoSupport.sign(payload, keys.getPrivate()));
         String etag = '"' + CryptoSupport.sha256(payload) + '"';
         AtomicInteger notModified = new AtomicInteger();
+        AtomicBoolean sidecarOnly = new AtomicBoolean();
         HttpServer server = HttpServer.create(
                 new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/projects/demo/presentation", exchange -> {
@@ -49,11 +51,22 @@ class PlayerPresentationClientTest {
                     exchange.sendResponseHeaders(304, -1);
                     return;
                 }
-                exchange.getResponseHeaders().set(
-                        ProtocolConstants.SIGNATURE_HEADER, signature);
+                if (!sidecarOnly.get()) {
+                    exchange.getResponseHeaders().set(
+                            ProtocolConstants.SIGNATURE_HEADER, signature);
+                }
                 exchange.getResponseHeaders().set("ETag", etag);
                 exchange.sendResponseHeaders(200, payload.length);
                 exchange.getResponseBody().write(payload);
+            } finally {
+                exchange.close();
+            }
+        });
+        server.createContext("/v1/projects/demo/presentation.sig", exchange -> {
+            try {
+                byte[] body = (signature + "\n").getBytes(StandardCharsets.US_ASCII);
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
             } finally {
                 exchange.close();
             }
@@ -69,7 +82,7 @@ class PlayerPresentationClientTest {
                     "DreamingFishUpdater", null, Branding.empty());
             UpdateRequest request = UpdateRequest.defaults(
                     temporary.resolve("instance"), playerHome, binding,
-                    "0.1.34", Set.of());
+                    "0.1.35", Set.of());
             PlayerPresentationClient client = new PlayerPresentationClient();
 
             assertEquals("实时标题", client.fetch(request).productName());
@@ -77,6 +90,13 @@ class PlayerPresentationClientTest {
             assertEquals(1, notModified.get());
             assertEquals("实时标题",
                     client.loadCached(binding, playerHome).productName());
+
+            sidecarOnly.set(true);
+            Path staticPlayerHome = temporary.resolve("static-player-home");
+            UpdateRequest staticRequest = UpdateRequest.defaults(
+                    temporary.resolve("static-instance"), staticPlayerHome, binding,
+                    "0.1.35", Set.of());
+            assertEquals("实时标题", client.fetch(staticRequest).productName());
 
             Files.writeString(playerHome.resolve("state/player-presentation.json"),
                     "{\"projectId\":\"attacker\"}", StandardCharsets.UTF_8);

@@ -42,6 +42,7 @@ const titles = {
   personalization: "玩家端个性化",
   publish: "管理文件",
   player: "玩家端程序",
+  distribution: "外部托管",
   instance: "玩家实例",
   settings: "服务设置"
 };
@@ -1561,6 +1562,7 @@ function bindEvents() {
   bindSourceFiles();
   bindPublish();
   bindPrograms();
+  bindDistribution();
   bindDeployment();
   bindInstance();
   bindSettings();
@@ -2712,6 +2714,111 @@ function bindPrograms() {
       toast(`玩家端 ${program.version} 已发布`);
     });
   });
+}
+
+function bindDistribution() {
+  const form = byId("distribution-form");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!app.project || !form.reportValidity()) return;
+    const data = new FormData(form);
+    const outputDirectory = textValue(data, "outputDirectory");
+    const accepted = await ask(
+      "导出外部托管目录",
+      `项目：${app.project.displayName}\n目录：${outputDirectory}\n\n`
+        + "第一次必须使用空目录；继续使用以前的导出目录时会增量更新。",
+      "确认导出"
+    );
+    if (!accepted) return;
+    await runBusy("正在生成并校验静态分发目录", async () => {
+      const result = await api(
+        `/api/projects/${encodeURIComponent(app.project.id)}/distribution-export`,
+        { method: "POST", body: { outputDirectory } }
+      );
+      const summary = byId("distribution-result");
+      summary.hidden = false;
+      summary.textContent = `导出完成：${result.outputDirectory}　`
+        + `整合包 ${result.releaseCount} 个版本，玩家端程序 ${result.playerProgramCount} 个版本，`
+        + `内容对象 ${result.objectCount} 个；本次复制 ${result.copiedObjectCount} 个（${formatBytes(result.copiedObjectBytes)}），复用 ${result.reusedObjectCount} 个。`;
+      byId("webdav-upload-form").elements.outputDirectory.value = result.outputDirectory;
+      byId("s3-upload-form").elements.outputDirectory.value = result.outputDirectory;
+      toast("外部托管目录已导出，请上传目录中的全部文件");
+    });
+  });
+
+  const webDavForm = byId("webdav-upload-form");
+  webDavForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!app.project || !webDavForm.reportValidity()) return;
+    const data = new FormData(webDavForm);
+    const payload = {
+      outputDirectory: textValue(data, "outputDirectory"),
+      baseUrl: textValue(data, "baseUrl"),
+      username: textValue(data, "username"),
+      password: String(data.get("password") || ""),
+      exportFirst: data.get("exportFirst") === "on"
+    };
+    const accepted = await ask(
+      "上传到 WebDAV / HTTP PUT",
+      `目标：${payload.baseUrl}\n目录：${payload.outputDirectory}\n\n`
+        + "将先上传不可变内容，全部成功后再更新 latest 和个性化内容。",
+      "确认上传"
+    );
+    if (!accepted) return;
+    await runBusy("正在导出并上传到 WebDAV", async () => {
+      const result = await api(
+        `/api/projects/${encodeURIComponent(app.project.id)}/distribution-webdav`,
+        { method: "POST", body: payload }
+      );
+      renderDistributionUploadResult("webdav-upload-result", result);
+      webDavForm.elements.password.value = "";
+      toast("WebDAV 上传完成");
+    });
+  });
+
+  const s3Form = byId("s3-upload-form");
+  s3Form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!app.project || !s3Form.reportValidity()) return;
+    const data = new FormData(s3Form);
+    const payload = {
+      outputDirectory: textValue(data, "outputDirectory"),
+      endpoint: textValue(data, "endpoint"),
+      region: textValue(data, "region"),
+      bucket: textValue(data, "bucket"),
+      prefix: textValue(data, "prefix"),
+      addressingStyle: textValue(data, "addressingStyle"),
+      accessKeyId: textValue(data, "accessKeyId"),
+      secretAccessKey: String(data.get("secretAccessKey") || ""),
+      sessionToken: String(data.get("sessionToken") || ""),
+      exportFirst: data.get("exportFirst") === "on"
+    };
+    const accepted = await ask(
+      "上传到 OSS / S3 / R2",
+      `Endpoint：${payload.endpoint}\nBucket：${payload.bucket}\n前缀：${payload.prefix || "（根目录）"}\n\n`
+        + "全部对象成功后才会更新 latest，上传密钥不会保存。",
+      "确认上传"
+    );
+    if (!accepted) return;
+    await runBusy("正在导出并上传到对象存储", async () => {
+      const result = await api(
+        `/api/projects/${encodeURIComponent(app.project.id)}/distribution-s3`,
+        { method: "POST", body: payload }
+      );
+      renderDistributionUploadResult("s3-upload-result", result);
+      s3Form.elements.secretAccessKey.value = "";
+      s3Form.elements.sessionToken.value = "";
+      toast("对象存储上传完成");
+    });
+  });
+}
+
+function renderDistributionUploadResult(id, result) {
+  const target = byId(id);
+  target.hidden = false;
+  target.textContent = `上传完成：${result.destination}　`
+    + `共 ${result.fileCount} 个文件；本次上传 ${result.uploadedFileCount} 个（${formatBytes(result.uploadedBytes)}），`
+    + `跳过未变化文件 ${result.skippedFileCount} 个。请再用玩家公开下载地址访问 healthz，确认外部读取已经开放。`;
 }
 
 function bindInstance() {

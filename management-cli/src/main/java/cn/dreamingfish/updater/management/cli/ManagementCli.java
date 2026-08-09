@@ -12,6 +12,8 @@ import cn.dreamingfish.updater.management.PublishService;
 import cn.dreamingfish.updater.management.PublicFileServer;
 import cn.dreamingfish.updater.management.ScanService;
 import cn.dreamingfish.updater.management.SourceFileService;
+import cn.dreamingfish.updater.management.StaticDistributionService;
+import cn.dreamingfish.updater.management.StaticDistributionUploader;
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import picocli.CommandLine;
 
@@ -22,7 +24,7 @@ import java.nio.file.Path;
 @CommandLine.Command(
         name = "dfs-admin",
         mixinStandardHelpOptions = true,
-        version = "DreamingFish Update System 0.1.20",
+        version = "DreamingFish Update System 0.1.21",
         description = "Self-hosted Minecraft modpack update management",
         subcommands = {
                 InitCommand.class,
@@ -35,7 +37,7 @@ import java.nio.file.Path;
         }
 )
 public final class ManagementCli implements Runnable {
-    static final String VERSION = "0.1.20";
+    static final String VERSION = "0.1.21";
     private static final Charset CONSOLE_OUTPUT_CHARSET =
             WindowsConsoleEncoding.outputCharset();
 
@@ -136,7 +138,9 @@ public final class ManagementCli implements Runnable {
                 paths, database, json);
         return new Services(paths, json, database, projects, scanner, publisher,
                 playerPrograms, deployments, sourceFiles, new ObjectStore(paths),
-                new BackupService(paths, database, json));
+                new BackupService(paths, database, json),
+                new StaticDistributionService(paths, database, json),
+                new StaticDistributionUploader(json));
     }
 
     void printJson(Object value) {
@@ -189,7 +193,9 @@ public final class ManagementCli implements Runnable {
             PlayerDeploymentService deployments,
             SourceFileService sourceFiles,
             ObjectStore objects,
-            BackupService backups
+            BackupService backups,
+            StaticDistributionService staticDistribution,
+            StaticDistributionUploader distributionUploader
     ) {
     }
 

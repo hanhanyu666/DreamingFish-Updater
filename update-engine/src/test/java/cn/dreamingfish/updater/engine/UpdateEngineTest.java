@@ -26,6 +26,27 @@ class UpdateEngineTest {
     Path temporary;
 
     @Test
+    void acceptsSignedStaticHostingSidecarWithoutCustomResponseHeaders() throws Exception {
+        try (TestUpdateServer server = new TestUpdateServer()) {
+            Path instance = Files.createDirectories(temporary.resolve("static-host-instance"));
+            Path playerHome = instance.resolve("DreamingFishUpdater");
+            TestUpdateServer.TestFile file = server.file(
+                    "config/static.txt", "from-static-host", FilePolicy.ENFORCED);
+            ReleaseManifest release = server.release(1, "release-static", file);
+            server.serve(release);
+            server.signatureSidecarsOnly = true;
+            server.bundle(instance, release, false);
+
+            UpdateResult result = new UpdateEngine().update(
+                    request(instance, playerHome, server.binding()), null);
+
+            assertEquals(UpdateOutcome.UPDATED, result.outcome());
+            assertEquals("from-static-host",
+                    Files.readString(instance.resolve("config/static.txt")));
+        }
+    }
+
+    @Test
     void installsRepairsUpdatesAndAllowsVerifiedOfflineUse() throws Exception {
         try (TestUpdateServer server = new TestUpdateServer()) {
             Path instance = Files.createDirectories(temporary.resolve("instance"));

@@ -147,6 +147,7 @@ final class InteractiveConsole {
             root.out().println("[10] 启动 Web 管理界面");
             root.out().println("[11] 生成玩家端首次部署包");
             root.out().println("[12] 修改玩家端个性化设置");
+            root.out().println("[13] 导出外部托管目录（HTTP / OSS / CDN）");
             root.out().println("[0] 退出");
             String choice = readLine("请选择：").trim();
             if (choice.equals("0")) {
@@ -167,7 +168,8 @@ final class InteractiveConsole {
                     case "10" -> serveWeb();
                     case "11" -> createPlayerDeployment();
                     case "12" -> configurePlayerPersonalization();
-                    default -> root.out().println("请输入 0 到 12 之间的菜单编号。");
+                    case "13" -> exportStaticDistribution();
+                    default -> root.out().println("请输入 0 到 13 之间的菜单编号。");
                 }
             } catch (ManagementException | IllegalArgumentException e) {
                 root.err().println("操作失败：" + usefulMessage(e));
@@ -725,6 +727,33 @@ final class InteractiveConsole {
                 project.id(), platform, release.releaseId(), output,
                 root.bootstrapAgentPath());
         root.out().println("首次部署包已生成：" + prepared.outputDirectory());
+    }
+
+    private void exportStaticDistribution() {
+        ProjectRecord project = selectProject();
+        if (project == null) return;
+        root.out().println();
+        root.out().println("导出外部托管目录");
+        root.out().println("================================");
+        root.out().println("此功能会生成可直接上传到 HTTP、对象存储（OSS）或 CDN 的静态目录。");
+        root.out().println("目录中包含签名清单、玩家端自更新文件和内容对象，不包含管理密码或签名私钥。");
+        root.out().println("第一次请选择空目录；以后选择同一目录即可增量更新。");
+        Path output = promptDirectory("静态分发目录", null, true);
+        if (!confirm("为项目 " + project.displayName() + " 导出到 " + output + "？", true)) {
+            root.out().println("已取消导出。");
+            return;
+        }
+        var result = root.services().staticDistribution()
+                .exportProject(project.id(), output);
+        root.out().println("导出完成：" + result.outputDirectory());
+        root.out().println("  整合包版本：" + result.releaseCount());
+        root.out().println("  玩家端程序版本：" + result.playerProgramCount());
+        root.out().println("  内容对象：" + result.objectCount()
+                + "（本次复制 " + result.copiedObjectCount()
+                + "，复用 " + result.reusedObjectCount() + "）");
+        root.out().println("  本次新增数据："
+                + HumanSize.format(result.copiedObjectBytes()));
+        root.out().println("下一步请把目录中的全部文件原样上传，并把项目的玩家端更新地址设为托管根地址。");
     }
 
     private StoredRelease selectReleaseForBundle(ProjectRecord project) {

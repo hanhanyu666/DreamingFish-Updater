@@ -47,10 +47,11 @@ final class ManifestFetcher {
                     throw new UpdateException(UpdateErrorCode.HTTP_ERROR,
                             "Latest release request failed with HTTP " + response.statusCode());
                 }
-                String signature = response.headers().firstValue(ProtocolConstants.SIGNATURE_HEADER)
+                byte[] bytes = readLimited(input, MAX_MANIFEST_BYTES);
+                String signature = SignedPayloadSupport.resolveSignature(
+                                client(request), response, uri, request.requestTimeout())
                         .orElseThrow(() -> new UpdateException(UpdateErrorCode.INVALID_SIGNATURE,
                                 "Release response does not contain a signature"));
-                byte[] bytes = readLimited(input, MAX_MANIFEST_BYTES);
                 LocalInstallationStore.verifySignature(bytes, signature, publicKey);
                 ReleaseManifest manifest;
                 try {

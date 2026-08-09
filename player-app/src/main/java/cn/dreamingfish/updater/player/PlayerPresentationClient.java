@@ -1,6 +1,7 @@
 package cn.dreamingfish.updater.player;
 
 import cn.dreamingfish.updater.engine.UpdateRequest;
+import cn.dreamingfish.updater.engine.SignedPayloadSupport;
 import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.JsonCodec;
@@ -60,11 +61,11 @@ final class PlayerPresentationClient {
                     throw new IOException("Player presentation returned HTTP "
                             + response.statusCode());
                 }
-                String signature = response.headers()
-                        .firstValue(ProtocolConstants.SIGNATURE_HEADER)
+                byte[] payload = readLimited(input);
+                String signature = SignedPayloadSupport.resolveSignature(
+                                request.httpClient(), response, endpoint, REQUEST_TIMEOUT)
                         .orElseThrow(() -> new IOException(
                                 "Player presentation response is not signed"));
-                byte[] payload = readLimited(input);
                 PlayerPresentation presentation = verifyAndDecode(
                         binding, payload, signature);
                 try {

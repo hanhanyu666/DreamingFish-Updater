@@ -13,6 +13,7 @@ import picocli.CommandLine;
                 ProjectFilesCommand.class,
                 ProjectCoverCommand.class,
                 ProjectDeploymentCommand.class,
+                ProjectStaticExportCommand.class,
                 ProjectBindingCommand.class,
                 ProjectScanCommand.class,
                 ProjectPublishCommand.class,

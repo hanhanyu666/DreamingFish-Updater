@@ -43,6 +43,7 @@ final class TestUpdateServer implements AutoCloseable {
     private volatile byte[] playerManifestBytes;
     private volatile String playerSignature;
     volatile boolean invalidSignature;
+    volatile boolean signatureSidecarsOnly;
     volatile boolean unavailable;
     volatile String lastRange;
     volatile long objectDelayMillis;
@@ -187,10 +188,18 @@ final class TestUpdateServer implements AutoCloseable {
             }
             String path = exchange.getRequestURI().getPath();
             if (path.equals("/v1/projects/demo/latest")) {
-                exchange.getResponseHeaders().set(ProtocolConstants.SIGNATURE_HEADER,
-                        invalidSignature ? Base64.getEncoder().encodeToString(new byte[64]) : signature);
+                if (!signatureSidecarsOnly) {
+                    exchange.getResponseHeaders().set(ProtocolConstants.SIGNATURE_HEADER,
+                            invalidSignature ? Base64.getEncoder().encodeToString(new byte[64]) : signature);
+                }
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 send(exchange, 200, manifestBytes);
+                return;
+            }
+            if (path.equals("/v1/projects/demo/latest.sig")) {
+                send(exchange, 200, ((invalidSignature
+                        ? Base64.getEncoder().encodeToString(new byte[64]) : signature) + "\n")
+                        .getBytes(StandardCharsets.US_ASCII));
                 return;
             }
             if (path.equals("/v1/projects/demo/player/windows-x64/latest")) {
@@ -198,10 +207,22 @@ final class TestUpdateServer implements AutoCloseable {
                     send(exchange, 404, new byte[0]);
                     return;
                 }
-                exchange.getResponseHeaders().set(ProtocolConstants.SIGNATURE_HEADER,
-                        invalidSignature ? Base64.getEncoder().encodeToString(new byte[64]) : playerSignature);
+                if (!signatureSidecarsOnly) {
+                    exchange.getResponseHeaders().set(ProtocolConstants.SIGNATURE_HEADER,
+                            invalidSignature ? Base64.getEncoder().encodeToString(new byte[64]) : playerSignature);
+                }
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 send(exchange, 200, playerManifestBytes);
+                return;
+            }
+            if (path.equals("/v1/projects/demo/player/windows-x64/latest.sig")) {
+                if (playerSignature == null) {
+                    send(exchange, 404, new byte[0]);
+                    return;
+                }
+                send(exchange, 200, ((invalidSignature
+                        ? Base64.getEncoder().encodeToString(new byte[64]) : playerSignature) + "\n")
+                        .getBytes(StandardCharsets.US_ASCII));
                 return;
             }
             String prefix = "/v1/objects/sha256/";

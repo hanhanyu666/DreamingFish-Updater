@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.34",
-    [string]$AdminVersion = "0.1.20",
+    [string]$Version = "0.1.35",
+    [string]$AdminVersion = "0.1.21",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
@@ -430,7 +430,7 @@ Invoke-Checked $jpackage @(
     "--vendor", "DreamingFish",
     "--description", "DreamingFish modpack update management",
     "--win-console",
-    "--add-modules", "java.desktop,java.naming,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
+    "--add-modules", "java.desktop,java.naming,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
     "--java-options", "-Dfile.encoding=UTF-8",
     "--java-options", '-Ddfs.home=$APPDIR/..'
 )
@@ -469,7 +469,7 @@ if (-not $SkipLinux) {
     if ($null -eq $linuxJdkSource) { throw "The Linux JDK archive has an unexpected layout." }
     Invoke-Checked $jlink @(
         "--module-path", (Join-Path $linuxJdkSource.FullName "jmods"),
-        "--add-modules", "java.desktop,java.naming,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
+        "--add-modules", "java.desktop,java.naming,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
         "--strip-debug", "--no-man-pages", "--no-header-files", "--compress=2",
         "--output", $linuxRuntimeImage
     )

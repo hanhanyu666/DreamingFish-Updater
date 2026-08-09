@@ -101,6 +101,16 @@ public final class PublicFileServer implements AutoCloseable {
                 sendPlayerPresentation(exchange, segments[0]);
                 return;
             }
+            if (segments.length == 2 && validProjectId(segments[0])
+                    && segments[1].equals("presentation.sig")) {
+                Optional<ProjectRecord> project = database.findProject(segments[0]);
+                if (project.isEmpty()) {
+                    sendError(exchange, 404, "project_not_found");
+                    return;
+                }
+                sendSignature(exchange, signPlayerPresentation(project.get()), false);
+                return;
+            }
             if (segments.length == 2 && validProjectId(segments[0]) && segments[1].equals("latest")) {
                 Optional<StoredRelease> latest = database.latestRelease(segments[0]);
                 if (latest.isEmpty()) {
@@ -108,6 +118,16 @@ public final class PublicFileServer implements AutoCloseable {
                     return;
                 }
                 sendManifest(exchange, latest.get(), false);
+                return;
+            }
+            if (segments.length == 2 && validProjectId(segments[0])
+                    && segments[1].equals("latest.sig")) {
+                Optional<StoredRelease> latest = database.latestRelease(segments[0]);
+                if (latest.isEmpty()) {
+                    sendError(exchange, 404, "release_not_found");
+                    return;
+                }
+                sendSignature(exchange, latest.get().signature(), false);
                 return;
             }
             if (segments.length == 2 && validProjectId(segments[0]) && segments[1].equals("history")) {
@@ -126,6 +146,17 @@ public final class PublicFileServer implements AutoCloseable {
                 return;
             }
             if (segments.length == 4 && validProjectId(segments[0])
+                    && segments[1].equals("releases") && validReleaseId(segments[2])
+                    && segments[3].equals("manifest.sig")) {
+                Optional<StoredRelease> release = database.findRelease(segments[0], segments[2]);
+                if (release.isEmpty()) {
+                    sendError(exchange, 404, "release_not_found");
+                    return;
+                }
+                sendSignature(exchange, release.get().signature(), true);
+                return;
+            }
+            if (segments.length == 4 && validProjectId(segments[0])
                     && segments[1].equals("player") && validProjectId(segments[2])
                     && segments[3].equals("latest")) {
                 Optional<StoredPlayerProgram> latest = playerPrograms.latest(segments[0], segments[2]);
@@ -136,12 +167,31 @@ public final class PublicFileServer implements AutoCloseable {
                 sendPlayerProgramManifest(exchange, latest.get(), false);
                 return;
             }
+            if (segments.length == 4 && validProjectId(segments[0])
+                    && segments[1].equals("player") && validProjectId(segments[2])
+                    && segments[3].equals("latest.sig")) {
+                Optional<StoredPlayerProgram> latest = playerPrograms.latest(segments[0], segments[2]);
+                if (latest.isEmpty()) {
+                    sendError(exchange, 404, "player_program_not_found");
+                    return;
+                }
+                sendSignature(exchange, latest.get().signature(), false);
+                return;
+            }
             if (segments.length == 6 && validProjectId(segments[0])
                     && segments[1].equals("player") && validProjectId(segments[2])
                     && segments[3].equals("versions") && validSemanticVersion(segments[4])
                     && segments[5].equals("manifest")) {
                 sendPlayerProgramManifest(exchange,
                         playerPrograms.read(segments[0], segments[2], segments[4]), true);
+                return;
+            }
+            if (segments.length == 6 && validProjectId(segments[0])
+                    && segments[1].equals("player") && validProjectId(segments[2])
+                    && segments[3].equals("versions") && validSemanticVersion(segments[4])
+                    && segments[5].equals("manifest.sig")) {
+                sendSignature(exchange,
+                        playerPrograms.read(segments[0], segments[2], segments[4]).signature(), true);
                 return;
             }
             sendError(exchange, 404, "not_found");
@@ -189,12 +239,8 @@ public final class PublicFileServer implements AutoCloseable {
             return;
         }
         ProjectRecord project = storedProject.get();
-        PlayerPresentation presentation = new PlayerPresentation(
-                ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION,
-                project.id(),
-                project.branding());
-        ManifestValidator.validatePlayerPresentation(presentation);
-        byte[] body = json.writePretty(presentation);
+        SignedPresentation signed = signPlayerPresentation(project);
+        byte[] body = signed.payload();
         String hash = CryptoSupport.sha256(body);
         Headers headers = exchange.getResponseHeaders();
         commonHeaders(headers);
@@ -205,9 +251,42 @@ public final class PublicFileServer implements AutoCloseable {
             exchange.sendResponseHeaders(304, -1);
             return;
         }
+        headers.set(ProtocolConstants.SIGNATURE_HEADER, signed.signature());
+        sendBytes(exchange, 200, body);
+    }
+
+    private SignedPresentation signPlayerPresentation(ProjectRecord project) {
+        PlayerPresentation presentation = new PlayerPresentation(
+                ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION,
+                project.id(),
+                project.branding());
+        ManifestValidator.validatePlayerPresentation(presentation);
+        byte[] payload = json.writePretty(presentation);
         String signature = Base64.getEncoder().encodeToString(
-                CryptoSupport.sign(body, projectKeys.load(project)));
-        headers.set(ProtocolConstants.SIGNATURE_HEADER, signature);
+                CryptoSupport.sign(payload, projectKeys.load(project)));
+        return new SignedPresentation(payload, signature);
+    }
+
+    private void sendSignature(HttpExchange exchange, SignedPresentation presentation,
+                               boolean immutable) throws IOException {
+        sendSignature(exchange, presentation.signature(), immutable);
+    }
+
+    private void sendSignature(HttpExchange exchange, String signature,
+                               boolean immutable) throws IOException {
+        byte[] body = (signature + "\n").getBytes(StandardCharsets.US_ASCII);
+        String hash = CryptoSupport.sha256(body);
+        Headers headers = exchange.getResponseHeaders();
+        commonHeaders(headers);
+        headers.set("Content-Type", "text/plain; charset=us-ascii");
+        headers.set("ETag", quoted(hash));
+        headers.set("Cache-Control", immutable
+                ? "public, max-age=31536000, immutable"
+                : "no-cache, max-age=0");
+        if (etagMatches(exchange, hash)) {
+            exchange.sendResponseHeaders(304, -1);
+            return;
+        }
         sendBytes(exchange, 200, body);
     }
 
@@ -430,5 +509,8 @@ public final class PublicFileServer implements AutoCloseable {
     }
 
     private record ByteRange(long start, long end) {
+    }
+
+    private record SignedPresentation(byte[] payload, String signature) {
     }
 }
