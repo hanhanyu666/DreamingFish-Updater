@@ -321,7 +321,6 @@ final class PlayerView {
     }
 
     void showResult(UpdateResult result) {
-        setBranding(result.release().branding());
         showUpdateSummary(result);
         progress.setProgress(1);
         percent.setText("100%");

@@ -231,6 +231,7 @@ final class InteractiveConsole {
         root.out().println();
         root.out().println("[3/3] 玩家端个性化");
         root.out().println("以下内容只影响玩家端显示，直接按回车可使用默认值。");
+        root.out().println("创建后修改标题、配色、公告和页面，不用重新发布整合包，玩家下次启动会自动获取。");
         root.out().println("创建后可从主菜单 [12]“修改玩家端个性化设置”继续调整，Web 页面还提供实时预览。");
         String productName = prompt("玩家端主标题（显示在首页左侧的大号标题区域）", name);
         String subtitle = prompt("玩家端副标题（显示在主标题下方）", "Minecraft 整合包更新");
@@ -295,6 +296,8 @@ final class InteractiveConsole {
         root.out().println("================================");
         root.out().println("这里的内容只影响玩家端显示，不会修改项目 ID、管理目录或玩家文件。");
         root.out().println("直接按回车保留当前值；Web 管理页可以一边填写一边查看玩家端预览。");
+        root.out().println("标题、配色、公告和页面保存后会在玩家下次启动时自动获取，无需扫描或发布整合包。");
+        root.out().println("背景图片和音乐属于文件资源，仍需按正常流程扫描并发布一次。");
         root.out().println();
         root.out().println("【窗口品牌】");
         String brandName = prompt(
@@ -314,6 +317,7 @@ final class InteractiveConsole {
                 old.serverAddress());
         root.out().println();
         root.out().println("【外观与背景】");
+        root.out().println("颜色会自动生效；如更换背景图片，保存后还要扫描并创建一次发布。");
         String accent = promptColor("主强调色", old.accentColor());
         String secondaryAccent = promptColor(
                 "次强调色", old.secondaryAccentColor());
@@ -331,7 +335,7 @@ final class InteractiveConsole {
                 ? migrateLegacyPages(old) : old.contentPages();
         root.out().println();
         root.out().println("【玩家端页面】");
-        root.out().println("主页和“关于更新器”固定保留；普通页面适合玩法/规则，公告页可以发布多条新闻。");
+        root.out().println("主页和“关于更新器”固定保留；普通页面适合玩法/规则，公告页可以发布多条新闻。保存后玩家下次启动即可看到。");
         root.out().println("当前已配置 " + contentPages.size() + " 个页面。Web 管理页还提供快捷排版、JSON 导入导出和 AI 提示词。");
         if (confirm("是否管理玩家端页面？", false)) {
             contentPages = editPlayerPages(contentPages);
@@ -360,6 +364,8 @@ final class InteractiveConsole {
         root.out().println("  自定义背景："
                 + (updated.branding().coverObject() == null ? "未设置" : "已设置"));
         root.out().println("  玩家端页面：" + updated.branding().contentPages().size() + " 个");
+        root.out().println("  文字、配色和页面：玩家下次启动自动生效，无需发布整合包");
+        root.out().println("  背景图片和音乐：修改后仍需扫描并创建发布");
     }
 
     private List<PlayerContentPage> migrateLegacyPages(Branding branding) {

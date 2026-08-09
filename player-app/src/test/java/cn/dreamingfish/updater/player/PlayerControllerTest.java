@@ -3,6 +3,7 @@ package cn.dreamingfish.updater.player;
 import cn.dreamingfish.updater.engine.ProgressEvent;
 import cn.dreamingfish.updater.engine.UpdateResult;
 import cn.dreamingfish.updater.protocol.Branding;
+import cn.dreamingfish.updater.protocol.PlayerMusicTrack;
 import cn.dreamingfish.updater.protocol.ReleaseHistory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -145,6 +146,30 @@ class PlayerControllerTest {
         assertEquals(null, forwarded.get().currentPath());
         assertEquals(25, forwarded.get().completedBytes());
         assertEquals(100, forwarded.get().totalBytes());
+    }
+
+    @Test
+    void livePresentationOverridesTextButKeepsReleaseManagedMedia() {
+        PlayerMusicTrack releaseTrack = new PlayerMusicTrack(
+                "release", "已发布音乐", "release.mp3", "a".repeat(64), 10);
+        PlayerMusicTrack unpublishedTrack = new PlayerMusicTrack(
+                "live", "未发布音乐", "live.mp3", "b".repeat(64), 20);
+        Branding release = new Branding(
+                "旧标题", "旧副标题", "old.example.test", "c".repeat(64),
+                "#111111", "#222222", "旧品牌", "OldBrand",
+                List.of(), null, List.of(), List.of(releaseTrack));
+        Branding presentation = new Branding(
+                "新标题", "新副标题", "new.example.test", "d".repeat(64),
+                "#333333", "#444444", "新品牌", "NewBrand",
+                List.of(), null, List.of(), List.of(unpublishedTrack));
+
+        Branding merged = PlayerController.mergePresentation(release, presentation);
+
+        assertEquals("新标题", merged.productName());
+        assertEquals("新副标题", merged.subtitle());
+        assertEquals("new.example.test", merged.serverAddress());
+        assertEquals("c".repeat(64), merged.coverObject());
+        assertEquals(List.of(releaseTrack), merged.musicTracks());
     }
 
     private static final class RecordingViewPort implements PlayerViewPort {

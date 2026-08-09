@@ -204,7 +204,7 @@
                 </div>
                 <button class="primary-button" type="submit">保存个性化设置</button>
               </div>
-              <p class="panel-help"><strong>这里修改的是玩家看到的更新器界面。</strong>文字和配色会在右侧实时预览；更换背景图后需要先保存，管理端才能从服务器文件中载入图片。</p>
+              <p class="panel-help"><strong>这里修改的是玩家看到的更新器界面。</strong>标题、配色、公告和自定义页面保存后，玩家下次启动会自动获取，不用扫描或发布整合包；断网时会继续使用上次验证成功的内容。背景图片和音乐属于文件资源，仍要扫描并发布一次。</p>
               <div class="form-grid personalization-fields">
                 <div class="form-section-heading span-2">
                   <strong>窗口品牌</strong>
@@ -238,7 +238,7 @@
 
                 <div class="form-section-heading span-2">
                   <strong>外观与背景</strong>
-                  <small>颜色会立即反映在预览中；背景图片保存在管理端对象库中。</small>
+                  <small>颜色保存后会在玩家下次启动时生效；背景图片保存在管理端对象库中，还要随整合包发布。</small>
                 </div>
                 <label class="field color-field">
                   <span>主强调色</span>
@@ -257,7 +257,7 @@
                     <span id="cover-upload-name">尚未选择新图片，将保留当前背景</span>
                     <input id="cover-upload-input" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp" hidden>
                   </div>
-                  <small class="field-help">从当前浏览器所在的电脑选择图片并上传，支持 PNG、JPEG、GIF、BMP 和 WebP，最大 32 MiB。</small>
+                  <small class="field-help">从当前浏览器所在的电脑选择图片并上传，支持 PNG、JPEG、GIF、BMP 和 WebP，最大 32 MiB。上传后请到“管理文件”扫描并创建一次发布。</small>
                 </div>
                 <label class="check-field span-2">
                   <input name="removeCover" type="checkbox">
@@ -284,7 +284,7 @@
                 <div class="form-section-heading span-2 personalization-section-toolbar">
                   <div>
                     <strong>玩家端页面</strong>
-                    <small>主页和“关于更新器”固定保留，其余页面都由您添加。普通页面适合写玩法与规则；公告页面可以连续发布多条新闻。</small>
+                    <small>主页和“关于更新器”固定保留，其余页面都由您添加。保存后玩家下次启动即可看到，不需要发布整合包。</small>
                   </div>
                   <div class="button-row">
                     <button class="secondary-button" id="import-player-pages" type="button">导入配置</button>
@@ -315,7 +315,7 @@
                   sandbox="allow-scripts allow-same-origin"
                 ></iframe>
               </div>
-              <p class="player-preview-note">这里加载的就是玩家端本地使用的 Vue 界面、字体和样式，只按比例缩小显示。预览不会连接更新服务或修改玩家文件；保存后，新设置会进入后续发布和玩家部署包。</p>
+              <p class="player-preview-note">这里加载的就是玩家端本地使用的 Vue 界面、字体和样式，只按比例缩小显示。预览不会连接更新服务或修改玩家文件；文字、配色和页面保存后会在玩家下次启动时自动获取。</p>
             </section>
           </div>
         </section>
@@ -510,7 +510,7 @@
                   <input name="sourceDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="sourceDirectory" data-path-title="选择玩家端发行包解压根目录">浏览</button>
                 </div>
-                <small class="field-help">这是管理服务器上的路径，例如 /srv/minecraft/updater/player-0.1.20；不是玩家电脑上的路径。</small>
+                <small class="field-help">这是管理服务器上的路径，例如 /srv/minecraft/updater/player-0.1.34；不是玩家电脑上的路径。</small>
               </label>
             </div>
           </form>
@@ -706,7 +706,7 @@
         </label>
         <div class="form-section-heading span-2">
           <strong>玩家端个性化</strong>
-          <small>以下内容只影响玩家端显示，已经提供默认值，创建后可在“玩家端个性化”中修改并预览。</small>
+          <small>以下内容只影响玩家端显示，已经提供默认值。创建后可随时修改；玩家下次启动会自动获取，不需要重新发布整合包。</small>
         </div>
         <label class="field">
           <span>玩家端主标题</span>

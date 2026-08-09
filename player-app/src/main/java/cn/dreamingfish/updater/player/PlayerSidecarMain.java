@@ -376,7 +376,6 @@ public final class PlayerSidecarMain {
         @Override
         public void showResult(UpdateResult result) {
             ReleaseManifest release = result.release();
-            emit(new BrandingMessage("branding", release.branding()));
             emit(new ResultMessage("result", new ResultDto(
                     release.releaseId(), release.sequence(), release.projectId(),
                     release.createdAt() == null ? null : release.createdAt().toString(),

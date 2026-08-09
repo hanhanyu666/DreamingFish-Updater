@@ -52,6 +52,7 @@ public final class PlayerController {
     private final AtomicBoolean viewportReady = new AtomicBoolean();
     private final Object localPreferenceLock = new Object();
     private final ReleaseHistoryClient releaseHistoryClient = new ReleaseHistoryClient();
+    private final PlayerPresentationClient presentationClient = new PlayerPresentationClient();
     private final PlayerArguments arguments;
     private final PlayerViewPort viewport;
     private final Runnable exitAction;
@@ -74,6 +75,8 @@ public final class PlayerController {
     private Path lastArchiveDirectory;
     private LocalModManager localModManager;
     private LocalFileManager localFileManager;
+    private volatile Branding releaseBranding;
+    private volatile Branding presentationBranding;
     private ScheduledFuture<?> autoCloseTask;
 
     private record LocalSettingsSnapshot(
@@ -259,7 +262,9 @@ public final class PlayerController {
         localModManager = new LocalModManager(arguments.instanceRoot(), playerHome);
         localFileManager = new LocalFileManager(playerHome);
         viewport.setPlayerIdentity(arguments.playerName());
-        viewport.setBranding(loadInitialBranding());
+        releaseBranding = loadInitialBranding();
+        presentationBranding = presentationClient.loadCached(binding, playerHome);
+        applyActiveBranding();
         viewport.setBackground(resolveBundledCover(binding));
         viewport.setReleaseHistory(releaseHistoryClient.loadCached(binding, playerHome));
         log.info("Player updater started for project " + binding.projectId());
@@ -277,8 +282,9 @@ public final class PlayerController {
         Thread.ofVirtual().name("startup-update").start(() -> {
             try {
                 LocalSettingsSnapshot snapshot = reconcileLocalState();
+                UpdateRequest startupRequest = updateRequest(snapshot, cancellation);
                 PlayerProgramUpdateResult programResult = new PlayerProgramUpdater()
-                        .checkAndInstall(updateRequest(snapshot, cancellation),
+                        .checkAndInstall(startupRequest,
                                 PlayerApplication.BOOTSTRAP_AGENT_VERSION, null,
                                 playerProgramProgress(progress));
                 if (programResult.outcome() == PlayerProgramUpdateOutcome.CHECK_UNAVAILABLE) {
@@ -293,6 +299,8 @@ public final class PlayerController {
                     restartWithUpdatedProgram(programResult);
                     return;
                 }
+
+                refreshPlayerPresentation(startupRequest);
 
                 // The Tauri shell may already be visible during a slow program
                 // self-update; this signal marks the transition to the modpack check.
@@ -346,6 +354,8 @@ public final class PlayerController {
                 }, error -> log.warn(
                         "Unable to refresh local management UI after launch permission was granted: "
                                 + error));
+                releaseBranding = completedResult.release().branding();
+                applyActiveBranding();
                 finishSuccessfully(completedResult);
                 refreshReleaseHistory();
             } catch (Exception e) {
@@ -451,6 +461,38 @@ public final class PlayerController {
                 log.info("Release history is unavailable; using locally cached records");
             }
         });
+    }
+
+    private void refreshPlayerPresentation(UpdateRequest request) {
+        try {
+            presentationBranding = presentationClient.fetch(request);
+            applyActiveBranding();
+            log.info("Player presentation refreshed from the management server");
+        } catch (IOException e) {
+            log.info("Player presentation is unavailable; using the last verified local presentation");
+        }
+    }
+
+    private void applyActiveBranding() {
+        viewport.setBranding(mergePresentation(releaseBranding, presentationBranding));
+    }
+
+    static Branding mergePresentation(Branding release, Branding presentation) {
+        Branding base = release == null ? Branding.empty() : release;
+        if (presentation == null) return base;
+        return new Branding(
+                presentation.productName(),
+                presentation.subtitle(),
+                presentation.serverAddress(),
+                base.coverObject(),
+                presentation.accentColor(),
+                presentation.secondaryAccentColor(),
+                presentation.brandName(),
+                presentation.brandEnglishName(),
+                presentation.newsArticles(),
+                presentation.customPage(),
+                presentation.contentPages(),
+                base.musicTracks());
     }
 
     private void restartWithUpdatedProgram(PlayerProgramUpdateResult result) {

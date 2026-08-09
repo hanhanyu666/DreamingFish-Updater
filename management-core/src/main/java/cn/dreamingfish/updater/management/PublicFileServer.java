@@ -3,6 +3,8 @@ package cn.dreamingfish.updater.management;
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.Hex;
 import cn.dreamingfish.updater.protocol.JsonCodec;
+import cn.dreamingfish.updater.protocol.ManifestValidator;
+import cn.dreamingfish.updater.protocol.PlayerPresentation;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
 import cn.dreamingfish.updater.protocol.ReleaseHistory;
 import cn.dreamingfish.updater.protocol.ReleaseHistoryEntry;
@@ -20,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Base64;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,6 +34,7 @@ public final class PublicFileServer implements AutoCloseable {
     private final ManagementDatabase database;
     private final ObjectStore objects;
     private final PlayerProgramService playerPrograms;
+    private final ProjectKeyStore projectKeys;
     private final JsonCodec json;
     private final HttpServer server;
     private final ExecutorService executor;
@@ -41,6 +45,7 @@ public final class PublicFileServer implements AutoCloseable {
         this.objects = objects;
         this.json = new JsonCodec();
         this.playerPrograms = new PlayerProgramService(objects.paths(), database, json);
+        this.projectKeys = new ProjectKeyStore(objects.paths());
         try {
             server = HttpServer.create(address, 128);
         } catch (IOException e) {
@@ -91,6 +96,11 @@ public final class PublicFileServer implements AutoCloseable {
             String prefix = "/v1/projects/";
             String remainder = path.substring(prefix.length());
             String[] segments = remainder.split("/", -1);
+            if (segments.length == 2 && validProjectId(segments[0])
+                    && segments[1].equals("presentation")) {
+                sendPlayerPresentation(exchange, segments[0]);
+                return;
+            }
             if (segments.length == 2 && validProjectId(segments[0]) && segments[1].equals("latest")) {
                 Optional<StoredRelease> latest = database.latestRelease(segments[0]);
                 if (latest.isEmpty()) {
@@ -169,6 +179,35 @@ public final class PublicFileServer implements AutoCloseable {
             exchange.sendResponseHeaders(304, -1);
             return;
         }
+        sendBytes(exchange, 200, body);
+    }
+
+    private void sendPlayerPresentation(HttpExchange exchange, String projectId) throws IOException {
+        Optional<ProjectRecord> storedProject = database.findProject(projectId);
+        if (storedProject.isEmpty()) {
+            sendError(exchange, 404, "project_not_found");
+            return;
+        }
+        ProjectRecord project = storedProject.get();
+        PlayerPresentation presentation = new PlayerPresentation(
+                ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION,
+                project.id(),
+                project.branding());
+        ManifestValidator.validatePlayerPresentation(presentation);
+        byte[] body = json.writePretty(presentation);
+        String hash = CryptoSupport.sha256(body);
+        Headers headers = exchange.getResponseHeaders();
+        commonHeaders(headers);
+        headers.set("Content-Type", "application/json; charset=utf-8");
+        headers.set("ETag", quoted(hash));
+        headers.set("Cache-Control", "no-cache, max-age=0");
+        if (etagMatches(exchange, hash)) {
+            exchange.sendResponseHeaders(304, -1);
+            return;
+        }
+        String signature = Base64.getEncoder().encodeToString(
+                CryptoSupport.sign(body, projectKeys.load(project)));
+        headers.set(ProtocolConstants.SIGNATURE_HEADER, signature);
         sendBytes(exchange, 200, body);
     }
 

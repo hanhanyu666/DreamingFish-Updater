@@ -2498,7 +2498,7 @@ function bindPersonalizationForm() {
         await uploadCoverFile(app.pendingCoverFile);
       }
       await refreshState(app.project.id);
-      toast("玩家端个性化设置已保存");
+      toast("已保存；文字、配色和页面将在玩家下次启动时生效");
     });
   });
 }

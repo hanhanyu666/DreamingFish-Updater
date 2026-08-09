@@ -234,6 +234,15 @@ public final class ManifestValidator {
         }
     }
 
+    public static void validatePlayerPresentation(PlayerPresentation presentation) {
+        if (presentation.schemaVersion() != ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION) {
+            throw new ProtocolException("Unsupported player presentation schema version: "
+                    + presentation.schemaVersion());
+        }
+        validateIdentifier(presentation.projectId(), "player presentation project ID");
+        validateBranding(presentation.branding());
+    }
+
     private static void validateIdentifier(String value, String label) {
         if (value == null || !IDENTIFIER.matcher(value).matches()) {
             throw new ProtocolException("Invalid " + label);

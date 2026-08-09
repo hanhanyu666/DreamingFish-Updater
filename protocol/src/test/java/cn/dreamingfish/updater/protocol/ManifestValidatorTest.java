@@ -41,6 +41,29 @@ class ManifestValidatorTest {
     }
 
     @Test
+    void validatesPlayerPresentationIdentityAndBranding() {
+        Branding fileBacked = Branding.empty()
+                .withCoverObject("c".repeat(64))
+                .withMusicTracks(List.of(new PlayerMusicTrack(
+                        "theme", "主题曲", "theme.mp3", "d".repeat(64), 10)));
+        PlayerPresentation valid = new PlayerPresentation(
+                ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION,
+                "dreamhaven", fileBacked);
+        assertDoesNotThrow(() -> ManifestValidator.validatePlayerPresentation(valid));
+        org.junit.jupiter.api.Assertions.assertNull(valid.branding().coverObject());
+        org.junit.jupiter.api.Assertions.assertNull(valid.branding().musicTracks());
+
+        assertThrows(ProtocolException.class, () ->
+                ManifestValidator.validatePlayerPresentation(new PlayerPresentation(
+                        ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION + 1,
+                        "dreamhaven", Branding.empty())));
+        assertThrows(ProtocolException.class, () ->
+                ManifestValidator.validatePlayerPresentation(new PlayerPresentation(
+                        ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION,
+                        "Wrong Project", Branding.empty())));
+    }
+
+    @Test
     void rejectsOverlongTitleBarBrandNames() {
         ReleaseManifest original = JsonCodecTest.sampleManifest();
         Branding invalid = new Branding(

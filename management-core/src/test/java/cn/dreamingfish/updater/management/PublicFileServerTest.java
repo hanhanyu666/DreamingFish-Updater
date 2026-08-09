@@ -2,6 +2,7 @@ package cn.dreamingfish.updater.management;
 
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.JsonCodec;
+import cn.dreamingfish.updater.protocol.PlayerPresentation;
 import cn.dreamingfish.updater.protocol.PlayerProgramManifest;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
 import cn.dreamingfish.updater.protocol.ReleaseHistory;
@@ -56,6 +57,47 @@ class PublicFileServerTest {
             assertTrue(CryptoSupport.verify(
                     manifest.body(), Base64.getDecoder().decode(signature),
                     CryptoSupport.decodePublicKey(project.publicKey())));
+
+            HttpResponse<byte[]> presentationResponse = client.send(
+                    HttpRequest.newBuilder(URI.create(base
+                                    + "/v1/projects/demo/presentation"))
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(200, presentationResponse.statusCode());
+            String presentationSignature = presentationResponse.headers()
+                    .firstValue(ProtocolConstants.SIGNATURE_HEADER).orElseThrow();
+            assertTrue(CryptoSupport.verify(
+                    presentationResponse.body(),
+                    Base64.getDecoder().decode(presentationSignature),
+                    CryptoSupport.decodePublicKey(project.publicKey())));
+            PlayerPresentation presentation = new JsonCodec().read(
+                    presentationResponse.body(), PlayerPresentation.class);
+            assertEquals("守望梦屿", presentation.branding().productName());
+            String presentationEtag = presentationResponse.headers()
+                    .firstValue("ETag").orElseThrow();
+
+            HttpResponse<byte[]> cachedPresentation = client.send(
+                    HttpRequest.newBuilder(URI.create(base
+                                    + "/v1/projects/demo/presentation"))
+                            .header("If-None-Match", presentationEtag)
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(304, cachedPresentation.statusCode());
+
+            fixture.projects.configure("demo", null, null,
+                    new cn.dreamingfish.updater.protocol.Branding(
+                            "新的标题", "新的副标题", "mc.example.test",
+                            null, "#112233", "#445566"), null);
+            HttpResponse<byte[]> changedPresentation = client.send(
+                    HttpRequest.newBuilder(URI.create(base
+                                    + "/v1/projects/demo/presentation"))
+                            .header("If-None-Match", presentationEtag)
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(200, changedPresentation.statusCode());
+            assertEquals("新的标题", new JsonCodec().read(
+                    changedPresentation.body(), PlayerPresentation.class)
+                    .branding().productName());
 
             HttpResponse<byte[]> historyResponse = client.send(
                     HttpRequest.newBuilder(URI.create(base + "/v1/projects/demo/history"))
