@@ -191,6 +191,7 @@ const state = reactive<PlayerState>({
 const bridge = getBridge();
 let startupAudio: HTMLAudioElement | null = null;
 let startupMusicGeneration = 0;
+let startupMusicEnabled = false;
 
 interface PendingConfirmation {
   request: ConfirmRequest;
@@ -839,7 +840,7 @@ export function countdownTick(): void {
 
 export function startPreview(): void {
   state.preview = true;
-  stopStartupMusic();
+  disableStartupMusic();
   bridge.startPreview();
 }
 
@@ -848,13 +849,14 @@ export function setMaximized(maximized: boolean): void {
 }
 
 export async function initializeStartupMusic(): Promise<void> {
-  if (startupAudio != null || state.preview) return;
+  if (startupAudio != null || state.preview || !startupMusicEnabled) return;
   const generation = ++startupMusicGeneration;
   try {
     const url = state.musicTracks.length > 0
       ? await bridge.musicTrackUrl(state.musicTracks[0].fileName)
       : await bridge.startupMusic();
-    if (!url || generation !== startupMusicGeneration || state.preview) return;
+    if (!url || generation !== startupMusicGeneration || state.preview
+        || !startupMusicEnabled) return;
     const audio = attachMusicAudio(url);
     if (!state.musicMuted) {
       await audio.play().catch(() => undefined);
@@ -862,6 +864,17 @@ export async function initializeStartupMusic(): Promise<void> {
   } catch {
     // Music is optional; a missing or unreadable file must never block startup.
   }
+}
+
+export async function enableStartupMusic(): Promise<void> {
+  if (state.preview) return;
+  startupMusicEnabled = true;
+  await initializeStartupMusic();
+}
+
+export function disableStartupMusic(): void {
+  startupMusicEnabled = false;
+  stopStartupMusic();
 }
 
 function attachMusicAudio(url: string): HTMLAudioElement {
@@ -965,6 +978,8 @@ export function usePlayerStore() {
     selectMusicTrack,
     toggleMusicLoop,
     initializeStartupMusic,
+    enableStartupMusic,
+    disableStartupMusic,
     toggleStartupMusic,
     stopStartupMusic,
     playerAddedMods: () => playerAddedMods(state.mods, state.unmanaged?.mods),

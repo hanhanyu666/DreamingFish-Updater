@@ -45,7 +45,6 @@ onMounted(() => {
   void bridge.window.isMaximized().then((maximized) => setMaximized(maximized));
   window.addEventListener("resize", updateLatestNewsVisibility);
   void store.loadNews();
-  void store.initializeStartupMusic();
 
   if (!bridge.isTauri) startPreview();
   if (adminPreview) {
@@ -58,7 +57,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", updateLatestNewsVisibility);
   window.removeEventListener("message", onPreviewMessage);
   if (countdownTimer != null) window.clearInterval(countdownTimer);
-  store.stopStartupMusic();
+  store.disableStartupMusic();
 });
 
 function updateLatestNewsVisibility(): void {
@@ -70,10 +69,16 @@ function openLatestNews(): void {
   store.keepWindowOpen();
 }
 
-function playEntrance(): void {
+async function playEntrance(): Promise<void> {
   if (entrancePlayed.value) return;
   entrancePlayed.value = true;
-  void nextTick(() => bridge.window.show());
+  await nextTick();
+  try {
+    await bridge.window.show();
+    await store.enableStartupMusic();
+  } catch {
+    // Never play audio if the native window could not be shown.
+  }
 }
 
 function onResizeGripDown(event: PointerEvent): void {
@@ -87,7 +92,7 @@ function onResizeGripDown(event: PointerEvent): void {
 watch(
   () => store.state.ready,
   (ready) => {
-    if (ready) playEntrance();
+    if (ready) void playEntrance();
   },
   { immediate: true },
 );
@@ -188,7 +193,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.1.31" }}
+        DreamingFish Updater {{ "0.1.32" }}
       </div>
 
       <ContentPages />
