@@ -133,6 +133,20 @@ class PlayerControllerTest {
         assertTrue(viewport.launchKeptOpenCalls <= 1);
     }
 
+    @Test
+    void playerProgramProgressUsesAVisibleUserFacingStatus() {
+        AtomicReference<ProgressEvent> forwarded = new AtomicReference<>();
+
+        PlayerController.playerProgramProgress(forwarded::set).onProgress(
+                new ProgressEvent(cn.dreamingfish.updater.engine.UpdateStage.DOWNLOADING,
+                        "Downloading files", "object-hash", 25, 100));
+
+        assertEquals("正在更新玩家端程序", forwarded.get().message());
+        assertEquals(null, forwarded.get().currentPath());
+        assertEquals(25, forwarded.get().completedBytes());
+        assertEquals(100, forwarded.get().totalBytes());
+    }
+
     private static final class RecordingViewPort implements PlayerViewPort {
         final List<String> errors = new CopyOnWriteArrayList<>();
         final List<String> logs = new CopyOnWriteArrayList<>();

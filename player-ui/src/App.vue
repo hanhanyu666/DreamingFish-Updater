@@ -19,10 +19,13 @@ import {
 const store = usePlayerStore();
 const bridge = getBridge();
 const root = ref<HTMLElement | null>(null);
-const entrancePlayed = ref(false);
+const startupCompleted = ref(false);
+const entranceStarted = ref(false);
+const windowShown = ref(false);
 const windowHeight = ref(window.innerHeight);
 const adminPreview = new URLSearchParams(window.location.search).get("adminPreview") === "1";
 let countdownTimer: number | null = null;
+let windowShowPromise: Promise<boolean> | null = null;
 
 const latestNews = computed(() => store.state.latestArticle);
 const homeVisible = computed(() => store.state.page === "HOME");
@@ -69,16 +72,29 @@ function openLatestNews(): void {
   store.keepWindowOpen();
 }
 
-async function playEntrance(): Promise<void> {
-  if (entrancePlayed.value) return;
-  entrancePlayed.value = true;
-  await nextTick();
-  try {
-    await bridge.window.show();
-    await store.enableStartupMusic();
-  } catch {
-    // Never play audio if the native window could not be shown.
-  }
+function showUpdaterWindow(): Promise<boolean> {
+  if (windowShown.value) return Promise.resolve(true);
+  if (windowShowPromise != null) return windowShowPromise;
+  windowShowPromise = (async () => {
+    entranceStarted.value = true;
+    await nextTick();
+    try {
+      await bridge.window.show();
+      windowShown.value = true;
+      return true;
+    } catch {
+      windowShowPromise = null;
+      return false;
+    }
+  })();
+  return windowShowPromise;
+}
+
+async function completeStartup(): Promise<void> {
+  if (startupCompleted.value || !(await showUpdaterWindow())) return;
+  if (startupCompleted.value) return;
+  startupCompleted.value = true;
+  await store.enableStartupMusic();
 }
 
 function onResizeGripDown(event: PointerEvent): void {
@@ -92,7 +108,15 @@ function onResizeGripDown(event: PointerEvent): void {
 watch(
   () => store.state.ready,
   (ready) => {
-    if (ready) void playEntrance();
+    if (ready) void completeStartup();
+  },
+  { immediate: true },
+);
+
+watch(
+  () => store.state.progress,
+  (progress) => {
+    if (progress != null) void completeStartup();
   },
   { immediate: true },
 );
@@ -100,7 +124,7 @@ watch(
 watch(
   () => store.state.error,
   (error) => {
-    if (error != null) void nextTick(() => bridge.window.show());
+    if (error != null) void showUpdaterWindow();
   },
 );
 
@@ -135,7 +159,7 @@ function formatNewsDate(value: string): string {
   <div
     ref="root"
     class="app-root"
-    :class="{ maximized: store.state.maximized, entrance: entrancePlayed }"
+    :class="{ maximized: store.state.maximized, entrance: entranceStarted }"
   >
     <img class="background-image" :src="backgroundUrl" alt="" draggable="false" />
     <img
@@ -193,7 +217,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.1.32" }}
+        DreamingFish Updater {{ "0.1.33" }}
       </div>
 
       <ContentPages />

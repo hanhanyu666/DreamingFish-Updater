@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Headless-friendly orchestration shared by the JavaFX window and the Tauri sidecar. */
 public final class PlayerController {
+    private static final String PLAYER_PROGRAM_UPDATE_MESSAGE = "正在更新玩家端程序";
     private static final int AUTO_CLOSE_SECONDS = 15;
 
     private final JsonCodec json = new JsonCodec();
@@ -278,7 +279,8 @@ public final class PlayerController {
                 LocalSettingsSnapshot snapshot = reconcileLocalState();
                 PlayerProgramUpdateResult programResult = new PlayerProgramUpdater()
                         .checkAndInstall(updateRequest(snapshot, cancellation),
-                                PlayerApplication.BOOTSTRAP_AGENT_VERSION, null, progress);
+                                PlayerApplication.BOOTSTRAP_AGENT_VERSION, null,
+                                playerProgramProgress(progress));
                 if (programResult.outcome() == PlayerProgramUpdateOutcome.CHECK_UNAVAILABLE) {
                     log.info("Player updater version check is unavailable; continuing with the modpack check");
                 } else if (programResult.outcome() == PlayerProgramUpdateOutcome.NOT_PUBLISHED) {
@@ -292,9 +294,8 @@ public final class PlayerController {
                     return;
                 }
 
-                // The Tauri shell starts hidden. Showing it only after the program
-                // update check prevents the old process from flashing before a
-                // self-update restart.
+                // The Tauri shell may already be visible during a slow program
+                // self-update; this signal marks the transition to the modpack check.
                 readyViewport();
 
                 UpdateResult result = null;
@@ -456,7 +457,7 @@ public final class PlayerController {
         restartPending = true;
         long downloaded = result.downloadedBytes();
         viewport.showProgress(new ProgressEvent(UpdateStage.COMPLETE,
-                "更新器升级完成", "正在切换到新版本", downloaded, downloaded));
+                PLAYER_PROGRAM_UPDATE_MESSAGE, "正在切换到新版本", downloaded, downloaded));
         scheduler.schedule(this::exitApplication, 350, TimeUnit.MILLISECONDS);
     }
 
@@ -473,6 +474,12 @@ public final class PlayerController {
                 viewport.showProgress(event);
             }
         };
+    }
+
+    static ProgressListener playerProgramProgress(ProgressListener listener) {
+        return event -> listener.onProgress(new ProgressEvent(event.stage(),
+                PLAYER_PROGRAM_UPDATE_MESSAGE, null,
+                event.completedBytes(), event.totalBytes()));
     }
 
     private void finishSuccessfully(UpdateResult result) {

@@ -93,6 +93,7 @@ function writeMusicLoopPreference(loop: boolean): void {
 interface PlayerState {
   preview: boolean;
   ready: boolean;
+  playerProgramUpdating: boolean;
   maximized: boolean;
   branding: Branding;
   playerName: string;
@@ -142,6 +143,7 @@ interface PlayerState {
 const state = reactive<PlayerState>({
   preview: false,
   ready: false,
+  playerProgramUpdating: false,
   maximized: false,
   branding: { ...DEFAULT_BRANDING },
   playerName: "未识别玩家",
@@ -427,6 +429,7 @@ function unusableText(value: string | null | undefined): boolean {
 }
 
 function showProgress(event: ProgressEvent): void {
+  state.playerProgramUpdating = event.message === "正在更新玩家端程序";
   state.progress = event;
   state.error = null;
   state.unverifiedOffline = false;
@@ -442,10 +445,13 @@ function showProgress(event: ProgressEvent): void {
     state.percent = "--";
   }
   state.currentPathText = displayPath(event.currentPath, event.message || "正在处理");
-  state.stageTitle = STAGE_NAMES[event.stage] ?? "正在处理更新";
+  state.stageTitle = state.playerProgramUpdating
+    ? "玩家端正在自更新"
+    : STAGE_NAMES[event.stage] ?? "正在处理更新";
 }
 
 function showResult(result: UpdateResultDto): void {
+  state.playerProgramUpdating = false;
   state.result = result;
   state.progress = null;
   state.error = null;
@@ -470,6 +476,7 @@ function showResult(result: UpdateResultDto): void {
 }
 
 function showUnverifiedOfflineLaunch(): void {
+  state.playerProgramUpdating = false;
   state.unverifiedOffline = true;
   state.localContentOverride = false;
   state.progress = null;
@@ -484,6 +491,7 @@ function showUnverifiedOfflineLaunch(): void {
 }
 
 function showLocalContentOverrideLaunch(): void {
+  state.playerProgramUpdating = false;
   state.localContentOverride = true;
   state.unverifiedOffline = false;
   state.progress = null;
@@ -498,6 +506,7 @@ function showLocalContentOverrideLaunch(): void {
 }
 
 export function showError(title: string, detail: string, allowContinue: boolean): void {
+  state.playerProgramUpdating = false;
   state.error = { title, detail, allowContinue };
   state.progress = null;
   state.working = false;
