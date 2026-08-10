@@ -237,26 +237,38 @@ function expand(): void {
       </div>
 
       <div v-if="store.state.drawerMode === 'FILES'" class="local-management-page">
-        <div class="local-mode-bar">
+        <div class="local-mode-bar" role="tablist" aria-label="本地文件管理方式">
           <button
             type="button"
             class="local-mode-button"
             :class="{ selected: store.state.localMode === 'FILES' }"
+            role="tab"
+            :aria-selected="store.state.localMode === 'FILES'"
+            aria-controls="local-file-management-panel"
             @click="store.showLocalMode('FILES')"
           >
-            管理范围
+            <span class="local-mode-label">文件管理范围</span>
+            <span class="local-mode-description">决定哪些文件随整合包更新</span>
           </button>
           <button
             type="button"
             class="local-mode-button"
             :class="{ selected: store.state.localMode === 'MODS' }"
+            role="tab"
+            :aria-selected="store.state.localMode === 'MODS'"
+            aria-controls="local-mod-management-panel"
             @click="store.showLocalMode('MODS')"
           >
-            模组启停
+            <span class="local-mode-label">模组启停</span>
+            <span class="local-mode-description">启用或停用整合包内模组</span>
           </button>
         </div>
-        <LocalFileTree v-if="store.state.localMode === 'FILES'" />
-        <div v-else class="mod-page">
+        <LocalFileTree
+          v-if="store.state.localMode === 'FILES'"
+          id="local-file-management-panel"
+          role="tabpanel"
+        />
+        <div v-else id="local-mod-management-panel" class="mod-page" role="tabpanel">
           <div class="file-tools">
             <input v-model="modSearch" class="mod-search" placeholder="搜索模组名称或文件名" type="text" />
             <button type="button" class="restore-mods-button" @click="store.confirmRestoreMods">

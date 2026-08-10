@@ -23,6 +23,9 @@ const app = {
   pendingCoverFile: null,
   pendingCoverPreviewUrl: null,
   playerPreviewReady: false,
+  playerEditorProjectId: "",
+  expandedPlayerPages: new Set(),
+  expandedPlayerArticles: new Set(),
   pathBrowser: {
     targetInput: null,
     kind: "directory",
@@ -524,7 +527,14 @@ function renderPersonalizationForm() {
   form.elements.removeCover.checked = false;
   const legacy = branding.contentPages == null;
   byId("legacy-news-note").hidden = !legacy;
-  renderPlayerPageEditor(legacyPlayerPages(branding));
+  const pages = legacyPlayerPages(branding);
+  if (app.playerEditorProjectId !== app.project.id) {
+    app.playerEditorProjectId = app.project.id;
+    app.expandedPlayerPages.clear();
+    app.expandedPlayerArticles.clear();
+    if (pages[0]) app.expandedPlayerPages.add(playerPageEditorKey(pages[0], 0));
+  }
+  renderPlayerPageEditor(pages);
   renderMusicTracks(branding.musicTracks || []);
   updatePlayerPreview();
 }
@@ -670,19 +680,36 @@ function renderPlayerPageEditor(pages) {
     return;
   }
   pages.forEach((page, index) => {
+    const pageKey = playerPageEditorKey(page, index);
+    const pageExpanded = app.expandedPlayerPages.has(pageKey);
     const card = document.createElement("section");
     card.className = "player-news-card player-page-card";
+    card.classList.toggle("collapsed", !pageExpanded);
     card.dataset.pageIndex = String(index);
     const header = document.createElement("div");
     header.className = "player-news-card-header";
+    const headingGroup = document.createElement("div");
+    headingGroup.className = "player-editor-card-heading";
     const heading = document.createElement("strong");
     heading.textContent = `页面 ${index + 1} · ${page.navigationLabel || "未命名"}`;
+    heading.title = heading.textContent;
+    const typeLabel = document.createElement("span");
+    typeLabel.className = `player-editor-type ${page.announcementPage ? "announcement" : "content"}`;
+    typeLabel.textContent = page.announcementPage ? "公告页" : "普通页面";
+    headingGroup.append(heading, typeLabel);
     const actions = document.createElement("div");
-    actions.className = "button-row";
-    const moveUp = actionButton("↑", () => movePlayerPage(index, -1));
+    actions.className = "button-row player-editor-card-actions";
+    const toggle = actionButton(pageExpanded ? "收起" : "展开", () => {
+      setPlayerPageExpanded(pageKey, !app.expandedPlayerPages.has(pageKey), card, fields, toggle);
+    });
+    toggle.classList.add("player-editor-toggle");
+    toggle.setAttribute("aria-expanded", String(pageExpanded));
+    const moveUp = actionButton("上移", () => movePlayerPage(index, -1));
     moveUp.disabled = index === 0;
-    const moveDown = actionButton("↓", () => movePlayerPage(index, 1));
+    moveUp.title = "将这个页面向前移动";
+    const moveDown = actionButton("下移", () => movePlayerPage(index, 1));
     moveDown.disabled = index === pages.length - 1;
+    moveDown.title = "将这个页面向后移动";
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "danger-button";
@@ -690,13 +717,16 @@ function renderPlayerPageEditor(pages) {
     remove.addEventListener("click", () => {
       const next = readPlayerPageEditor();
       next.splice(index, 1);
+      app.expandedPlayerPages.delete(pageKey);
+      removePlayerArticleExpansion(pageKey);
       byId("legacy-news-note").hidden = true;
       renderPlayerPageEditor(next);
     });
-    actions.append(moveUp, moveDown, remove);
-    header.append(heading, actions);
+    actions.append(toggle, moveUp, moveDown, remove);
+    header.append(headingGroup, actions);
     const fields = document.createElement("div");
     fields.className = "player-news-card-fields";
+    fields.hidden = !pageExpanded;
     const type = document.createElement("label");
     type.className = "check-field field-wide announcement-page-toggle";
     const typeInput = document.createElement("input");
@@ -736,6 +766,12 @@ function renderPlayerPageEditor(pages) {
       const next = readPlayerPageEditor();
       next[index].announcementPage = typeInput.checked;
       next[index].articles ||= [];
+      const nextPageKey = playerPageEditorKey(next[index], index);
+      if (nextPageKey !== pageKey) {
+        app.expandedPlayerPages.delete(pageKey);
+        removePlayerArticleExpansion(pageKey);
+      }
+      app.expandedPlayerPages.add(nextPageKey);
       renderPlayerPageEditor(next);
     });
     card.append(header, fields);
@@ -764,18 +800,37 @@ function renderPlayerPageBody(body, page, pageIndex) {
     body.append(empty);
   }
   (page.articles || []).forEach((article, articleIndex) => {
+    const articleKey = playerArticleEditorKey(page, pageIndex, article, articleIndex);
+    const articleExpanded = app.expandedPlayerArticles.has(articleKey);
     const item = document.createElement("div");
     item.className = "announcement-editor-card";
+    item.classList.toggle("collapsed", !articleExpanded);
     item.dataset.articleIndex = String(articleIndex);
     const header = document.createElement("div");
     header.className = "player-news-card-header";
+    const headingGroup = document.createElement("div");
+    headingGroup.className = "player-editor-card-heading announcement-editor-heading";
     const title = document.createElement("strong");
-    title.textContent = `新闻 ${articleIndex + 1}`;
+    title.textContent = `新闻 ${articleIndex + 1} · ${article.title || "未命名"}`;
+    title.title = title.textContent;
+    const date = document.createElement("span");
+    date.className = "player-editor-card-summary";
+    date.textContent = article.publishedOn || "尚未填写日期";
+    headingGroup.append(title, date);
+    const actions = document.createElement("div");
+    actions.className = "button-row player-editor-card-actions";
+    const toggle = actionButton(articleExpanded ? "收起" : "展开", () => {
+      setPlayerArticleExpanded(articleKey, !app.expandedPlayerArticles.has(articleKey), item, fields, toggle);
+    });
+    toggle.classList.add("player-editor-toggle");
+    toggle.setAttribute("aria-expanded", String(articleExpanded));
     const remove = actionButton("删除新闻", () => removeAnnouncement(pageIndex, articleIndex));
     remove.className = "danger-button";
-    header.append(title, remove);
+    actions.append(toggle, remove);
+    header.append(headingGroup, actions);
     const fields = document.createElement("div");
     fields.className = "player-news-card-fields";
+    fields.hidden = !articleExpanded;
     fields.append(
       playerPageField("标题（必填）", article.title, { scope: "articleField", name: "title", maxLength: 120, required: true }),
       playerPageField("发布日期（必填）", article.publishedOn, { scope: "articleField", name: "publishedOn", type: "date", required: true }),
@@ -787,6 +842,39 @@ function renderPlayerPageBody(body, page, pageIndex) {
     item.append(header, fields);
     body.append(item);
   });
+}
+
+function playerPageEditorKey(page, index) {
+  return String(page?.id || `page-index-${index}`);
+}
+
+function playerArticleEditorKey(page, pageIndex, article, articleIndex) {
+  return `${playerPageEditorKey(page, pageIndex)}::${String(article?.id || `article-index-${articleIndex}`)}`;
+}
+
+function setPlayerPageExpanded(key, expanded, card, fields, button) {
+  if (expanded) app.expandedPlayerPages.add(key);
+  else app.expandedPlayerPages.delete(key);
+  card.classList.toggle("collapsed", !expanded);
+  fields.hidden = !expanded;
+  button.textContent = expanded ? "收起" : "展开";
+  button.setAttribute("aria-expanded", String(expanded));
+}
+
+function setPlayerArticleExpanded(key, expanded, card, fields, button) {
+  if (expanded) app.expandedPlayerArticles.add(key);
+  else app.expandedPlayerArticles.delete(key);
+  card.classList.toggle("collapsed", !expanded);
+  fields.hidden = !expanded;
+  button.textContent = expanded ? "收起" : "展开";
+  button.setAttribute("aria-expanded", String(expanded));
+}
+
+function removePlayerArticleExpansion(pageKey) {
+  const prefix = `${pageKey}::`;
+  [...app.expandedPlayerArticles]
+    .filter((key) => key.startsWith(prefix))
+    .forEach((key) => app.expandedPlayerArticles.delete(key));
 }
 
 function readPlayerPageEditor() {
@@ -830,11 +918,18 @@ function addAnnouncement(pageIndex) {
   while (ids.has(id)) id = `news-${date}-${++suffix}`;
   articles.push({ id, title: "", summary: "", publishedOn: date, coverUrl: "", markdown: "" });
   pages[pageIndex].articles = articles;
+  app.expandedPlayerPages.add(playerPageEditorKey(pages[pageIndex], pageIndex));
+  app.expandedPlayerArticles.add(playerArticleEditorKey(
+    pages[pageIndex], pageIndex, articles[articles.length - 1], articles.length - 1
+  ));
   renderPlayerPageEditor(pages);
 }
 
 function removeAnnouncement(pageIndex, articleIndex) {
   const pages = readPlayerPageEditor();
+  const page = pages[pageIndex];
+  const article = page.articles[articleIndex];
+  app.expandedPlayerArticles.delete(playerArticleEditorKey(page, pageIndex, article, articleIndex));
   pages[pageIndex].articles.splice(articleIndex, 1);
   renderPlayerPageEditor(pages);
 }
@@ -948,6 +1043,9 @@ async function importPlayerPages(file) {
   );
   if (!accepted) return;
   byId("legacy-news-note").hidden = true;
+  app.expandedPlayerPages.clear();
+  app.expandedPlayerArticles.clear();
+  if (pages[0]) app.expandedPlayerPages.add(playerPageEditorKey(pages[0], 0));
   renderPlayerPageEditor(pages);
   toast("配置已导入，请检查右侧预览后保存");
 }
@@ -2445,6 +2543,7 @@ function bindPersonalizationForm() {
       id, navigationLabel: "新页面", announcementPage: false,
       eyebrow: "", title: "新页面", lead: "", markdown: "", articles: []
     });
+    app.expandedPlayerPages.add(id);
     byId("legacy-news-note").hidden = true;
     renderPlayerPageEditor(pages);
     byId("player-page-editor").lastElementChild?.scrollIntoView({

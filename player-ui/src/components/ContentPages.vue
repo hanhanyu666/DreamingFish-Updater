@@ -7,7 +7,7 @@ import MarkdownBody from "./MarkdownBody.vue";
 
 const store = usePlayerStore();
 const bridge = getBridge();
-const VERSION = "0.1.35";
+const VERSION = "0.1.36";
 const REPOSITORY_URL = "https://github.com/hanhanyu666/DreamingFish-Updater";
 const currentPage = computed(() => {
   const id = store.state.page === "NEWS" ? "news"

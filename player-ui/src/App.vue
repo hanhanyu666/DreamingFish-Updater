@@ -217,7 +217,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.1.35" }}
+        DreamingFish Updater {{ "0.1.36" }}
       </div>
 
       <ContentPages />
@@ -225,6 +225,10 @@ function formatNewsDate(value: string): string {
       <div
         v-if="store.state.launchNotice != null"
         class="launch-notice-layer"
+        :class="{
+          'drawer-open': store.state.drawerOpen,
+          'drawer-expanded': store.state.drawerOpen && store.state.drawerExpanded,
+        }"
       >
         <div class="launch-notice">
           <span class="launch-notice-glyph">✓</span>

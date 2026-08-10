@@ -25,13 +25,13 @@ DreamingFish Updater 是一套面向 Minecraft 整合包服务器的自托管更
 
 ## 下载
 
-当前版本：**玩家端 0.1.35 / 管理端 0.1.21**。两个组件独立更新，因此版本号不要求一致。所有发行包都自带精简运行环境，使用者不需要另外安装 Java。
+当前版本：**玩家端 0.1.36 / 管理端 0.1.22**。两个组件独立更新，因此版本号不要求一致。所有发行包都自带精简运行环境，使用者不需要另外安装 Java。
 
 | 发行包 | 适用场景 | 下载 |
 | --- | --- | --- |
-| 玩家端 0.1.35 · Windows x64 | 随整合包交给玩家，负责启动前检查、更新与本地管理 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dreamingfish-player-windows-x64-0.1.35.zip) |
-| 管理端 0.1.21 · Windows x64 | 部署到 Windows Server 或长期运行的 Windows 主机，提供管理与玩家下载服务 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-windows-x64-0.1.21.zip) |
-| 管理端 0.1.21 · Linux x64 | 部署到 Minecraft 服务器或 VPS | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-linux-x64-0.1.21.zip) |
+| 玩家端 0.1.36 · Windows x64 | 随整合包交给玩家，负责启动前检查、更新与本地管理 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dreamingfish-player-windows-x64-0.1.36.zip) |
+| 管理端 0.1.22 · Windows x64 | 部署到 Windows Server 或长期运行的 Windows 主机，提供管理与玩家下载服务 | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-windows-x64-0.1.22.zip) |
+| 管理端 0.1.22 · Linux x64 | 部署到 Minecraft 服务器或 VPS | [下载 ZIP](https://github.com/hanhanyu666/DreamingFish-Updater/releases/latest/download/dfs-admin-linux-x64-0.1.22.zip) |
 
 第一次使用请打开[梦鱼更新器官网文档](https://dreamingfish-studio.github.io/DreamingFish-Updater-Website/)。网站里提供完整界面示例、Web 与命令行两种操作路径，以及从管理端第一次启动到玩家首次进入游戏的全部步骤。
 
@@ -149,14 +149,14 @@ cargo test --manifest-path .\src-tauri\Cargo.toml
 Set-Location ..
 
 .\packaging\build-distributions.ps1 `
-  -Version 0.1.35 `
-  -AdminVersion 0.1.21 `
+  -Version 0.1.36 `
+  -AdminVersion 0.1.22 `
   -TauriPlayer `
   -SkipTests
 
 .\packaging\smoke-test-distributions.ps1 `
-  -Version 0.1.35 `
-  -AdminVersion 0.1.21
+  -Version 0.1.36 `
+  -AdminVersion 0.1.22
 ```
 
 发行包烟雾测试会重新解压真实 ZIP，模拟历史发布、签名验证、篡改拒绝、首次部署包与 HTTP 下载服务；测试数据位于 `target/`，成功后自动清理，不会接触现有 Minecraft 实例。

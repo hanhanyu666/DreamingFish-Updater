@@ -63,6 +63,7 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("玩家端预览"));
             assertTrue(page.body().contains("id=\"personalization-form\""));
             assertTrue(page.body().contains("id=\"player-preview-stage\""));
+            assertTrue(page.body().contains("player-pages-toolbar"));
             assertTrue(page.body().contains("id=\"cover-upload-input\""));
             assertTrue(page.body().contains("从本机选择图片"));
             assertTrue(!page.body().contains("服务器上的新背景图片"));
@@ -623,6 +624,13 @@ class AdminWebServerTest {
             assertTrue(script.body().contains("capturePublishPosition"));
             assertTrue(script.body().contains("remove-batch"));
             assertTrue(script.body().contains("本次没有修改"));
+            assertTrue(script.body().contains("expandedPlayerPages"));
+            assertTrue(script.body().contains("player-editor-card-actions"));
+
+            HttpResponse<String> stylesheet = send(
+                    base, "/app.css", "GET", null, null);
+            assertTrue(stylesheet.body().contains(".player-page-card.collapsed"));
+            assertTrue(stylesheet.body().contains(".player-editor-card-heading"));
         }
     }
 

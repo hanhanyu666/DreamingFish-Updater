@@ -521,6 +521,14 @@ input {
   }
 }
 
+@media (max-width: 820px) {
+  .launch-notice-layer.drawer-open {
+    opacity: 0;
+    visibility: hidden;
+    animation: none;
+  }
+}
+
 .window-glyph-line {
   display: block;
   width: 13px;
@@ -1346,6 +1354,17 @@ input {
   pointer-events: none;
   z-index: 45;
   animation: dfs-launch-in 420ms cubic-bezier(0.18, 0.78, 0.2, 1) both;
+  transition: right 180ms ease, opacity 140ms ease;
+}
+
+.launch-notice-layer.drawer-open {
+  right: 620px;
+}
+
+.launch-notice-layer.drawer-expanded {
+  opacity: 0;
+  visibility: hidden;
+  animation: none;
 }
 
 @keyframes dfs-launch-in {
@@ -1369,6 +1388,7 @@ input {
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.035)),
     rgba(3, 10, 11, 0.72);
   box-shadow: 0 7px 20px rgba(0, 0, 0, 0.34);
+  max-width: min(420px, calc(100% - 32px));
 }
 
 .launch-notice-glyph {
@@ -1385,9 +1405,12 @@ input {
 }
 
 .launch-notice-text {
+  min-width: 0;
   color: rgba(255, 248, 226, 0.92);
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .details-drawer {
@@ -1433,6 +1456,8 @@ input {
 .drawer-header {
   display: flex;
   align-items: center;
+  min-height: 36px;
+  gap: 4px;
 }
 
 .drawer-header-spacer {
@@ -1440,15 +1465,23 @@ input {
 }
 
 .drawer-title {
+  min-width: 0;
   color: #fff8dc;
   font-size: 19px;
   font-weight: 700;
+  line-height: 1.35;
 }
 
 .drawer-tabs {
   display: flex;
   gap: 8px;
   padding: 2px 0 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.drawer-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .drawer-tab {
@@ -1671,7 +1704,8 @@ input {
 }
 
 .file-tools {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
 }
@@ -1766,6 +1800,7 @@ input {
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .mod-toggle.disabled {
@@ -1823,28 +1858,62 @@ input {
 }
 
 .local-mode-bar {
-  display: flex;
-  gap: 6px;
-  padding-bottom: 2px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  padding: 2px 0 12px;
 }
 
 .local-mode-button {
-  min-height: 30px;
-  padding: 0 13px;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.045);
+  min-width: 0;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
   color: rgba(255, 248, 220, 0.52);
-  font-size: 12px;
+  text-align: left;
 }
 
 .local-mode-button:hover {
-  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
   color: #fff8dc;
 }
 
 .local-mode-button.selected {
-  background: rgba(46, 232, 223, 0.12);
+  border-color: rgba(46, 232, 223, 0.38);
+  background: linear-gradient(135deg, rgba(46, 232, 223, 0.14), rgba(46, 232, 223, 0.055));
+  box-shadow: inset 3px 0 0 rgba(46, 232, 223, 0.72);
+}
+
+.local-mode-label {
+  color: #fff8dc;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.local-mode-button.selected .local-mode-label {
   color: var(--dfs-accent);
+}
+
+.local-mode-description {
+  max-width: 100%;
+  color: rgba(255, 248, 220, 0.43);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.local-mode-button.selected .local-mode-description {
+  color: rgba(212, 255, 250, 0.62);
 }
 
 .local-file-page {
