@@ -158,11 +158,11 @@ public final class PlayerController {
             try {
                 permitClient.allow();
                 launchPermitted = true;
-                log.warn("Player chose to launch with locally changed managed files");
+                log.warn("玩家操作", "玩家选择保留已修改的本地文件并继续启动 Minecraft");
                 viewport.showLocalContentOverrideLaunch();
                 startAutoCloseCountdown();
             } catch (Exception e) {
-                log.error("Unable to grant launch permission after local content override", e);
+                log.error("启动许可", "保留本地文件后无法授予 Minecraft 启动许可", e);
                 showFailure(errorTitle(e), e);
             }
         });
@@ -176,7 +176,7 @@ public final class PlayerController {
             }
             refreshLocalManagementAsync();
         } catch (IOException e) {
-            log.error("Unable to save local mod preference", e);
+            log.error("本地设置", "无法保存模组启停设置", e);
             showFailure("无法保存模组设置", e);
         }
     }
@@ -190,7 +190,7 @@ public final class PlayerController {
             refreshLocalManagementAsync();
             showRestartRequired("模组启停设置已恢复");
         } catch (IOException e) {
-            log.error("Unable to restore local mod defaults", e);
+            log.error("本地设置", "无法恢复默认模组设置", e);
             showFailure("无法恢复模组设置", e);
         }
     }
@@ -203,7 +203,7 @@ public final class PlayerController {
             }
             refreshLocalManagementAsync();
         } catch (IOException e) {
-            log.error("Unable to save local file preference", e);
+            log.error("本地设置", "无法保存文件管理范围", e);
             showFailure("无法保存本地文件设置", e);
         }
     }
@@ -217,7 +217,7 @@ public final class PlayerController {
             refreshLocalManagementAsync();
             showRestartRequired("文件管理设置已恢复");
         } catch (IOException e) {
-            log.error("Unable to restore local file defaults", e);
+            log.error("本地设置", "无法恢复默认文件管理范围", e);
             showFailure("无法恢复文件管理设置", e);
         }
     }
@@ -259,6 +259,7 @@ public final class PlayerController {
         log = new PlayerLog(playerHome);
         log.setListener(viewport::appendLog);
         viewport.setLogs(log.readRecentLines(5000));
+        log.startSession(binding.projectId(), PlayerApplication.VERSION);
         localModManager = new LocalModManager(arguments.instanceRoot(), playerHome);
         localFileManager = new LocalFileManager(playerHome);
         viewport.setPlayerIdentity(arguments.playerName());
@@ -267,7 +268,6 @@ public final class PlayerController {
         applyActiveBranding();
         viewport.setBackground(resolveBundledCover(binding));
         viewport.setReleaseHistory(releaseHistoryClient.loadCached(binding, playerHome));
-        log.info("Player updater started for project " + binding.projectId());
     }
 
     private void startUpdate() {
@@ -288,14 +288,14 @@ public final class PlayerController {
                                 PlayerApplication.BOOTSTRAP_AGENT_VERSION, null,
                                 playerProgramProgress(progress));
                 if (programResult.outcome() == PlayerProgramUpdateOutcome.CHECK_UNAVAILABLE) {
-                    log.info("Player updater version check is unavailable; continuing with the modpack check");
+                    log.warn("玩家端更新", "暂时无法检查玩家端程序版本，继续检查整合包内容");
                 } else if (programResult.outcome() == PlayerProgramUpdateOutcome.NOT_PUBLISHED) {
-                    log.info("No player updater program has been published for this project");
+                    log.info("玩家端更新", "此项目还没有发布玩家端程序，继续检查整合包内容");
                 }
                 if (programResult.restartRequired()) {
                     working = false;
-                    log.info("Player updater " + programResult.manifest().version()
-                            + " installed; restarting through the bootstrap Agent");
+                    log.info("玩家端更新", "玩家端 " + programResult.manifest().version()
+                            + " 已安装，正在通过 Bootstrap Agent 重新启动");
                     restartWithUpdatedProgram(programResult);
                     return;
                 }
@@ -327,23 +327,24 @@ public final class PlayerController {
                         }
                     }
                     if (!preferencesChanged) break;
-                    log.info("Local mod preferences changed during the update; reconciling again");
+                    log.info("本地设置", "更新期间模组启停设置发生变化，正在重新核对文件");
                 }
                 working = false;
-                log.info("Launch permission granted for release " + result.release().releaseId());
+                log.info("启动许可", "已允许 Minecraft 启动 · 整合包发布 "
+                        + result.release().releaseId());
                 if (!result.archivedFiles().isEmpty()) {
-                    log.info("Remote management forced sync for directories: "
-                            + String.join(", ", result.release().forcedSyncDirectories()));
-                    log.info("Archived " + result.archivedFiles().size()
-                            + " local files to " + result.archiveDirectory());
-                    result.archivedFiles().forEach(path -> log.info("Archived local file: " + path));
+                    log.info("强制同步", "管理端要求以下目录保持一致："
+                            + String.join("、", result.release().forcedSyncDirectories()));
+                    log.info("强制同步", "已将 " + result.archivedFiles().size()
+                            + " 个本地文件移入备份：" + result.archiveDirectory());
+                    result.archivedFiles().forEach(path ->
+                            log.info("强制同步", "已备份本地文件：" + path));
                 }
                 if (!result.releasedPaths().isEmpty()) {
-                    log.info("Remote management released "
-                            + result.releasedPaths().size()
-                            + " files and kept local copies");
+                    log.info("文件管理", "管理端已放弃管理 "
+                            + result.releasedPaths().size() + " 个文件，并保留玩家本地副本");
                     result.releasedPaths().forEach(path ->
-                            log.info("Released managed file: " + path));
+                            log.info("文件管理", "已放弃管理：" + path));
                 }
                 UpdateResult completedResult = result;
                 runNonFatalPostLaunchRefresh(() -> {
@@ -351,9 +352,8 @@ public final class PlayerController {
                     List<LocalFileEntry> files = localFileManager.scan(completedResult.release());
                     viewport.setLocalMods(mods);
                     viewport.setLocalFiles(files);
-                }, error -> log.warn(
-                        "Unable to refresh local management UI after launch permission was granted: "
-                                + error));
+                }, error -> log.warn("本地设置",
+                        "Minecraft 获得启动许可后无法刷新本地管理界面：" + error));
                 releaseBranding = completedResult.release().branding();
                 applyActiveBranding();
                 finishSuccessfully(completedResult);
@@ -362,7 +362,7 @@ public final class PlayerController {
                 working = false;
                 readyViewport();
                 if (handleUnverifiedOfflineLaunch(e)) return;
-                log.error("Update failed", e);
+                log.error("整合包更新", "更新失败", e);
                 showFailure(errorTitle(e), e);
             }
         });
@@ -447,7 +447,7 @@ public final class PlayerController {
                 viewport.setLocalMods(mods);
                 viewport.setLocalFiles(files);
             } catch (IOException e) {
-                log.error("Unable to scan local management settings", e);
+                log.error("本地设置", "无法扫描本地文件和模组设置", e);
             }
         });
     }
@@ -458,7 +458,7 @@ public final class PlayerController {
                 ReleaseHistory history = releaseHistoryClient.fetch(binding, playerHome);
                 viewport.setReleaseHistory(history);
             } catch (IOException e) {
-                log.info("Release history is unavailable; using locally cached records");
+                log.warn("更新记录", "暂时无法获取远程发布记录，已显示本地缓存");
             }
         });
     }
@@ -467,9 +467,9 @@ public final class PlayerController {
         try {
             presentationBranding = presentationClient.fetch(request);
             applyActiveBranding();
-            log.info("Player presentation refreshed from the management server");
+            log.info("个性化", "已从管理端刷新玩家端界面内容");
         } catch (IOException e) {
-            log.info("Player presentation is unavailable; using the last verified local presentation");
+            log.warn("个性化", "暂时无法获取远程界面内容，已使用上次验证的本地版本");
         }
     }
 
@@ -509,7 +509,7 @@ public final class PlayerController {
         return event -> {
             long now = System.nanoTime();
             boolean stageChanged = lastStage.getAndSet(event.stage()) != event.stage();
-            if (stageChanged) log.info(event.message());
+            if (stageChanged) log.info(stageCategory(event.stage()), event.message());
             if (stageChanged || now - lastUi.get() >= 50_000_000L
                     || (event.totalBytes() > 0 && event.completedBytes() >= event.totalBytes())) {
                 lastUi.set(now);
@@ -554,11 +554,11 @@ public final class PlayerController {
             permitClient.allow(gameLock::close);
             launchPermitted = true;
         } catch (Exception permitFailure) {
-            log.error("Unable to grant unverified offline launch permission", permitFailure);
+            log.error("启动许可", "离线状态下无法授予 Minecraft 启动许可", permitFailure);
             showFailure(errorTitle(permitFailure), permitFailure);
             return true;
         }
-        log.warn("Update service unavailable; launch granted without validating this installation");
+        log.warn("离线启动", "更新服务不可用，本次未验证本地文件便继续启动 Minecraft");
         viewport.showUnverifiedOfflineLaunch();
         startAutoCloseCountdown();
         return true;
@@ -572,7 +572,7 @@ public final class PlayerController {
     }
 
     private void showInitializationFailure(Exception error) {
-        if (log != null) log.error("Player updater initialization failed", error);
+        if (log != null) log.error("初始化", "玩家端初始化失败", error);
         if (binding == null) {
             binding = new ProjectBinding(1, "unknown", "http://127.0.0.1", "invalid",
                     "DreamingFishUpdater", null, Branding.empty());
@@ -639,9 +639,23 @@ public final class PlayerController {
             Path cover = PathSafety.resolveInside(arguments.instanceRoot(), current.bundledCoverPath());
             return Files.isRegularFile(cover) ? cover : null;
         } catch (Exception e) {
-            if (log != null) log.error("Bundled cover path is invalid", e);
+            if (log != null) log.error("界面资源", "整合包内置封面路径无效", e);
             return null;
         }
+    }
+
+    private static String stageCategory(UpdateStage stage) {
+        return switch (stage) {
+            case CHECKING -> "检查更新";
+            case SCANNING -> "扫描文件";
+            case DOWNLOADING -> "下载文件";
+            case PREPARING -> "准备更新";
+            case INSTALLING -> "安装文件";
+            case VERIFYING -> "校验文件";
+            case RECOVERING -> "恢复文件";
+            case OFFLINE -> "离线启动";
+            case COMPLETE -> "更新完成";
+        };
     }
 
     private String errorTitle(Throwable error) {

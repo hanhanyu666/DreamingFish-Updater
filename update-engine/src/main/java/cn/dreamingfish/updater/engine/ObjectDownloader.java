@@ -75,7 +75,7 @@ final class ObjectDownloader {
         request.cancellationToken().throwIfCancelled();
         Path cached = paths.cacheObject(hash);
         if (isValid(cached, hash, size)) {
-            tracker.set(hash, size, "Using verified cache");
+            tracker.set(hash, size, "正在使用已验证的本地缓存");
             return 0;
         }
         try {
@@ -103,10 +103,10 @@ final class ObjectDownloader {
                 Files.deleteIfExists(partial);
                 offset = 0;
             }
-            tracker.set(hash, offset, offset > 0 ? "Resuming download" : "Downloading files");
+            tracker.set(hash, offset, offset > 0 ? "正在继续上次下载" : "正在下载更新文件");
             if (offset == expectedSize && isValid(partial, hash, expectedSize)) {
                 promote(partial, paths.cacheObject(hash));
-                tracker.set(hash, expectedSize, "Using completed download");
+                tracker.set(hash, expectedSize, "正在使用已完成的下载");
                 return 0;
             }
             return performRequest(request, paths, hash, expectedSize, offset, tracker, false);
@@ -151,12 +151,12 @@ final class ObjectDownloader {
                         StandardOpenOption.APPEND};
             } else if (status == 200) {
                 actualOffset = 0;
-                tracker.set(hash, 0, "Restarting download");
+                tracker.set(hash, 0, "正在重新下载文件");
                 options = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.WRITE,
                         StandardOpenOption.TRUNCATE_EXISTING};
             } else if (status == 416 && requestedOffset > 0 && !retried) {
                 Files.deleteIfExists(paths.partialObject(hash));
-                tracker.set(hash, 0, "Restarting download");
+                tracker.set(hash, 0, "正在重新下载文件");
                 return performRequest(request, paths, hash, expectedSize, 0, tracker, true);
             } else {
                 throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,
@@ -183,7 +183,7 @@ final class ObjectDownloader {
                     output.write(buffer, 0, read);
                     written += read;
                     networkBytes += read;
-                    tracker.set(hash, written, "Downloading files");
+                    tracker.set(hash, written, "正在下载更新文件");
                 }
             }
             AtomicFileSupport.force(partial);
@@ -192,7 +192,7 @@ final class ObjectDownloader {
                         "Downloaded object failed SHA-256 verification: " + hash);
             }
             promote(partial, paths.cacheObject(hash));
-            tracker.set(hash, expectedSize, "Downloading files");
+            tracker.set(hash, expectedSize, "正在下载更新文件");
             return networkBytes;
         } catch (UpdateException e) {
             throw e;

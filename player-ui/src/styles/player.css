@@ -1665,22 +1665,186 @@ input {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 4px 8px 0;
+  padding: 0 4px 12px 0;
 }
 
-.log-line {
-  padding: 7px 10px 7px 5px;
-  border-radius: 6px;
+.log-overview,
+.log-day-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.log-overview {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  min-height: 42px;
+  padding: 0 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(18, 24, 30, 0.96);
+  color: rgba(255, 248, 220, 0.5);
+  font-size: 11px;
+  backdrop-filter: blur(10px);
+}
+
+.log-overview span:first-child {
+  color: #fff8dc;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.log-day {
+  padding: 12px 0 2px;
+}
+
+.log-day-heading {
+  min-height: 28px;
+  padding: 0 10px;
+  color: rgba(255, 248, 220, 0.48);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.log-day-heading span:first-child {
   color: rgba(255, 248, 220, 0.72);
-  font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Cascadia Mono", "Consolas", monospace;
   font-size: 12px;
-  font-weight: 400;
+}
+
+.log-session-line {
+  display: grid;
+  grid-template-columns: 78px auto minmax(18px, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: rgba(255, 248, 220, 0.58);
+  font-size: 10px;
+}
+
+.log-session-line > span {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(46, 232, 223, 0.42), transparent);
+}
+
+.log-session-line strong {
+  color: var(--dfs-accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.log-session-line time,
+.log-time {
+  color: rgba(255, 248, 220, 0.38);
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-entry {
+  display: grid;
+  grid-template-columns: 78px 36px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 8px 10px;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+  color: rgba(255, 248, 220, 0.74);
+  font-size: 12px;
   user-select: text;
 }
 
-.log-line:hover {
+.log-entry:hover {
   background: rgba(255, 255, 255, 0.055);
   color: #fff8dc;
+}
+
+.log-entry.level-warn {
+  border-left-color: rgba(241, 190, 73, 0.72);
+}
+
+.log-entry.level-error {
+  border-left-color: rgba(239, 103, 114, 0.82);
+  background: rgba(239, 103, 114, 0.055);
+}
+
+.log-time {
+  padding-top: 2px;
+  font-size: 10px;
+}
+
+.log-level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  border-radius: 5px;
+  background: rgba(89, 158, 255, 0.12);
+  color: rgba(167, 204, 255, 0.88);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.level-warn .log-level {
+  background: rgba(241, 190, 73, 0.14);
+  color: #f4cd72;
+}
+
+.level-error .log-level {
+  background: rgba(239, 103, 114, 0.15);
+  color: #ff9da5;
+}
+
+.log-content {
+  min-width: 0;
+}
+
+.log-message-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.log-category {
+  flex: 0 0 auto;
+  color: rgba(255, 248, 220, 0.48);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.log-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.log-details {
+  margin-top: 6px;
+  color: rgba(255, 248, 220, 0.5);
+  font-size: 10px;
+}
+
+.log-details summary {
+  width: fit-content;
+  color: rgba(255, 248, 220, 0.56);
+  cursor: pointer;
+}
+
+.log-details pre {
+  max-height: 220px;
+  margin: 7px 0 0;
+  overflow: auto;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 248, 220, 0.64);
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .mod-search {

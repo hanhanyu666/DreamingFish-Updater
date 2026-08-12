@@ -62,7 +62,7 @@ public final class UpdateEngine {
                     paths, request.binding(), publicKey, request.supportedCapabilities()));
 
             progress.onProgress(new ProgressEvent(UpdateStage.CHECKING,
-                    "Checking for updates", null, 0, 0));
+                    "正在检查整合包更新", null, 0, 0));
             SignedRelease target;
             try {
                 target = manifestFetcher.fetch(request, publicKey,
@@ -87,7 +87,7 @@ public final class UpdateEngine {
                 persistBundledBaseline(paths, local);
                 storageMaintenance.cleanObjectCache(paths);
                 progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
-                        "Installation is up to date", null, 1, 1));
+                        "本地整合包已是最新版本", null, 1, 1));
                 return new UpdateResult(UpdateOutcome.UP_TO_DATE, target.manifest(),
                         0, 0, 0, plan.unmanagedMods(), List.of(), null,
                         List.of(), List.of(), plan.releasedPaths());
@@ -99,13 +99,13 @@ public final class UpdateEngine {
             syncMusicTracks(request, paths, target.manifest().branding().musicTracks(),
                     progress, local == null ? null : local.release().manifest().branding().musicTracks());
             progress.onProgress(new ProgressEvent(UpdateStage.PREPARING,
-                    "Preparing update transaction", null, 0, plan.operations().size()));
+                    "正在准备安全更新", null, 0, plan.operations().size()));
             InstallResult installResult = installer.install(
                     paths, plan, progress, effectiveOverrides,
                     request.cancellationToken());
             storageMaintenance.cleanObjectCache(paths);
             progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
-                    "Update installed", null, 1, 1));
+                    "整合包更新完成", null, 1, 1));
             return new UpdateResult(UpdateOutcome.UPDATED, target.manifest(),
                     plan.installCount(), plan.deleteCount(), downloaded, plan.unmanagedMods(),
                     installResult.archivedFiles(), installResult.archiveDirectory(),
@@ -182,7 +182,7 @@ public final class UpdateEngine {
                     networkFailure);
         }
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
-                "Update service unavailable; verifying the last installation", null, 0, 0));
+                "更新服务暂时不可用，正在验证上次安装", null, 0, 0));
         LocalFileOverrides effectiveOverrides = request.localFileOverrides()
                 .withForcedManagement(
                         local.release().manifest().forcedSyncFiles(),
@@ -202,7 +202,7 @@ public final class UpdateEngine {
         }
         persistBundledBaseline(paths, local);
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
-                "Using the last verified installation", null, 1, 1));
+                "已使用上次完整验证的本地版本", null, 1, 1));
         return new UpdateResult(UpdateOutcome.OFFLINE_ALLOWED, local.release().manifest(),
                 0, 0, 0, localPlan.unmanagedMods(), List.of(), null,
                 List.of(), List.of(), List.of());

@@ -24,6 +24,7 @@ const app = {
   pendingCoverPreviewUrl: null,
   playerPreviewReady: false,
   playerEditorProjectId: "",
+  servicePollId: null,
   expandedPlayerPages: new Set(),
   expandedPlayerArticles: new Set(),
   pathBrowser: {
@@ -121,6 +122,22 @@ async function enterManagement() {
   byId("app-shell").hidden = false;
   setConnection(true);
   await refreshState();
+  startServicePolling();
+}
+
+function startServicePolling() {
+  if (app.servicePollId != null) window.clearInterval(app.servicePollId);
+  app.servicePollId = window.setInterval(async () => {
+    if (app.busy || app.state == null || document.hidden
+        || byId("app-shell").hidden) return;
+    try {
+      app.state.publicService = await api("/api/public-service/status");
+      renderService();
+    } catch {
+      // The global connection state is handled by explicit page requests. A
+      // transient background probe must not interrupt the administrator.
+    }
+  }, 10_000);
 }
 
 function bindAuthentication() {
@@ -289,13 +306,23 @@ function renderProjectOptions() {
 function renderService() {
   const service = app.state.publicService;
   byId("service-indicator").classList.toggle("running", service.running);
+  byId("service-indicator").classList.toggle(
+    "warning", service.portOccupied && !service.running);
   byId("service-title").textContent = service.running
-    ? "HTTP 文件服务运行中"
-    : "HTTP 文件服务未启动";
+    ? service.managed
+      ? "HTTP 文件服务运行中"
+      : "HTTP 文件服务已在其他进程中运行"
+    : service.portOccupied
+      ? "下载服务端口已占用，但服务无响应"
+      : "HTTP 文件服务未启动";
   byId("service-address").textContent = service.address;
   byId("service-address").title = service.address;
-  byId("service-start").disabled = service.running;
-  byId("service-stop").disabled = !service.running;
+  byId("service-detail").textContent = service.detail || "";
+  byId("service-start").disabled = service.running || service.portOccupied;
+  byId("service-stop").disabled = !service.managed;
+  byId("service-stop").title = service.running && !service.managed
+    ? "此服务由另一个管理端进程启动，请回到对应终端停止"
+    : "停止当前 Web 管理端启动的下载服务";
 }
 
 function renderDashboard() {

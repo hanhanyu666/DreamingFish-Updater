@@ -30,6 +30,7 @@ import java.util.concurrent.Executors;
 public final class PublicFileServer implements AutoCloseable {
     private static final String SERVER_NAME = "DreamingFishUpdateSystem/0.1";
     private static final int BUFFER_SIZE = 128 * 1024;
+    private static final int HTTP_WORKERS = 64;
 
     private final ManagementDatabase database;
     private final ObjectStore objects;
@@ -49,9 +50,15 @@ public final class PublicFileServer implements AutoCloseable {
         try {
             server = HttpServer.create(address, 128);
         } catch (IOException e) {
-            throw new ManagementException("Unable to bind public HTTP listener " + address, e);
+            throw new ManagementException("无法监听下载服务地址 " + address
+                    + "，该端口可能已经被其他进程占用", e);
         }
-        executor = Executors.newVirtualThreadPerTaskExecutor();
+        // The JDK HTTP server can pin virtual-thread carriers while a slow client
+        // is reading a response. A handful of hostile public connections could
+        // therefore starve health checks and every legitimate download. A bounded
+        // platform pool keeps those connections isolated and caps resource use.
+        executor = Executors.newFixedThreadPool(HTTP_WORKERS,
+                Thread.ofPlatform().daemon().name("dfs-public-http-", 0).factory());
         server.setExecutor(executor);
         server.createContext("/healthz", this::handleHealth);
         server.createContext("/v1/projects/", this::handleProject);

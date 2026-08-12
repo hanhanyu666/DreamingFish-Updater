@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { formatHistoryTime, playerAddedMods } from "../lib/format";
+import { groupPlayerLogs, logLevelLabel } from "../lib/playerLogs";
 import { usePlayerStore } from "../stores/player";
 import type { LocalModEntry } from "../lib/types";
 import LocalFileTree from "./LocalFileTree.vue";
@@ -77,6 +78,16 @@ const updateChangelog = computed(() => {
 });
 
 const historyReleases = computed(() => store.state.releaseHistory?.releases ?? []);
+const logGroups = computed(() => groupPlayerLogs(store.state.logs));
+const logEntries = computed(() => logGroups.value.flatMap((group) => group.entries));
+const logSummary = computed(() => {
+  const warnings = logEntries.value.filter((entry) => entry.level === "WARN").length;
+  const errors = logEntries.value.filter((entry) => entry.level === "ERROR").length;
+  const parts = [`共 ${logEntries.value.length} 条`];
+  if (warnings > 0) parts.push(`提醒 ${warnings}`);
+  if (errors > 0) parts.push(`错误 ${errors}`);
+  return parts.join("  ·  ");
+});
 
 const visibleMods = computed(() => {
   const query = modSearch.value.trim().toLowerCase();
@@ -229,11 +240,41 @@ function expand(): void {
 
       <div v-if="store.state.drawerMode === 'LOGS'" ref="logsElement" class="log-list">
         <div v-if="store.state.logs.length === 0" class="drawer-empty">
-          本次运行还没有日志
+          还没有运行记录
         </div>
-        <div v-for="(line, index) in store.state.logs" :key="index" class="log-line">
-          {{ line }}
-        </div>
+        <template v-else>
+          <div class="log-overview">
+            <span>运行记录</span>
+            <span>{{ logSummary }}</span>
+          </div>
+          <section v-for="group in logGroups" :key="group.key" class="log-day">
+            <div class="log-day-heading">
+              <span>{{ group.label }}</span>
+              <span>{{ group.entries.length }} 条</span>
+            </div>
+            <template v-for="entry in group.entries" :key="entry.id">
+              <div v-if="entry.level === 'START'" class="log-session-line">
+                <time>{{ entry.time }}</time>
+                <strong>{{ entry.message }}</strong>
+                <span></span>
+              </div>
+              <article v-else class="log-entry" :class="'level-' + entry.level.toLowerCase()">
+                <time class="log-time">{{ entry.time }}</time>
+                <span class="log-level">{{ logLevelLabel(entry.level) }}</span>
+                <div class="log-content">
+                  <div class="log-message-row">
+                    <span class="log-category">{{ entry.category }}</span>
+                    <span class="log-message">{{ entry.message }}</span>
+                  </div>
+                  <details v-if="entry.details.length > 0" class="log-details">
+                    <summary>查看异常详情</summary>
+                    <pre>{{ entry.details.join("\n") }}</pre>
+                  </details>
+                </div>
+              </article>
+            </template>
+          </section>
+        </template>
       </div>
 
       <div v-if="store.state.drawerMode === 'FILES'" class="local-management-page">

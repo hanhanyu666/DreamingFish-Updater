@@ -43,7 +43,7 @@ final class UpdatePlanner {
             ProtectedPathPolicy.validate(paths, file.path());
             if (overrides.excludes(file)) {
                 listener.onProgress(new ProgressEvent(UpdateStage.SCANNING,
-                        "Keeping locally unmanaged file", file.path(), 0, 0));
+                        "保留玩家已取消管理的文件", file.path(), 0, 0));
                 continue;
             }
             Path destination = resolve(paths, file.path());
@@ -69,7 +69,7 @@ final class UpdatePlanner {
                 }
             }
             listener.onProgress(new ProgressEvent(UpdateStage.SCANNING,
-                    "Scanning managed files", file.path(), 0, 0));
+                    "正在扫描受管理文件", file.path(), 0, 0));
         }
 
         if (local != null) {
@@ -88,7 +88,7 @@ final class UpdatePlanner {
                         releasedPaths.add(Path.of(old.path()));
                         listener.onProgress(new ProgressEvent(
                                 UpdateStage.SCANNING,
-                                "Keeping file released by remote management",
+                                "保留管理端已放弃管理的文件",
                                 old.path(), 0, 0));
                         continue;
                     }
@@ -174,7 +174,7 @@ final class UpdatePlanner {
                         operations.add(new FileOperation(OperationKind.ARCHIVE, relative,
                                 null, Files.size(path), null, false));
                         listener.onProgress(new ProgressEvent(UpdateStage.SCANNING,
-                                "Scanning forced sync directories", relative, 0, 0));
+                                "正在扫描强制同步目录", relative, 0, 0));
                     }
                 }
             } catch (UpdateException e) {

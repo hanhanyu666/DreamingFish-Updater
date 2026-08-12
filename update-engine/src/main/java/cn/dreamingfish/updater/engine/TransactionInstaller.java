@@ -102,9 +102,9 @@ final class TransactionInstaller {
                 FileOperation operation = plan.operations().get(i);
                 listener.onProgress(new ProgressEvent(UpdateStage.INSTALLING,
                         switch (operation.kind()) {
-                            case INSTALL -> "Installing files";
-                            case DELETE -> "Removing files";
-                            case ARCHIVE -> "Archiving files from forced sync directories";
+                            case INSTALL -> "正在安装文件";
+                            case DELETE -> "正在移除旧文件";
+                            case ARCHIVE -> "正在备份强制同步目录中的本地文件";
                         },
                         operation.path(), i, plan.operations().size()));
                 apply(paths, operation, pendingArchiveRoot);
@@ -175,7 +175,7 @@ final class TransactionInstaller {
             throw recoveryFailure(directory, new IllegalStateException("Invalid transaction journal identity"));
         }
         listener.onProgress(new ProgressEvent(UpdateStage.RECOVERING,
-                "Recovering an interrupted update", null, 0, 0));
+                "正在恢复上次中断的更新", null, 0, 0));
         try {
             if (journal.phase() == TransactionPhase.COMMITTING) {
                 restore(paths, directory, journal);
@@ -275,7 +275,7 @@ final class TransactionInstaller {
                 }
                 complete += file.size();
                 listener.onProgress(new ProgressEvent(UpdateStage.VERIFYING,
-                        "Verifying installed files", file.path(), complete, total));
+                        "正在校验已安装文件", file.path(), complete, total));
             }
         }
     }

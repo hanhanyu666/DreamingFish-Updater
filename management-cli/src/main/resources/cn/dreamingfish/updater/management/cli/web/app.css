@@ -480,13 +480,19 @@ h1 {
   font-size: 15px;
 }
 
-.service-state span:last-child {
+.service-state #service-address {
   overflow: hidden;
   color: var(--muted);
   font-family: "Cascadia Mono", "Consolas", monospace;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.service-detail {
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .service-indicator {
@@ -500,6 +506,11 @@ h1 {
 .service-indicator.running {
   background: var(--green);
   box-shadow: 0 0 11px rgba(82, 211, 139, 0.46);
+}
+
+.service-indicator.warning {
+  background: #e4a64c;
+  box-shadow: 0 0 11px rgba(228, 166, 76, 0.42);
 }
 
 .button-row,
@@ -2572,7 +2583,8 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
 
 .brand-en,
 .version-label,
-.service-state span:last-child,
+.service-state #service-address,
+.service-detail,
 .metric span,
 .panel-header span,
 .hash-cell,

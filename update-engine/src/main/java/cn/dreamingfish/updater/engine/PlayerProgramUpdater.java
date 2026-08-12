@@ -109,7 +109,7 @@ public final class PlayerProgramUpdater {
             }
 
             progress.onProgress(new ProgressEvent(UpdateStage.DOWNLOADING,
-                    "Downloading player updater", null, 0, 0));
+                    "正在下载玩家端更新", null, 0, 0));
             Map<String, Long> objects = objectMap(latest.manifest());
             long downloaded = new ObjectDownloader().download(request, paths, objects, progress);
             Path programRoot = installVersion(paths, latest);

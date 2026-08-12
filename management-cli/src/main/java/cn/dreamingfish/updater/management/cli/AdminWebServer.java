@@ -373,6 +373,11 @@ final class AdminWebServer implements AutoCloseable {
             sendJson(exchange, 200, mutate(publicService::start));
             return;
         }
+        if (path.equals("/api/public-service/status")
+                && exchange.getRequestMethod().equals("GET")) {
+            sendJson(exchange, 200, publicService.status());
+            return;
+        }
         if (path.equals("/api/public-service/stop")
                 && exchange.getRequestMethod().equals("POST")) {
             sendJson(exchange, 200, mutate(publicService::stop));
@@ -991,9 +996,9 @@ final class AdminWebServer implements AutoCloseable {
     }
 
     private Map<String, Object> updateSettings(SettingsRequest request) {
-        if (publicService.running()) {
+        if (publicService.status().portOccupied()) {
             throw new WebApiException(
-                    409, "service_running", "请先停止 HTTP 文件服务再修改端口");
+                    409, "service_running", "请先停止当前下载服务或占用端口的进程，再修改服务端口");
         }
         ManagementSettings current = root.settings();
         String host = defaultValue(request.httpHost, current.httpHost());
@@ -1288,7 +1293,7 @@ final class AdminWebServer implements AutoCloseable {
         StoredRelease release = operation.call();
         boolean restarted = false;
         String warning = null;
-        if (publicService.running()) {
+        if (publicService.managedRunning()) {
             try {
                 publicService.restartIfRunning();
                 restarted = true;

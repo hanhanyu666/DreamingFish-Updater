@@ -4,12 +4,15 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const ALLOW_DEVELOPMENT_OVERRIDES: bool = cfg!(debug_assertions);
 const MAX_STARTUP_MUSIC_BYTES: u64 = 20 * 1024 * 1024;
+const MAX_SHELL_LOG_BYTES: u64 = 512 * 1024;
+static DEBUG_LOG_LOCK: Mutex<()> = Mutex::new(());
 
 struct Sidecar {
     child: Child,
@@ -24,13 +27,79 @@ struct NativeCloseState(AtomicU64);
 
 fn debug_log(message: &str) {
     use std::io::Write;
+    let Ok(_guard) = DEBUG_LOG_LOCK.lock() else {
+        return;
+    };
+    let path = shell_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if path
+        .metadata()
+        .is_ok_and(|metadata| metadata.len() >= MAX_SHELL_LOG_BYTES)
+    {
+        let archive = path.with_extension("log.1");
+        let _ = std::fs::remove_file(&archive);
+        let _ = std::fs::rename(&path, archive);
+    }
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(std::env::temp_dir().join("dfs-player-sidecar.log"))
+        .open(path)
     {
-        let _ = writeln!(file, "{}", message);
+        let _ = writeln!(file, "{} | SHELL | {}", utc_timestamp(), message);
     }
+}
+
+fn shell_log_path() -> PathBuf {
+    let arguments: Vec<String> = std::env::args().collect();
+    arguments
+        .windows(2)
+        .find(|pair| pair[0] == "--instance")
+        .map(|pair| PathBuf::from(&pair[1]))
+        .map(|root| root.join("DreamingFishUpdater/logs/player-shell.log"))
+        .unwrap_or_else(|| std::env::temp_dir().join("dfs-player-sidecar.log"))
+}
+
+fn utc_timestamp() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    format_utc_timestamp(millis)
+}
+
+fn format_utc_timestamp(total_millis: u128) -> String {
+    let total_seconds = (total_millis / 1_000).min(i64::MAX as u128) as i64;
+    let millis = total_millis % 1_000;
+    let days = total_seconds.div_euclid(86_400);
+    let seconds = total_seconds.rem_euclid(86_400);
+    let hour = seconds / 3_600;
+    let minute = (seconds % 3_600) / 60;
+    let second = seconds % 60;
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
+}
+
+fn civil_from_days(days_since_epoch: i64) -> (i64, i64, i64) {
+    let shifted = days_since_epoch + 719_468;
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_phase = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_phase + 2) / 5 + 1;
+    let month = month_phase + if month_phase < 10 { 3 } else { -9 };
+    if month <= 2 {
+        year += 1;
+    }
+    (year, month, day)
 }
 
 fn redacted_argument_names(arguments: &[String]) -> String {
@@ -617,10 +686,10 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_sidecar_crash, is_explicit_exit_message, read_local_image_from_root,
-        read_startup_music_from_root, redacted_argument_names, resolve_java_executable,
-        resolve_sidecar_jar, should_force_native_close, write_close_command,
-        MAX_STARTUP_MUSIC_BYTES,
+        format_sidecar_crash, format_utc_timestamp, is_explicit_exit_message,
+        read_local_image_from_root, read_startup_music_from_root, redacted_argument_names,
+        resolve_java_executable, resolve_sidecar_jar, should_force_native_close,
+        write_close_command, MAX_STARTUP_MUSIC_BYTES,
     };
     use std::collections::VecDeque;
     use std::io::Cursor;
@@ -761,5 +830,14 @@ mod tests {
         assert_eq!(summary, "--bootstrap-token,--instance,--player-name");
         assert!(!summary.contains("super-secret-token"));
         assert!(!summary.contains("PrivatePlayer"));
+    }
+
+    #[test]
+    fn shell_log_timestamp_contains_a_complete_utc_date() {
+        assert_eq!(format_utc_timestamp(0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(
+            format_utc_timestamp(1_786_579_200_123),
+            "2026-08-13T00:00:00.123Z"
+        );
     }
 }

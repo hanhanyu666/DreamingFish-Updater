@@ -280,8 +280,10 @@ class MockBridge implements PlayerBridge {
     } });
     this.emit({ type: "background", path: null });
     this.emit({ type: "logs", lines: [
-      "12:08:41  INFO  已连接到守望梦屿更新服务",
-      "12:08:42  INFO  正在下载 mods/dreamingfish-core.jar",
+      "2026-08-13 12:08:40.210 | START | 启动 | 玩家端 0.1.37 · 项目 preview",
+      "2026-08-13 12:08:41.035 | INFO  | 检查更新 | 已连接到整合包更新服务",
+      "2026-08-13 12:08:42.184 | INFO  | 下载文件 | 正在下载 mods/dreamingfish-core.jar",
+      "2026-08-13 12:08:43.420 | WARN  | 网络 | 当前下载速度较慢，正在继续尝试",
     ] });
     if (adminPreview) {
       this.working = false;

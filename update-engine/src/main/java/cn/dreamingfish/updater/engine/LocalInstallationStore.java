@@ -141,7 +141,7 @@ final class LocalInstallationStore {
                 }
                 complete += file.size();
                 listener.onProgress(new ProgressEvent(UpdateStage.VERIFYING,
-                        "Verifying installed files", file.path(), complete, total));
+                        "正在校验已安装文件", file.path(), complete, total));
             }
         }
         return true;

@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.concurrent.FutureTask;
 
 public final class PlayerApplication extends Application {
-    static final String VERSION = "0.1.36";
+    static final String VERSION = "0.1.37";
     static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
 
     private PlayerArguments arguments;
@@ -104,8 +104,8 @@ public final class PlayerApplication extends Application {
         view.setBackground(null);
         view.showPreview();
         view.showLaunchCountdown(15);
-        view.appendLog("12:08:41  INFO  已连接到守望梦屿更新服务");
-        view.appendLog("12:08:42  INFO  正在下载 mods/dreamingfish-core.jar");
+        view.appendLog("2026-08-13 12:08:41.035 | INFO  | 检查更新 | 已连接到整合包更新服务");
+        view.appendLog("2026-08-13 12:08:42.184 | INFO  | 下载文件 | 正在下载 mods/dreamingfish-core.jar");
         stage.show();
         stage.centerOnScreen();
         view.playEntrance();
