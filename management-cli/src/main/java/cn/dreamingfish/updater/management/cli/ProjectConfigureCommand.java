@@ -22,6 +22,8 @@ final class ProjectConfigureCommand implements Runnable {
     String publicUrl;
     @CommandLine.Option(names = "--product-name")
     String productName;
+    @CommandLine.Option(names = "--welcome-text")
+    String welcomeText;
     @CommandLine.Option(names = "--subtitle")
     String subtitle;
     @CommandLine.Option(names = "--server-address")
@@ -30,6 +32,10 @@ final class ProjectConfigureCommand implements Runnable {
     String accent;
     @CommandLine.Option(names = "--secondary-accent")
     String secondaryAccent;
+    @CommandLine.Option(names = "--top-bar-color")
+    String topBarColor;
+    @CommandLine.Option(names = "--card-color")
+    String cardColor;
     @CommandLine.Option(names = "--brand-name")
     String brandName;
     @CommandLine.Option(names = "--brand-english-name")
@@ -65,7 +71,10 @@ final class ProjectConfigureCommand implements Runnable {
                 brandName == null ? old.brandName() : brandName,
                 brandEnglishName == null
                         ? old.brandEnglishName() : brandEnglishName,
-                old.newsArticles(), old.customPage(), old.contentPages(), old.musicTracks()
+                old.newsArticles(), old.customPage(), old.contentPages(), old.musicTracks(),
+                welcomeText == null ? old.welcomeText() : welcomeText,
+                topBarColor == null ? old.topBarColor() : topBarColor,
+                cardColor == null ? old.cardColor() : cardColor
         );
         ProjectRules rules = rulesFile == null ? current.rules() : ProjectCreateCommand.readRules(services, rulesFile);
         if (clearForceSync && forcedSyncDirectories != null) {

@@ -5,6 +5,7 @@ import {
   closeCommandForState,
   confirmDisableMod,
   displayBranding,
+  setBranding,
   showPage,
   toggleDrawer,
   usePlayerStore,
@@ -34,7 +35,7 @@ describe("player store", () => {
   });
 
   it("keeps custom title-bar branding and defaults legacy messages", () => {
-    expect(displayBranding({
+    const configured = displayBranding({
       productName: "测试整合包",
       subtitle: "测试说明",
       serverAddress: "",
@@ -43,10 +44,22 @@ describe("player store", () => {
       secondaryAccentColor: "#654321",
       brandName: "星河服",
       brandEnglishName: "StarRiver",
-    })).toMatchObject({
+      welcomeText: "踏入星海",
+      topBarColor: "#123456",
+      cardColor: "#654321",
+    });
+    expect(configured).toMatchObject({
       brandName: "星河服",
       brandEnglishName: "StarRiver",
+      welcomeText: "踏入星海",
+      topBarColor: "#123456",
+      cardColor: "#654321",
     });
+    setBranding(configured);
+    expect(document.documentElement.style.getPropertyValue("--dfs-topbar-rgb"))
+      .toBe("15, 44, 72");
+    expect(document.documentElement.style.getPropertyValue("--dfs-card-rgb"))
+      .toBe("72, 48, 24");
 
     const legacy = {
       productName: "旧整合包",
@@ -59,6 +72,9 @@ describe("player store", () => {
     expect(displayBranding(legacy)).toMatchObject({
       brandName: "梦鱼服",
       brandEnglishName: "DreamingFish",
+      welcomeText: "欢迎来到",
+      topBarColor: "#030708",
+      cardColor: "#030708",
     });
   });
 

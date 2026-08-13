@@ -65,8 +65,14 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("id=\"player-preview-stage\""));
             assertTrue(page.body().contains("player-pages-toolbar"));
             assertTrue(page.body().contains("id=\"cover-upload-input\""));
-            assertTrue(page.body().contains("从本机选择图片"));
-            assertTrue(!page.body().contains("服务器上的新背景图片"));
+            assertTrue(page.body().contains("从当前电脑上传背景图"));
+            assertTrue(page.body().contains("从管理端所在电脑 / 服务器导入"));
+            assertTrue(page.body().contains("name=\"welcomeText\""));
+            assertTrue(page.body().contains("name=\"topBarColor\""));
+            assertTrue(page.body().contains("name=\"cardColor\""));
+            assertTrue(page.body().contains("id=\"import-player-pages-server\""));
+            assertTrue(page.body().contains("id=\"create-source-folder\""));
+            assertTrue(page.body().contains("id=\"service-restart\""));
             assertTrue(page.body().contains("管理强制同步目录"));
             assertTrue(page.body().contains("单文件强制同步"));
             assertTrue(page.body().contains("id=\"error-dialog\""));
@@ -160,6 +166,14 @@ class AdminWebServerTest {
             assertTrue(created.body().contains(
                     "\"subtitle\":\"星河副标题\""));
 
+            HttpResponse<String> createdDirectory = send(
+                    base, "/api/projects/web-demo/files/directory", "POST",
+                    json.writeString(Map.of("path", "resourcepacks/seasonal")), token);
+            assertEquals(201, createdDirectory.statusCode(), createdDirectory.body());
+            assertTrue(createdDirectory.body().contains("resourcepacks/seasonal"));
+            assertTrue(Files.isDirectory(
+                    source.getParent().resolve("resourcepacks/seasonal")));
+
             HttpResponse<String> coverPreview = send(
                     base, "/api/projects/web-demo/cover", "GET", null, null);
             assertEquals(200, coverPreview.statusCode(), coverPreview.body());
@@ -183,6 +197,38 @@ class AdminWebServerTest {
             assertEquals(200, uploadedCover.statusCode(), uploadedCover.body());
             assertTrue(uploadedCover.body().contains("\"coverObject\""));
 
+            HttpResponse<String> importedCover = send(
+                    base, "/api/projects/web-demo/cover/import", "POST",
+                    json.writeString(Map.of("sourcePath", cover.toString())), token);
+            assertEquals(200, importedCover.statusCode(), importedCover.body());
+            assertTrue(importedCover.body().contains("\"coverObject\""));
+
+            Path pageConfig = temporary.resolve("player-pages.json");
+            Files.writeString(pageConfig, json.writeString(Map.of(
+                    "schemaVersion", 1,
+                    "description", "test",
+                    "pages", List.of(Map.of(
+                            "id", "rules",
+                            "navigationLabel", "规则",
+                            "announcementPage", false,
+                            "eyebrow", "RULES",
+                            "title", "服务器规则",
+                            "lead", "请先阅读",
+                            "markdown", "普通正文草稿",
+                            "articles", List.of(Map.of(
+                                    "id", "retained-news",
+                                    "title", "保留的公告草稿",
+                                    "summary", "",
+                                    "publishedOn", "2026-08-14",
+                                    "coverUrl", "",
+                                    "markdown", "公告正文草稿")))))));
+            HttpResponse<String> importedPages = send(
+                    base, "/api/system/import-player-pages", "POST",
+                    json.writeString(Map.of("sourcePath", pageConfig.toString())), token);
+            assertEquals(200, importedPages.statusCode(), importedPages.body());
+            assertTrue(importedPages.body().contains("普通正文草稿"));
+            assertTrue(importedPages.body().contains("保留的公告草稿"));
+
             HttpResponse<String> personalized = send(
                     base, "/api/projects/web-demo", "PUT",
                     json.writeString(Map.ofEntries(
@@ -193,6 +239,9 @@ class AdminWebServerTest {
                             Map.entry("serverAddress", "play.example.com:25565"),
                             Map.entry("accentColor", "#112233"),
                             Map.entry("secondaryAccentColor", "#445566"),
+                            Map.entry("welcomeText", "欢迎进入星河"),
+                            Map.entry("topBarColor", "#102030"),
+                            Map.entry("cardColor", "#203040"),
                             Map.entry("newsArticles", List.of(Map.of(
                                     "id", "welcome",
                                     "title", "欢迎来到星河服",
@@ -211,6 +260,9 @@ class AdminWebServerTest {
             assertEquals(200, personalized.statusCode(), personalized.body());
             assertTrue(personalized.body().contains("\"productName\":\"星河新主页\""));
             assertTrue(personalized.body().contains("\"brandName\":\"新星河服\""));
+            assertTrue(personalized.body().contains("\"welcomeText\":\"欢迎进入星河\""));
+            assertTrue(personalized.body().contains("\"topBarColor\":\"#102030\""));
+            assertTrue(personalized.body().contains("\"cardColor\":\"#203040\""));
             assertTrue(personalized.body().contains("\"title\":\"欢迎来到星河服\""));
             assertTrue(personalized.body().contains("\"navigationLabel\":\"玩法介绍\""));
             assertTrue(personalized.body().contains(source.getParent().toString()
@@ -667,6 +719,17 @@ class AdminWebServerTest {
                     "/api/projects/music-demo/music", "GET", null, null);
             assertEquals(200, list.statusCode(), list.body());
             assertTrue(list.body().contains("theme.mp3"));
+
+            Path importedMp3 = temporary.resolve("server-theme.mp3");
+            Files.write(importedMp3, new byte[]{'I', 'D', '3', 4, 5, 6});
+            HttpResponse<String> imported = send(base,
+                    "/api/projects/music-demo/music/import", "POST",
+                    json.writeString(Map.of(
+                            "sourcePath", importedMp3.toString(),
+                            "title", "Server Theme",
+                            "overwrite", false)), token);
+            assertEquals(201, imported.statusCode(), imported.body());
+            assertTrue(imported.body().contains("server-theme.mp3"));
 
             HttpResponse<String> cleared = send(base,
                     "/api/projects/music-demo/music/clear", "POST", "{}", token);

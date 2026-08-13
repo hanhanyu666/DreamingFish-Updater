@@ -30,12 +30,12 @@ class PlayerLogTest {
         List<String> visible = new ArrayList<>();
         log.setListener(visible::add);
 
-        log.startSession("building_server", "0.1.37");
+        log.startSession("building_server", "0.1.38");
         log.info("检查更新", "正在检查整合包更新");
         log.error("整合包更新", "更新失败", new IOException("连接超时"));
 
         assertTrue(visible.size() > 3);
-        assertEquals("2026-08-13 10:03:04.567 | START | 启动 | 玩家端 0.1.37 · 项目 building_server",
+        assertEquals("2026-08-13 10:03:04.567 | START | 启动 | 玩家端 0.1.38 · 项目 building_server",
                 visible.getFirst());
         assertTrue(visible.get(1).contains("| INFO  | 检查更新 | 正在检查整合包更新"));
         assertTrue(visible.get(2).contains("| ERROR | 整合包更新 | 更新失败：连接超时"));

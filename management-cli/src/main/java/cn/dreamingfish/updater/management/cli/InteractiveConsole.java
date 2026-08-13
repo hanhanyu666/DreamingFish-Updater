@@ -235,6 +235,8 @@ final class InteractiveConsole {
         root.out().println("以下内容只影响玩家端显示，直接按回车可使用默认值。");
         root.out().println("创建后修改标题、配色、公告和页面，不用重新发布整合包，玩家下次启动会自动获取。");
         root.out().println("创建后可从主菜单 [12]“修改玩家端个性化设置”继续调整，Web 页面还提供实时预览。");
+        String welcomeText = prompt("首页欢迎文字（显示在大标题上方）",
+                Branding.DEFAULT_WELCOME_TEXT);
         String productName = prompt("玩家端主标题（显示在首页左侧的大号标题区域）", name);
         String subtitle = prompt("玩家端副标题（显示在主标题下方）", "Minecraft 整合包更新");
         String brandName = prompt("左上角中文品牌名（显示在玩家端窗口左上角）",
@@ -245,7 +247,8 @@ final class InteractiveConsole {
 
         Branding branding = new Branding(productName, subtitle, serverAddress,
                 null, "#2ee8df", "#b06cff", brandName, brandEnglishName,
-                List.of(), null, List.of());
+                List.of(), null, List.of(), List.of(), welcomeText,
+                Branding.DEFAULT_TOP_BAR_COLOR, Branding.DEFAULT_CARD_COLOR);
         var services = root.services();
         ProjectRules rules = ProjectRules.defaults().withForcedSyncDirectories(
                 ProjectCreateCommand.parsePaths(forcedInput));
@@ -308,6 +311,9 @@ final class InteractiveConsole {
         String brandEnglishName = prompt(
                 "左上角英文品牌名（紧跟在中文品牌名右侧）",
                 old.brandEnglishName());
+        String welcomeText = prompt(
+                "首页欢迎文字（显示在大标题上方）",
+                old.welcomeText());
         String productName = prompt(
                 "玩家端主标题（显示在首页左侧的大号标题区域）",
                 old.productName());
@@ -323,6 +329,10 @@ final class InteractiveConsole {
         String accent = promptColor("主强调色", old.accentColor());
         String secondaryAccent = promptColor(
                 "次强调色", old.secondaryAccentColor());
+        String topBarColor = promptColor(
+                "窗口顶栏颜色", old.topBarColor());
+        String cardColor = promptColor(
+                "布局卡片颜色", old.cardColor());
         String coverInput = readLine(
                 "服务器上的新背景图片路径（回车保留，输入 - 移除）：").trim();
         Path cover = null;
@@ -347,7 +357,7 @@ final class InteractiveConsole {
                 productName, subtitle, serverAddress,
                 coverObject, accent, secondaryAccent,
                 brandName, brandEnglishName, List.of(), null, contentPages,
-                old.musicTracks());
+                old.musicTracks(), welcomeText, topBarColor, cardColor);
         var services = root.services();
         ProjectRecord updated = services.projects().configure(
                 current.id(), current.displayName(), current.sourceDirectory(),
@@ -832,9 +842,12 @@ final class InteractiveConsole {
         try {
             Runtime.getRuntime().addShutdownHook(shutdown);
             server.start();
-            root.out().println("HTTP 文件服务已启动：" + address);
-            root.out().println("健康检查：" + address + "healthz");
-            waitForServiceStop();
+            try (PublicServiceControl ignored = PublicServiceControl.register(
+                    root, settings.httpHost(), settings.httpPort(), server::close)) {
+                root.out().println("HTTP 文件服务已启动：" + address);
+                root.out().println("健康检查：" + address + "healthz");
+                waitForServiceStop();
+            }
         } finally {
             server.close();
             try {

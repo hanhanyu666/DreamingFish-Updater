@@ -319,10 +319,14 @@ function renderService() {
   byId("service-address").title = service.address;
   byId("service-detail").textContent = service.detail || "";
   byId("service-start").disabled = service.running || service.portOccupied;
-  byId("service-stop").disabled = !service.managed;
-  byId("service-stop").title = service.running && !service.managed
-    ? "此服务由另一个管理端进程启动，请回到对应终端停止"
-    : "停止当前 Web 管理端启动的下载服务";
+  byId("service-stop").disabled = !service.running || !service.controllable;
+  byId("service-restart").disabled = !service.running || !service.controllable;
+  byId("service-stop").title = service.running && !service.controllable
+    ? "这个旧版或不同数据目录中的服务无法安全远程停止"
+    : "停止已识别的 DreamingFish 下载服务";
+  byId("service-restart").title = service.running && !service.controllable
+    ? "这个服务没有注册管理控制通道"
+    : "停止后由当前 Web 管理端重新启动下载服务";
 }
 
 function renderDashboard() {
@@ -481,7 +485,7 @@ function sourceFileRow(file, depth) {
     status.classList.add("forced");
     status.textContent = file.forcedByDirectory ? "目录强制" : "单文件强制";
   } else {
-    status.textContent = file.policy === "DEFAULT" ? "默认文件" : "普通托管";
+    status.textContent = "普通托管";
   }
   const filePath = treeFilePathCell(file.path, depth);
   const remove = actionButton("移除", () => removeSourceFile(file));
@@ -542,6 +546,7 @@ function renderPersonalizationForm() {
     "brandEnglishName",
     branding.brandEnglishName || "DreamingFish"
   );
+  setFormValue(form, "welcomeText", branding.welcomeText || "欢迎来到");
   setFormValue(form, "subtitle", branding.subtitle);
   setFormValue(form, "serverAddress", branding.serverAddress);
   setColor(form, "accentColor", branding.accentColor);
@@ -550,6 +555,8 @@ function renderPersonalizationForm() {
     "secondaryAccentColor",
     branding.secondaryAccentColor
   );
+  setColor(form, "topBarColor", branding.topBarColor);
+  setColor(form, "cardColor", branding.cardColor);
   clearPendingCover();
   form.elements.removeCover.checked = false;
   const legacy = branding.contentPages == null;
@@ -583,8 +590,10 @@ function renderMusicTracks(tracks) {
       const accepted = await ask("删除音乐", `确认删除“${track.title}”吗？发布后玩家端也会移除这首歌。`, "删除", true);
       if (!accepted) return;
       await runBusy("正在删除音乐", async () => {
-        await api(`/api/projects/${encodeURIComponent(app.project.id)}/music/${encodeURIComponent(track.id)}`, { method: "DELETE" });
-        await refreshState(app.project.id);
+        const updated = await api(`/api/projects/${encodeURIComponent(app.project.id)}/music/${encodeURIComponent(track.id)}`, { method: "DELETE" });
+        app.project.branding = updated.branding;
+        renderMusicTracks(updated.branding?.musicTracks || []);
+        updatePlayerPreview();
       });
     });
     item.append(label, remove);
@@ -713,6 +722,16 @@ function renderPlayerPageEditor(pages) {
     card.className = "player-news-card player-page-card";
     card.classList.toggle("collapsed", !pageExpanded);
     card.dataset.pageIndex = String(index);
+    // Keep both editing modes in memory. Only one body is visible at a time,
+    // but switching between a normal page and an announcement page must never
+    // discard the user's unpublished Markdown or announcement drafts.
+    card.pageDraft = {
+      ...page,
+      markdown: String(page.markdown || ""),
+      articles: Array.isArray(page.articles)
+        ? page.articles.map((article) => ({ ...article }))
+        : []
+    };
     const header = document.createElement("div");
     header.className = "player-news-card-header";
     const headingGroup = document.createElement("div");
@@ -907,9 +926,11 @@ function removePlayerArticleExpansion(pageKey) {
 function readPlayerPageEditor() {
   return [...byId("player-page-editor").querySelectorAll(".player-page-card")]
     .map((card) => {
+      const draft = card.pageDraft || {};
       const value = (name) => String(card.querySelector(`[data-page-field="${name}"]`)?.value || "").trim();
       const announcementPage = Boolean(card.querySelector('[data-page-field="announcementPage"]')?.checked);
-      const articles = [...card.querySelectorAll(".announcement-editor-card")].map((item) => {
+      const articleCards = [...card.querySelectorAll(".announcement-editor-card")];
+      const visibleArticles = articleCards.map((item) => {
         const articleValue = (name) => String(item.querySelector(`[data-article-field="${name}"]`)?.value || "").trim();
         return {
           id: articleValue("id"), title: articleValue("title"), summary: articleValue("summary"),
@@ -917,11 +938,18 @@ function readPlayerPageEditor() {
           markdown: String(item.querySelector('[data-article-body-field="markdown"]')?.value || "").trim()
         };
       });
+      const markdownInput = card.querySelector('[data-page-body-field="markdown"]');
       return {
         id: value("id"), navigationLabel: value("navigationLabel"), announcementPage,
         eyebrow: value("eyebrow"), title: value("title"), lead: value("lead"),
-        markdown: announcementPage ? "" : String(card.querySelector('[data-page-body-field="markdown"]')?.value || "").trim(),
-        articles: announcementPage ? articles : []
+        markdown: markdownInput == null
+          ? String(draft.markdown || "")
+          : String(markdownInput.value || "").trim(),
+        articles: articleCards.length === 0
+          ? (Array.isArray(draft.articles)
+              ? draft.articles.map((article) => ({ ...article }))
+              : [])
+          : visibleArticles
       };
     });
 }
@@ -1030,8 +1058,8 @@ function validateImportedPlayerPages(value) {
     page.eyebrow = String(page.eyebrow || "");
     page.lead = String(page.lead || "");
     page.markdown = String(page.markdown || "");
-    page.articles = page.announcementPage && Array.isArray(page.articles) ? page.articles : [];
-    if (page.articles.length > 50) throw new Error(`第 ${index + 1} 个公告页最多包含 50 条新闻。`);
+    page.articles = Array.isArray(page.articles) ? page.articles : [];
+    if (page.articles.length > 50) throw new Error(`第 ${index + 1} 个页面最多保留 50 条新闻。`);
     const articleIds = new Set();
     page.articles.forEach((article, articleIndex) => {
       if (!article || !/^[A-Za-z0-9._-]{1,64}$/.test(String(article.id || ""))
@@ -1062,6 +1090,10 @@ async function importPlayerPages(file) {
   } catch {
     throw new Error("JSON 无法读取，请检查逗号、引号和括号是否完整。");
   }
+  await applyImportedPlayerPages(parsed);
+}
+
+async function applyImportedPlayerPages(parsed) {
   const pages = validateImportedPlayerPages(parsed);
   const accepted = await ask(
     "导入玩家端页面配置？",
@@ -1145,11 +1177,14 @@ function updatePlayerPreview() {
     type: "dfs-admin-preview",
     branding: {
       productName: value("productName", app.project.displayName),
+      welcomeText: value("welcomeText", "欢迎来到"),
       subtitle: value("subtitle", "Minecraft 整合包更新"),
       serverAddress: value("serverAddress", ""),
       coverObject: app.project.branding?.coverObject || null,
       accentColor: value("accentColorText", "#2ee8df"),
       secondaryAccentColor: value("secondaryAccentColorText", "#b06cff"),
+      topBarColor: value("topBarColorText", "#030708"),
+      cardColor: value("cardColorText", "#030708"),
       brandName: value("brandName", "服务器"),
       brandEnglishName: value("brandEnglishName", "Minecraft"),
       newsArticles: [],
@@ -1532,7 +1567,7 @@ function forcedFileRow(file, depth) {
     ? "目录强制"
     : fileForced ? "单文件强制"
       : missing ? "源文件缺失"
-        : file.policy === "DEFAULT" ? "默认" : "普通托管";
+        : "普通托管";
   const filePath = treeFilePathCell(file.path, depth);
   const item = row([
     control,
@@ -1676,6 +1711,20 @@ function bindEvents() {
       await api("/api/public-service/stop", { method: "POST", body: {} });
       await refreshState();
       toast("HTTP 文件服务已停止");
+    });
+  });
+  byId("service-restart").addEventListener("click", async () => {
+    const accepted = await ask(
+      "重启下载服务",
+      "下载服务会短暂停止，然后由当前 Web 管理端重新启动。正在下载的玩家可能需要自动重试。",
+      "重启服务",
+      true
+    );
+    if (!accepted) return;
+    await runBusy("正在重启 HTTP 文件服务", async () => {
+      await api("/api/public-service/restart", { method: "POST", body: {} });
+      await refreshState();
+      toast("HTTP 文件服务已重启");
     });
   });
 
@@ -1854,6 +1903,7 @@ function bindSourceFiles() {
     updateUploadSelection();
   });
   serverSourceInput.addEventListener("input", updateSourceAddActions);
+  byId("source-new-folder-name").addEventListener("input", updateSourceAddActions);
   dropzone.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -1879,6 +1929,7 @@ function bindSourceFiles() {
 
   byId("upload-source-files").addEventListener("click", uploadSelectedSources);
   byId("import-server-source").addEventListener("click", importServerSource);
+  byId("create-source-folder").addEventListener("click", createSourceFolder);
 }
 
 function updateUploadSelection() {
@@ -1897,7 +1948,9 @@ function renderUploadTargetTree() {
   const container = byId("source-target-tree");
   container.replaceChildren();
   const files = app.sourceFiles?.files || [];
-  const root = buildFileTree(files);
+  const root = buildUploadTargetTree(
+    files, app.sourceFiles?.directories || []
+  );
   container.append(uploadTargetRow({
     path: "",
     name: "要管理的文件目录（根目录）",
@@ -1998,6 +2051,39 @@ function updateSourceAddActions() {
   byId("import-server-source").disabled = uploading
     || !targetSelected
     || !serverPath;
+  const folderName = String(byId("source-new-folder-name").value || "").trim();
+  byId("create-source-folder").disabled = uploading
+    || !targetSelected
+    || !folderName;
+}
+
+async function createSourceFolder() {
+  if (!app.project || app.uploadTargetDirectory === null) return;
+  const input = byId("source-new-folder-name");
+  const name = String(input.value || "").trim();
+  if (!name) return;
+  if (name.includes("/") || name.includes("\\")) {
+    showErrorDialog("这里只填写一层文件夹名称，不要包含斜杠。需要多层目录时可以逐层创建。");
+    return;
+  }
+  const path = app.uploadTargetDirectory
+    ? `${app.uploadTargetDirectory}/${name}`
+    : name;
+  await runBusy("正在新建托管文件夹", async () => {
+    const result = await api(
+      `/api/projects/${encodeURIComponent(app.project.id)}/files/directory`,
+      { method: "POST", body: { path } }
+    );
+    app.sourceFiles = result.sourceFiles;
+    app.uploadTargetDirectory = result.path;
+    input.value = "";
+    const parts = result.path.split("/");
+    for (let index = 1; index < parts.length; index += 1) {
+      app.uploadTargetExpandedFolders.add(parts.slice(0, index).join("/"));
+    }
+    renderUploadTargetTree();
+    toast(`已新建并选中 ${result.path}/`);
+  });
 }
 
 function resetUploadProgress() {
@@ -2406,7 +2492,13 @@ function renderPathBrowser() {
     type.textContent = entry.directory
       ? "文件夹"
       : entry.regularFile
-        ? (entry.selectable || browser.kind !== "image" ? "文件" : "非图片文件")
+        ? (entry.selectable
+            ? "文件"
+            : browser.kind === "image"
+              ? "非图片文件"
+              : browser.kind === "music"
+                ? "非 MP3 文件"
+                : browser.kind === "json" ? "非 JSON 文件" : "文件")
         : "其他";
     const size = document.createElement("td");
     size.textContent = entry.directory ? "--" : formatBytes(entry.size);
@@ -2521,9 +2613,31 @@ function bindPersonalizationForm() {
   const coverInput = byId("cover-upload-input");
   bindColorPair(form, "accentColor");
   bindColorPair(form, "secondaryAccentColor");
+  bindColorPair(form, "topBarColor");
+  bindColorPair(form, "cardColor");
   byId("choose-cover-upload").addEventListener("click", () => coverInput.click());
   coverInput.addEventListener("change", () => {
     selectPendingCover(coverInput.files?.[0] || null);
+  });
+  byId("import-cover-server").addEventListener("click", async () => {
+    if (!app.project) return;
+    const sourcePath = String(form.elements.coverServerPath.value || "").trim();
+    if (!sourcePath) {
+      showErrorDialog("请先选择管理端所在电脑或服务器上的背景图片。");
+      return;
+    }
+    await runBusy("正在从管理端导入背景图片", async () => {
+      const updated = await api(
+        `/api/projects/${encodeURIComponent(app.project.id)}/cover/import`,
+        { method: "POST", body: { sourcePath } }
+      );
+      app.project.branding = updated.branding;
+      clearPendingCover();
+      form.elements.removeCover.checked = false;
+      form.elements.coverServerPath.value = "";
+      updatePlayerPreview();
+      toast("背景图片已从管理端导入；创建整合包发布后玩家才能下载");
+    });
   });
   const musicInput = byId("music-upload-input");
   byId("choose-music-upload").addEventListener("click", () => musicInput.click());
@@ -2547,9 +2661,36 @@ function bindPersonalizationForm() {
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.message || `音乐上传失败：HTTP ${response.status}`);
-      await refreshState(app.project.id);
+      app.project.branding = data.branding;
+      renderMusicTracks(data.branding?.musicTracks || []);
+      updatePlayerPreview();
       titleInput.value = "";
       toast(`已添加音乐：${title}`);
+    });
+  });
+  byId("import-music-server").addEventListener("click", async () => {
+    if (!app.project) return;
+    const sourcePath = String(form.elements.musicServerPath.value || "").trim();
+    if (!sourcePath) {
+      showErrorDialog("请先选择管理端所在电脑或服务器上的 MP3 文件。");
+      return;
+    }
+    const titleInput = byId("music-upload-title");
+    const title = titleInput.value.trim();
+    await runBusy("正在从管理端导入音乐", async () => {
+      const updated = await api(
+        `/api/projects/${encodeURIComponent(app.project.id)}/music/import`,
+        {
+          method: "POST",
+          body: { sourcePath, title, overwrite: false }
+        }
+      );
+      app.project.branding = updated.branding;
+      renderMusicTracks(updated.branding?.musicTracks || []);
+      form.elements.musicServerPath.value = "";
+      titleInput.value = "";
+      updatePlayerPreview();
+      toast(`已从管理端导入音乐：${title || sourcePath.split(/[\\/]/).pop()}`);
     });
   });
   form.addEventListener("input", updatePlayerPreview);
@@ -2585,6 +2726,27 @@ function bindPersonalizationForm() {
     event.target.value = "";
     if (file) await importPlayerPages(file);
   });
+  byId("import-player-pages-server").addEventListener("click", async () => {
+    const sourcePath = String(
+      form.elements.pageConfigServerPath.value || ""
+    ).trim();
+    if (!sourcePath) {
+      showErrorDialog("请先选择管理端所在电脑或服务器上的页面配置 JSON。");
+      return;
+    }
+    let parsed = null;
+    await runBusy("正在读取管理端页面配置", async () => {
+      parsed = await api("/api/system/import-player-pages", {
+        method: "POST", body: { sourcePath }
+      });
+    });
+    // Wait until the busy layer is closed before opening the confirmation
+    // dialog, otherwise the confirmation would appear behind that layer.
+    if (parsed != null) {
+      await applyImportedPlayerPages(parsed);
+      form.elements.pageConfigServerPath.value = "";
+    }
+  });
   const previewFrame = byId("player-preview-frame");
   previewFrame.addEventListener("load", () => {
     app.playerPreviewReady = true;
@@ -2606,12 +2768,15 @@ function bindPersonalizationForm() {
     const data = new FormData(form);
     const payload = {
       productName: textValue(data, "productName"),
+      welcomeText: textValue(data, "welcomeText"),
       brandName: textValue(data, "brandName"),
       brandEnglishName: textValue(data, "brandEnglishName"),
       subtitle: textValue(data, "subtitle"),
       serverAddress: textValue(data, "serverAddress"),
       accentColor: textValue(data, "accentColorText"),
       secondaryAccentColor: textValue(data, "secondaryAccentColorText"),
+      topBarColor: textValue(data, "topBarColorText"),
+      cardColor: textValue(data, "cardColorText"),
       removeCover: form.elements.removeCover.checked,
       newsArticles: [],
       customPage: null,
@@ -3204,9 +3369,15 @@ function setFormValue(form, name, value) {
 }
 
 function setColor(form, name, value) {
+  const defaults = {
+    accentColor: "#2ee8df",
+    secondaryAccentColor: "#b06cff",
+    topBarColor: "#030708",
+    cardColor: "#030708"
+  };
   const normalized = /^#[0-9a-f]{6}$/i.test(value || "")
     ? value
-    : name === "accentColor" ? "#2ee8df" : "#b06cff";
+    : defaults[name] || "#030708";
   setFormValue(form, name, normalized);
   setFormValue(form, name + "Text", normalized);
 }
@@ -3323,6 +3494,35 @@ function buildFileTree(files) {
     });
     node.files.push(file);
   });
+  return root;
+}
+
+function buildUploadTargetTree(files, directories) {
+  const root = buildFileTree(files);
+  [...directories]
+    .map((path) => String(path || "").replaceAll("\\", "/"))
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(
+      right, "zh-CN", { sensitivity: "base" }
+    ))
+    .forEach((path) => {
+      let node = root;
+      let currentPath = "";
+      path.split("/").filter(Boolean).forEach((name) => {
+        currentPath = currentPath ? `${currentPath}/${name}` : name;
+        const key = name.toLocaleLowerCase("en-US");
+        if (!node.folders.has(key)) {
+          node.folders.set(key, {
+            name,
+            path: currentPath,
+            entries: [],
+            files: [],
+            folders: new Map()
+          });
+        }
+        node = node.folders.get(key);
+      });
+    });
   return root;
 }
 

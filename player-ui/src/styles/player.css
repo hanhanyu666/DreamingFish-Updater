@@ -11,6 +11,8 @@
   --dfs-text: #fff8dc;
   --dfs-text-dim: rgba(255, 248, 220, 0.64);
   --dfs-bg: #05090b;
+  --dfs-topbar-rgb: 3, 7, 8;
+  --dfs-card-rgb: 3, 7, 8;
 }
 
 * {
@@ -191,7 +193,7 @@ input {
   border-radius: 29px 29px 0 0;
   background:
     linear-gradient(to bottom, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.025)),
-    rgba(3, 7, 8, 0.22);
+    rgba(var(--dfs-topbar-rgb), 0.72);
   z-index: 50;
 }
 
@@ -323,7 +325,7 @@ input {
   border-radius: 13px;
   background:
     linear-gradient(to bottom right, rgba(46, 232, 223, 0.15), rgba(176, 108, 255, 0.08)),
-    rgba(3, 7, 8, 0.62);
+    rgba(var(--dfs-card-rgb), 0.62);
   box-shadow: 0 7px 18px rgba(0, 0, 0, 0.32);
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
 }
@@ -333,7 +335,7 @@ input {
   border-color: rgba(46, 232, 223, 0.72);
   background:
     linear-gradient(to bottom right, rgba(46, 232, 223, 0.23), rgba(176, 108, 255, 0.13)),
-    rgba(3, 7, 8, 0.74);
+    rgba(var(--dfs-card-rgb), 0.74);
   transform: translateY(-1px);
 }
 
@@ -397,7 +399,7 @@ input {
   border-radius: 15px;
   background:
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.11), rgba(46, 232, 223, 0.06)),
-    rgba(3, 7, 8, 0.86);
+    rgba(var(--dfs-card-rgb), 0.86);
   box-shadow: 0 11px 28px rgba(0, 0, 0, 0.42);
   backdrop-filter: blur(12px);
 }
@@ -461,7 +463,7 @@ input {
   padding: 0 7px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
-  background: rgba(3, 7, 8, 0.72);
+  background: rgba(var(--dfs-card-rgb), 0.72);
   color: var(--dfs-text);
   font: inherit;
   font-size: 11px;
@@ -660,7 +662,7 @@ input {
   border-radius: 17px;
   background:
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.022)),
-    rgba(3, 7, 8, 0.4);
+    rgba(var(--dfs-card-rgb), 0.4);
   box-shadow: 0 7px 18px rgba(0, 0, 0, 0.3);
   z-index: 10;
 }
@@ -704,7 +706,7 @@ input {
   border-radius: 19px;
   background:
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025)),
-    rgba(4, 10, 11, 0.63);
+    rgba(var(--dfs-card-rgb), 0.63);
   cursor: pointer;
   z-index: 10;
 }
@@ -714,7 +716,7 @@ input {
   border-color: rgba(46, 232, 223, 0.4);
   background:
     linear-gradient(to bottom right, rgba(46, 232, 223, 0.15), rgba(176, 108, 255, 0.045)),
-    rgba(4, 10, 11, 0.72);
+    rgba(var(--dfs-card-rgb), 0.72);
 }
 
 .home-latest-news-meta {
@@ -766,7 +768,7 @@ input {
   border-radius: 19px;
   background:
     linear-gradient(to bottom right, rgba(46, 232, 223, 0.1), rgba(176, 108, 255, 0.055)),
-    rgba(3, 7, 8, 0.54);
+    rgba(var(--dfs-card-rgb), 0.54);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
   cursor: pointer;
 }
@@ -775,7 +777,7 @@ input {
   border-color: rgba(46, 232, 223, 0.42);
   background:
     linear-gradient(to bottom right, rgba(46, 232, 223, 0.16), rgba(176, 108, 255, 0.09)),
-    rgba(3, 7, 8, 0.62);
+    rgba(var(--dfs-card-rgb), 0.62);
 }
 
 .update-summary-version {
@@ -806,7 +808,7 @@ input {
   border-radius: 12px;
   background:
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.09), rgba(46, 232, 223, 0.035)),
-    rgba(4, 9, 11, 0.97);
+    rgba(var(--dfs-card-rgb), 0.97);
   color: rgba(255, 248, 220, 0.88);
   font-size: 12px;
   font-weight: 400;
@@ -825,7 +827,7 @@ input {
   border-radius: 19px;
   background:
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.115), rgba(255, 255, 255, 0.025)),
-    rgba(3, 7, 8, 0.43);
+    rgba(var(--dfs-card-rgb), 0.43);
   box-shadow: 0 9px 24px rgba(0, 0, 0, 0.36);
 }
 
@@ -984,9 +986,9 @@ input {
   display: none;
   background: linear-gradient(
     to right,
-    rgba(3, 7, 8, 0.91) 0%,
-    rgba(3, 7, 8, 0.78) 68%,
-    rgba(3, 7, 8, 0.58) 100%
+    rgba(var(--dfs-card-rgb), 0.91) 0%,
+    rgba(var(--dfs-card-rgb), 0.78) 68%,
+    rgba(var(--dfs-card-rgb), 0.58) 100%
   );
   z-index: 20;
 }
@@ -1082,7 +1084,7 @@ input {
   color: #fff8dc;
   background:
     linear-gradient(to bottom right, rgba(46, 232, 223, 0.17), rgba(176, 108, 255, 0.08)),
-    rgba(4, 10, 11, 0.72);
+    rgba(var(--dfs-card-rgb), 0.72);
   font-size: 14px;
   font-weight: 700;
 }
@@ -1092,7 +1094,7 @@ input {
   border-color: rgba(46, 232, 223, 0.68);
   background:
     linear-gradient(to bottom right, rgba(46, 232, 223, 0.27), rgba(176, 108, 255, 0.13)),
-    rgba(4, 10, 11, 0.82);
+    rgba(var(--dfs-card-rgb), 0.82);
   box-shadow: 0 6px 18px rgba(46, 232, 223, 0.14);
 }
 
@@ -1120,7 +1122,7 @@ input {
   border-radius: 8px;
   background:
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.025)),
-    rgba(4, 10, 11, 0.72);
+    rgba(var(--dfs-card-rgb), 0.72);
   cursor: pointer;
 }
 
@@ -1129,7 +1131,7 @@ input {
   border-color: rgba(46, 232, 223, 0.4);
   background:
     linear-gradient(to bottom right, rgba(46, 232, 223, 0.14), rgba(176, 108, 255, 0.055)),
-    rgba(4, 10, 11, 0.79);
+    rgba(var(--dfs-card-rgb), 0.79);
   box-shadow: 0 5px 18px rgba(46, 232, 223, 0.14);
 }
 
@@ -1386,7 +1388,7 @@ input {
   border-radius: 16px;
   background:
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.035)),
-    rgba(3, 10, 11, 0.72);
+    rgba(var(--dfs-card-rgb), 0.72);
   box-shadow: 0 7px 20px rgba(0, 0, 0, 0.34);
   max-width: min(420px, calc(100% - 32px));
 }
@@ -1427,7 +1429,7 @@ input {
   border-radius: 24px 0 0 24px;
   background:
     linear-gradient(to bottom right, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025)),
-    rgba(3, 7, 8, 0.94);
+    rgba(var(--dfs-card-rgb), 0.94);
   box-shadow: -7px 0 28px rgba(0, 0, 0, 0.4);
   z-index: 30;
   animation: dfs-drawer-in 220ms ease-out both;
@@ -1682,7 +1684,7 @@ input {
   min-height: 42px;
   padding: 0 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(18, 24, 30, 0.96);
+  background: rgba(var(--dfs-card-rgb), 0.96);
   color: rgba(255, 248, 220, 0.5);
   font-size: 11px;
   backdrop-filter: blur(10px);
@@ -2224,7 +2226,7 @@ input {
       rgba(46, 232, 223, 0.035) 72%,
       rgba(176, 108, 255, 0.065) 100%
     ),
-    rgba(5, 10, 12, 0.985);
+    rgba(var(--dfs-card-rgb), 0.985);
   background-clip: padding-box;
   box-shadow: 0 13px 38px rgba(0, 0, 0, 0.64);
   animation: dfs-dialog-in 150ms ease-out both;

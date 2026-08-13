@@ -27,6 +27,9 @@ final class ProjectCreateCommand implements Runnable {
     @CommandLine.Option(names = "--subtitle", defaultValue = "Minecraft modpack update")
     String subtitle;
 
+    @CommandLine.Option(names = "--welcome-text", defaultValue = "欢迎来到")
+    String welcomeText;
+
     @CommandLine.Option(names = "--server-address", defaultValue = "")
     String serverAddress;
 
@@ -35,6 +38,12 @@ final class ProjectCreateCommand implements Runnable {
 
     @CommandLine.Option(names = "--secondary-accent", defaultValue = "#b06cff")
     String secondaryAccent;
+
+    @CommandLine.Option(names = "--top-bar-color", defaultValue = "#030708")
+    String topBarColor;
+
+    @CommandLine.Option(names = "--card-color", defaultValue = "#030708")
+    String cardColor;
 
     @CommandLine.Option(names = "--brand-name", defaultValue = "梦鱼服",
             description = "Chinese brand name shown in the player title bar")
@@ -72,7 +81,9 @@ final class ProjectCreateCommand implements Runnable {
             rules = rules.withForcedSyncFiles(parsePaths(forcedSyncFiles));
         }
         Branding branding = new Branding(name, subtitle, serverAddress, null,
-                accent, secondaryAccent, brandName, brandEnglishName);
+                accent, secondaryAccent, brandName, brandEnglishName,
+                java.util.List.of(), null, java.util.List.of(), java.util.List.of(),
+                welcomeText, topBarColor, cardColor);
         ProjectRecord project = services.projects().create(
                 projectId, name, source, publicUrl, branding, rules);
         if (cover != null) {

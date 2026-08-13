@@ -4,7 +4,7 @@ import { groupPlayerLogs, logLevelLabel, parsePlayerLogs } from "../playerLogs";
 describe("player log formatting", () => {
   it("parses dated entries and attaches stack trace lines to their error", () => {
     const entries = parsePlayerLogs([
-      "2026-08-13 10:03:04.567 | START | 启动 | 玩家端 0.1.37 · 项目 building_server",
+      "2026-08-13 10:03:04.567 | START | 启动 | 玩家端 0.1.38 · 项目 building_server",
       "2026-08-13 10:03:05.120 | INFO  | 检查更新 | 正在检查整合包更新",
       "2026-08-13 10:03:06.900 | ERROR | 整合包更新 | 更新失败：连接超时",
       "    java.io.IOException: 连接超时",

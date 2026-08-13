@@ -21,15 +21,30 @@ final class ServeCommand implements Runnable {
         ManagementCli.Services services = root.services();
         PublicFileServer server = new PublicFileServer(
                 services.database(), services.objects(), new InetSocketAddress(host, port));
-        Runtime.getRuntime().addShutdownHook(new Thread(server::close, "dfs-http-shutdown"));
+        CountDownLatch stopped = new CountDownLatch(1);
+        Thread shutdown = new Thread(() -> {
+            server.close();
+            stopped.countDown();
+        }, "dfs-http-shutdown");
+        Runtime.getRuntime().addShutdownHook(shutdown);
         server.start();
-        root.out().printf("下载服务已启动：http://%s:%d/%n",
-                server.address().getHostString(), server.address().getPort());
-        try {
-            new CountDownLatch(1).await();
+        try (PublicServiceControl ignored = PublicServiceControl.register(
+                root, host, port, () -> {
+                    server.close();
+                    stopped.countDown();
+                })) {
+            root.out().printf("下载服务已启动：http://%s:%d/%n",
+                    server.address().getHostString(), server.address().getPort());
+            stopped.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } finally {
             server.close();
+            try {
+                Runtime.getRuntime().removeShutdownHook(shutdown);
+            } catch (IllegalStateException ignored) {
+                // JVM shutdown is already in progress.
+            }
         }
     }
 

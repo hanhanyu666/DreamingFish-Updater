@@ -440,6 +440,10 @@ h1 {
   animation: reveal 150ms ease-out;
 }
 
+#view-personalization {
+  width: min(1420px, 100%);
+}
+
 @keyframes reveal {
   from {
     opacity: 0;
@@ -946,9 +950,9 @@ input[readonly] {
 }
 
 .music-title-input {
-  flex: 1 1 220px;
-  min-width: 180px;
-  max-width: 360px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   min-height: 32px;
 }
 
@@ -972,9 +976,90 @@ input[readonly] {
 
 .personalization-layout {
   display: grid;
-  grid-template-columns: minmax(440px, 0.92fr) minmax(500px, 1.08fr);
+  grid-template-columns: minmax(560px, 1.18fr) minmax(430px, 0.82fr);
   align-items: start;
+  gap: 18px;
+}
+
+.personalization-fields {
+  display: grid;
   gap: 16px;
+  padding: 18px;
+}
+
+.personalization-block {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-raised), transparent 20%);
+}
+
+.personalization-block > .form-section-heading {
+  padding: 0 0 13px;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.personalization-block > .form-grid {
+  padding: 16px 0 0;
+}
+
+.personalization-block.player-pages-block {
+  display: grid;
+  gap: 14px;
+}
+
+.page-config-server-row {
+  display: grid;
+  grid-template-columns: minmax(180px, auto) minmax(240px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.page-config-server-row > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.asset-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.asset-source-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.asset-source-card > strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.asset-source-card > span {
+  min-height: 30px;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+}
+
+.asset-source-card > button {
+  align-self: flex-start;
 }
 
 .personalization-cover-state {
@@ -1249,6 +1334,32 @@ input[readonly] {
   justify-content: flex-end;
 }
 
+.music-upload-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px 12px;
+}
+
+.music-upload-toolbar > div:first-child {
+  grid-column: 1 / -1;
+}
+
+.music-upload-toolbar > .music-title-input {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.music-upload-toolbar > .button-row {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: stretch;
+}
+
+.music-upload-toolbar > .button-row > button {
+  height: 100%;
+}
+
 .player-pages-toolbar {
   flex-wrap: wrap;
 }
@@ -1487,6 +1598,16 @@ input[readonly] {
     width: min(920px, calc(100% - 36px));
     margin-right: auto;
     margin-left: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .asset-source-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .page-config-server-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1998,6 +2119,23 @@ input[readonly] {
   overflow: auto;
   padding: 5px;
   background: var(--surface);
+}
+
+.source-create-folder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.source-create-folder-help {
+  display: block;
+  padding: 0 12px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
 }
 
 .source-target-row {

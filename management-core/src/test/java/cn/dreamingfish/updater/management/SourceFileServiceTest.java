@@ -108,6 +108,26 @@ class SourceFileServiceTest {
     }
 
     @Test
+    void createsAndListsEmptyUploadDirectoriesSafely() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(
+                temporary.resolve("directories"));
+        fixture.createProject();
+        SourceFileService service = new SourceFileService(
+                fixture.paths, fixture.database, fixture.json);
+
+        assertEquals("resourcepacks/server", service.createDirectory(
+                "demo", "resourcepacks/server"));
+        assertTrue(Files.isDirectory(
+                fixture.source.resolve("resourcepacks/server")));
+        assertTrue(service.listDirectories("demo").containsAll(List.of(
+                "resourcepacks", "resourcepacks/server")));
+        assertThrows(ManagementException.class, () ->
+                service.createDirectory("demo", "resourcepacks/server"));
+        assertThrows(RuntimeException.class, () ->
+                service.createDirectory("demo", "../outside"));
+    }
+
+    @Test
     void forcedDirectoryFileCannotBeReleasedFromManagement() throws Exception {
         ManagementFixture fixture = new ManagementFixture(temporary.resolve("forced"));
         ProjectRecord project = fixture.createProject();

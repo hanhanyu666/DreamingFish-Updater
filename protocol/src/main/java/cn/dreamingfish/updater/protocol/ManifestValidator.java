@@ -255,11 +255,14 @@ public final class ManifestValidator {
         requireLength(branding.serverAddress(), "server address", 255);
         requireText(branding.brandName(), "branding name", 32);
         requireText(branding.brandEnglishName(), "English branding name", 48);
+        requireText(branding.welcomeText(), "welcome text", 48);
         if (branding.coverObject() != null && !Hex.isSha256(branding.coverObject())) {
             throw new ProtocolException("Invalid branding cover object hash");
         }
         validateColor(branding.accentColor(), "accent color");
         validateColor(branding.secondaryAccentColor(), "secondary accent color");
+        validateColor(branding.topBarColor(), "top bar color");
+        validateColor(branding.cardColor(), "card color");
         validateNews(branding.newsArticles());
         validateCustomPage(branding.customPage());
         validateContentPages(branding.contentPages());
@@ -315,11 +318,10 @@ public final class ManifestValidator {
             requireText(page.title(), "player page title", 120);
             requireLength(page.lead(), "player page lead", 300);
             requireLength(page.markdown(), "player page Markdown", 131_072);
-            if (page.announcementPage()) {
-                validateNews(page.articles() == null ? List.of() : page.articles());
-            } else if (page.articles() != null && !page.articles().isEmpty()) {
-                throw new ProtocolException("Normal player page cannot contain announcements");
-            }
+            // Both bodies are retained so changing the page type in the
+            // management UI is a reversible presentation choice. The player
+            // only renders the body selected by announcementPage.
+            validateNews(page.articles() == null ? List.of() : page.articles());
         }
     }
 

@@ -110,6 +110,7 @@
             </div>
             <div class="button-row">
               <button class="secondary-button" id="service-stop">■ 停止</button>
+              <button class="secondary-button" id="service-restart">↻ 重启</button>
               <button class="primary-button" id="service-start">▶ 启动下载服务</button>
             </div>
           </div>
@@ -207,98 +208,157 @@
                 <button class="primary-button" type="submit">保存个性化设置</button>
               </div>
               <p class="panel-help"><strong>这里修改的是玩家看到的更新器界面。</strong>标题、配色、公告和自定义页面保存后，玩家下次启动会自动获取，不用扫描或发布整合包；断网时会继续使用上次验证成功的内容。背景图片和音乐属于文件资源，仍要扫描并发布一次。</p>
-              <div class="form-grid personalization-fields">
-                <div class="form-section-heading span-2">
-                  <strong>窗口品牌</strong>
-                  <small>左上角显示服务器品牌，首页标题用于介绍当前整合包。</small>
-                </div>
-                <label class="field">
-                  <span>左上角中文品牌名（必填）</span>
-                  <input name="brandName" maxlength="32" required>
-                  <small class="field-help">显示在玩家端窗口左上角，例如服务器简称。</small>
-                </label>
-                <label class="field">
-                  <span>左上角英文品牌名（必填）</span>
-                  <input name="brandEnglishName" maxlength="48" required>
-                  <small class="field-help">紧跟中文品牌名显示，文字过长时会自动省略。</small>
-                </label>
-                <label class="field">
-                  <span>玩家端主标题（必填）</span>
-                  <input name="productName" maxlength="128" required>
-                  <small class="field-help">显示在首页左侧的大号标题区域。</small>
-                </label>
-                <label class="field">
-                  <span>玩家端副标题</span>
-                  <input name="subtitle" maxlength="512">
-                  <small class="field-help">显示在主标题下方，可填写玩法定位或一句介绍。</small>
-                </label>
-                <label class="field span-2">
-                  <span>Minecraft 服务器地址</span>
-                  <input name="serverAddress" maxlength="255" placeholder="play.example.com:25565">
-                  <small class="field-help">显示在玩家端服务器信息区域，方便玩家查看和复制；与更新下载地址无关。</small>
-                </label>
-
-                <div class="form-section-heading span-2">
-                  <strong>外观与背景</strong>
-                  <small>颜色保存后会在玩家下次启动时生效；背景图片保存在管理端对象库中，还要随整合包发布。</small>
-                </div>
-                <label class="field color-field">
-                  <span>主强调色</span>
-                  <div><input name="accentColor" type="color"><input name="accentColorText"></div>
-                  <small class="field-help">用于主要按钮、状态文字和品牌渐变。</small>
-                </label>
-                <label class="field color-field">
-                  <span>次强调色</span>
-                  <div><input name="secondaryAccentColor" type="color"><input name="secondaryAccentColorText"></div>
-                  <small class="field-help">用于辅助强调和品牌渐变的另一端。</small>
-                </label>
-                <div class="field span-2">
-                  <span>上传新的玩家端背景图片</span>
-                  <div class="cover-upload-row">
-                    <button class="secondary-button" id="choose-cover-upload" type="button">从本机选择图片</button>
-                    <span id="cover-upload-name">尚未选择新图片，将保留当前背景</span>
-                    <input id="cover-upload-input" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp" hidden>
+              <div class="personalization-fields">
+                <section class="personalization-block">
+                  <div class="form-section-heading">
+                    <strong>窗口品牌</strong>
+                    <small>设置玩家端左上角品牌，以及首页最醒目的欢迎文字和标题。</small>
                   </div>
-                  <small class="field-help">从当前浏览器所在的电脑选择图片并上传，支持 PNG、JPEG、GIF、BMP 和 WebP，最大 32 MiB。上传后请到“管理文件”扫描并创建一次发布。</small>
-                </div>
-                <label class="check-field span-2">
-                  <input name="removeCover" type="checkbox">
-                  <span>移除当前背景，恢复玩家端内置默认背景</span>
-                </label>
-                <div class="personalization-cover-state span-2" id="personalization-cover-state">当前未设置自定义背景</div>
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>左上角中文品牌名（必填）</span>
+                      <input name="brandName" maxlength="32" required>
+                      <small class="field-help">显示在玩家端窗口左上角，例如服务器简称。</small>
+                    </label>
+                    <label class="field">
+                      <span>左上角英文品牌名（必填）</span>
+                      <input name="brandEnglishName" maxlength="48" required>
+                      <small class="field-help">紧跟中文品牌名显示，文字过长时会自动省略。</small>
+                    </label>
+                    <label class="field">
+                      <span>首页欢迎文字（必填）</span>
+                      <input name="welcomeText" maxlength="48" required>
+                      <small class="field-help">显示在大标题上方，默认是“欢迎来到”。</small>
+                    </label>
+                    <label class="field">
+                      <span>玩家端主标题（必填）</span>
+                      <input name="productName" maxlength="128" required>
+                      <small class="field-help">显示在首页左侧的大号标题区域。</small>
+                    </label>
+                    <label class="field span-2">
+                      <span>玩家端副标题</span>
+                      <input name="subtitle" maxlength="512">
+                      <small class="field-help">显示在主标题下方，可填写玩法定位或一句介绍。</small>
+                    </label>
+                    <label class="field span-2">
+                      <span>Minecraft 服务器地址</span>
+                      <input name="serverAddress" maxlength="255" placeholder="play.example.com:25565">
+                      <small class="field-help">显示在玩家端服务器信息区域，方便玩家查看和复制；与更新下载地址无关。</small>
+                    </label>
+                  </div>
+                </section>
 
-                <div class="form-section-heading span-2 personalization-section-toolbar">
-                  <div>
+                <section class="personalization-block">
+                  <div class="form-section-heading">
+                    <strong>外观与背景</strong>
+                    <small>强调色、顶栏和卡片都可以分别调整；不填写时继续使用现在这套默认颜色。</small>
+                  </div>
+                  <div class="form-grid">
+                    <label class="field color-field">
+                      <span>主强调色</span>
+                      <div><input name="accentColor" type="color"><input name="accentColorText"></div>
+                      <small class="field-help">用于主要按钮、状态文字和品牌渐变。</small>
+                    </label>
+                    <label class="field color-field">
+                      <span>次强调色</span>
+                      <div><input name="secondaryAccentColor" type="color"><input name="secondaryAccentColorText"></div>
+                      <small class="field-help">用于辅助强调和品牌渐变的另一端。</small>
+                    </label>
+                    <label class="field color-field">
+                      <span>窗口顶栏颜色</span>
+                      <div><input name="topBarColor" type="color"><input name="topBarColorText"></div>
+                      <small class="field-help">用于顶部导航和窗口按钮所在区域；玩家端会自动压暗过亮颜色，保证文字清楚。</small>
+                    </label>
+                    <label class="field color-field">
+                      <span>布局卡片颜色</span>
+                      <div><input name="cardColor" type="color"><input name="cardColorText"></div>
+                      <small class="field-help">用于更新进度、新闻、音乐和本地管理等卡片；玩家端会自动压暗过亮颜色。</small>
+                    </label>
+                    <div class="asset-source-grid span-2">
+                      <div class="asset-source-card">
+                        <strong>从当前电脑上传背景图</strong>
+                        <span id="cover-upload-name">尚未选择新图片，将保留当前背景</span>
+                        <button class="secondary-button" id="choose-cover-upload" type="button">选择图片</button>
+                        <input id="cover-upload-input" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp" hidden>
+                      </div>
+                      <div class="asset-source-card">
+                        <strong>从管理端所在电脑 / 服务器导入</strong>
+                        <div class="path-input-row">
+                          <input name="coverServerPath" placeholder="选择管理端可以访问的图片路径">
+                          <button class="secondary-button path-picker-button ellipsis-button" type="button" data-path-kind="image" data-path-name="coverServerPath" data-path-title="选择管理端背景图片" aria-label="浏览管理端图片">…</button>
+                        </div>
+                        <button class="secondary-button" id="import-cover-server" type="button">导入背景图</button>
+                      </div>
+                    </div>
+                    <small class="field-help span-2">支持 PNG、JPEG、GIF、BMP 和 WebP，最大 32 MiB。背景图片属于文件资源，修改后还要到“管理文件”扫描并创建一次发布。</small>
+                    <label class="check-field span-2">
+                      <input name="removeCover" type="checkbox">
+                      <span>移除当前背景，恢复玩家端内置默认背景</span>
+                    </label>
+                    <div class="personalization-cover-state span-2" id="personalization-cover-state">当前未设置自定义背景</div>
+                  </div>
+                </section>
+
+                <section class="personalization-block">
+                  <div class="form-section-heading">
                     <strong>玩家端音乐</strong>
-                    <small>可上传多首 MP3。保存后还要扫描并发布一次，玩家更新时会自动下载；单首不超过 20 MiB。</small>
+                    <small>可添加多首 MP3，玩家可以在播放器里选择歌曲。单首不超过 20 MiB。</small>
                   </div>
-                  <div class="button-row">
-                    <button class="secondary-button" id="choose-music-upload" type="button">＋ 添加 MP3</button>
-                    <input id="music-upload-input" type="file" accept="audio/mpeg,.mp3" hidden>
+                  <div class="form-grid">
+                    <label class="field span-2">
+                      <span>歌曲显示名称（可选）</span>
+                      <input id="music-upload-title" placeholder="留空时使用 MP3 文件名" maxlength="120">
+                    </label>
+                    <div class="asset-source-grid span-2">
+                      <div class="asset-source-card">
+                        <strong>从当前电脑上传 MP3</strong>
+                        <span>文件会通过当前浏览器上传到管理端。</span>
+                        <button class="secondary-button" id="choose-music-upload" type="button">＋ 选择 MP3</button>
+                        <input id="music-upload-input" type="file" accept="audio/mpeg,.mp3" hidden>
+                      </div>
+                      <div class="asset-source-card">
+                        <strong>从管理端所在电脑 / 服务器导入</strong>
+                        <div class="path-input-row">
+                          <input name="musicServerPath" placeholder="选择管理端可以访问的 MP3 路径">
+                          <button class="secondary-button path-picker-button ellipsis-button" type="button" data-path-kind="music" data-path-name="musicServerPath" data-path-title="选择管理端 MP3 文件" aria-label="浏览管理端 MP3">…</button>
+                        </div>
+                        <button class="secondary-button" id="import-music-server" type="button">导入 MP3</button>
+                      </div>
+                    </div>
+                    <small class="field-help span-2">音乐属于文件资源，添加或删除后还要到“管理文件”扫描并创建一次发布，玩家更新时才会下载。</small>
+                    <div class="music-management span-2" id="music-management">
+                      <div class="empty-state visible" id="music-empty">还没有上传音乐</div>
+                      <div class="music-track-list" id="music-track-list"></div>
+                    </div>
                   </div>
-                  <input id="music-upload-title" class="music-title-input" placeholder="歌曲显示名称（可选，默认使用文件名）" maxlength="120">
-                </div>
-                <div class="music-management span-2" id="music-management">
-                  <div class="empty-state visible" id="music-empty">还没有上传音乐</div>
-                  <div class="music-track-list" id="music-track-list"></div>
-                </div>
+                </section>
 
-                <div class="form-section-heading span-2 personalization-section-toolbar player-pages-toolbar">
-                  <div>
-                    <strong>玩家端页面</strong>
-                    <small>主页和“关于更新器”固定保留，其余页面都由您添加。保存后玩家下次启动即可看到，不需要发布整合包。</small>
+                <section class="personalization-block player-pages-block">
+                  <div class="form-section-heading personalization-section-toolbar player-pages-toolbar">
+                    <div>
+                      <strong>玩家端页面</strong>
+                      <small>主页和“关于更新器”固定保留，其余页面都由您添加。保存后玩家下次启动即可看到，不需要发布整合包。</small>
+                    </div>
+                    <div class="button-row">
+                      <button class="secondary-button" id="import-player-pages" type="button">导入配置</button>
+                      <button class="secondary-button" id="export-player-pages" type="button">导出配置</button>
+                      <button class="secondary-button" id="copy-player-pages-ai-prompt" type="button">复制 AI 提示词</button>
+                      <button class="primary-button" id="add-player-page" type="button">＋ 添加页面</button>
+                      <input id="import-player-pages-input" type="file" accept="application/json,.json" hidden>
+                    </div>
                   </div>
-                  <div class="button-row">
-                    <button class="secondary-button" id="import-player-pages" type="button">导入配置</button>
-                    <button class="secondary-button" id="export-player-pages" type="button">导出配置</button>
-                    <button class="secondary-button" id="copy-player-pages-ai-prompt" type="button">复制 AI 提示词</button>
-                    <button class="primary-button" id="add-player-page" type="button">＋ 添加页面</button>
-                    <input id="import-player-pages-input" type="file" accept="application/json,.json" hidden>
+                  <div class="legacy-content-note" id="legacy-news-note" hidden>这是旧版新闻与自定义页面，保存后会自动转成新的页面配置，不会丢失内容。</div>
+                  <p class="panel-help"><strong>不会排版也没关系。</strong>正文上方提供标题、加粗、列表、引用、链接和图片等快捷按钮；也可以导出 JSON，复制 AI 提示词让 AI 按您的要求修改，再导入这里预览确认。普通正文和公告草稿会分别保留，切换页面类型不会清空内容。</p>
+                  <div class="page-config-server-row">
+                    <span>配置文件也可以从管理端所在电脑 / 服务器导入：</span>
+                    <div class="path-input-row">
+                      <input name="pageConfigServerPath" placeholder="选择管理端可以访问的页面配置 JSON">
+                      <button class="secondary-button path-picker-button ellipsis-button" type="button" data-path-kind="json" data-path-name="pageConfigServerPath" data-path-title="选择玩家端页面配置 JSON" aria-label="浏览页面配置 JSON">…</button>
+                    </div>
+                    <button class="secondary-button" id="import-player-pages-server" type="button">导入管理端 JSON</button>
                   </div>
-                </div>
-                <div class="legacy-content-note span-2" id="legacy-news-note" hidden>这是旧版新闻与自定义页面，保存后会自动转成新的页面配置，不会丢失内容。</div>
-                <p class="panel-help span-2"><strong>不会排版也没关系。</strong>正文上方提供标题、加粗、列表、引用、链接和图片等快捷按钮；也可以导出 JSON，复制 AI 提示词让 AI 按您的要求修改，再导入这里预览确认。</p>
-                <div class="player-page-editor span-2" id="player-page-editor"></div>
+                  <div class="player-page-editor" id="player-page-editor"></div>
+                </section>
               </div>
             </form>
 
@@ -970,6 +1030,11 @@
             </div>
             <span id="source-target-selection">尚未选择</span>
           </div>
+          <div class="source-create-folder">
+            <input id="source-new-folder-name" maxlength="120" placeholder="在所选位置新建文件夹，例如 resourcepacks">
+            <button class="secondary-button" id="create-source-folder" type="button" disabled>＋ 新建文件夹</button>
+          </div>
+          <small class="source-create-folder-help">空文件夹不会单独发送给玩家；在里面添加文件后，会随下一次整合包发布一起同步。</small>
           <div class="source-target-tree" id="source-target-tree" role="tree" aria-label="选择文件保存位置"></div>
         </div>
         <label class="check-field">

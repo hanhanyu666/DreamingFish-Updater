@@ -137,6 +137,7 @@ final class PlayerView {
     private final Map<Page, Button> navigationButtons = new EnumMap<>(Page.class);
     private final Map<Page, Node> contentPages = new EnumMap<>(Page.class);
     private final Label productName = new Label();
+    private final Label welcome = new Label("欢迎来到");
     private final Label subtitle = new Label();
     private final Label playerName = new Label("未识别玩家");
     private final Label updaterInfo = new Label("DreamingFish Updater " + PlayerApplication.VERSION);
@@ -256,6 +257,7 @@ final class PlayerView {
     void setBranding(Branding branding) {
         Branding display = displayBranding(branding);
         productName.setText(display.productName());
+        welcome.setText(display.welcomeText());
         subtitle.setText(display.subtitle());
         String accent = validColor(display.accentColor(), "#2ee8df");
         String secondary = validColor(display.secondaryAccentColor(), "#b06cff");
@@ -272,7 +274,8 @@ final class PlayerView {
                 branding.coverObject(), branding.accentColor(), branding.secondaryAccentColor(),
                 branding.brandName(), branding.brandEnglishName(),
                 branding.newsArticles(), branding.customPage(), branding.contentPages(),
-                branding.musicTracks());
+                branding.musicTracks(), branding.welcomeText(),
+                branding.topBarColor(), branding.cardColor());
     }
 
     private static boolean unusableText(String value) {
@@ -811,7 +814,6 @@ final class PlayerView {
         VBox box = new VBox(7);
         box.setPrefWidth(390);
         box.setMaxWidth(390);
-        Label welcome = new Label("欢迎来到");
         welcome.getStyleClass().add("welcome-title");
         productName.getStyleClass().add("product-name");
         productName.setWrapText(true);
@@ -1747,8 +1749,8 @@ final class PlayerView {
             details.add(entry.managedFileCount() + " 个远程文件");
         } else if (!entry.present()) {
             details.add("当前版本中已不存在");
-        } else if (entry.policy() == FilePolicy.DEFAULT) {
-            details.add("DEFAULT · 仅缺失时安装");
+        } else if (entry.policy() == FilePolicy.LEGACY_MISSING_ONLY) {
+            details.add("旧版发布兼容 · 仅缺失时补齐");
         } else {
             details.add("ENFORCED · 校验并同步");
         }

@@ -25,7 +25,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.1.23"));
+        assertTrue(version.out().contains("0.1.24"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -165,6 +165,7 @@ class ManagementCliTest {
                 "",
                 "",
                 "",
+                "",
                 "n",
                 "4",
                 "1.0.0",
@@ -254,12 +255,15 @@ class ManagementCliTest {
                 "12",
                 "星河服",
                 "StarRiver",
+                "欢迎来到星河",
                 "星河主页",
                 "和朋友一起探索新的世界",
                 "play.example.com:25565",
                 "not-a-color",
                 "#112233",
                 "#445566",
+                "",
+                "",
                 "-",
                 "",
                 "",
@@ -280,6 +284,8 @@ class ManagementCliTest {
         assertEquals("星河服", personalizedProject.branding().brandName());
         assertEquals("StarRiver",
                 personalizedProject.branding().brandEnglishName());
+        assertEquals("欢迎来到星河",
+                personalizedProject.branding().welcomeText());
         assertEquals("星河主页",
                 personalizedProject.branding().productName());
         assertEquals("和朋友一起探索新的世界",

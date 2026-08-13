@@ -24,7 +24,7 @@ import java.nio.file.Path;
 @CommandLine.Command(
         name = "dfs-admin",
         mixinStandardHelpOptions = true,
-        version = "DreamingFish Update System 0.1.23",
+        version = "DreamingFish Update System 0.1.24",
         description = "Self-hosted Minecraft modpack update management",
         subcommands = {
                 InitCommand.class,
@@ -37,7 +37,7 @@ import java.nio.file.Path;
         }
 )
 public final class ManagementCli implements Runnable {
-    static final String VERSION = "0.1.23";
+    static final String VERSION = "0.1.24";
     private static final Charset CONSOLE_OUTPUT_CHARSET =
             WindowsConsoleEncoding.outputCharset();
 

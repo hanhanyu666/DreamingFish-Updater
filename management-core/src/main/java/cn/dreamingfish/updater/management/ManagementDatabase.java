@@ -93,8 +93,50 @@ public final class ManagementDatabase {
                     }
                 }
             }
+            migrateLegacyDefaultRules();
         } catch (IOException | SQLException e) {
             throw new ManagementException("Unable to initialize management storage", e);
+        }
+    }
+
+    private void migrateLegacyDefaultRules() throws SQLException {
+        String select = "SELECT id, rules_json FROM projects";
+        String update = "UPDATE projects SET rules_json = ? WHERE id = ?";
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try {
+                List<RulesMigration> migrations = new ArrayList<>();
+                try (PreparedStatement statement = connection.prepareStatement(select);
+                     ResultSet result = statement.executeQuery()) {
+                    while (result.next()) {
+                        String stored = result.getString("rules_json");
+                        if (!stored.contains("\"DEFAULT\"")) continue;
+                        ProjectRules rules = json.read(
+                                stored.getBytes(StandardCharsets.UTF_8), ProjectRules.class);
+                        String normalized = json.writeString(rules);
+                        if (!stored.equals(normalized)) {
+                            migrations.add(new RulesMigration(
+                                    result.getString("id"), normalized));
+                        }
+                    }
+                }
+                if (!migrations.isEmpty()) {
+                    try (PreparedStatement statement = connection.prepareStatement(update)) {
+                        for (RulesMigration migration : migrations) {
+                            statement.setString(1, migration.rulesJson());
+                            statement.setString(2, migration.projectId());
+                            statement.addBatch();
+                        }
+                        statement.executeBatch();
+                    }
+                }
+                connection.commit();
+            } catch (RuntimeException | SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
     }
 
@@ -387,5 +429,8 @@ public final class ManagementDatabase {
             throw new ManagementException("Stored path escapes the data root: " + path);
         }
         return resolved;
+    }
+
+    private record RulesMigration(String projectId, String rulesJson) {
     }
 }

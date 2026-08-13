@@ -99,11 +99,14 @@ class PublishServiceTest {
         Files.createDirectories(fixture.source.resolve("mods"));
         Files.writeString(fixture.source.resolve("mods/example.jar"), "version-one");
         Files.writeString(fixture.source.resolve("options.txt"), "music:1");
+        Files.writeString(fixture.source.resolve("servers.dat"), "server-list");
 
         PublishPreview firstPreview = fixture.scanner.createPreview("demo");
-        assertEquals(2, firstPreview.changes().size());
-        assertEquals(FilePolicy.DEFAULT,
+        assertEquals(3, firstPreview.changes().size());
+        assertEquals(FilePolicy.ENFORCED,
                 firstPreview.files().stream().filter(file -> file.path().equals("options.txt")).findFirst().orElseThrow().policy());
+        assertEquals(FilePolicy.ENFORCED,
+                firstPreview.files().stream().filter(file -> file.path().equals("servers.dat")).findFirst().orElseThrow().policy());
         StoredRelease first = fixture.publisher.publish("demo", "1.0.0", "0.1.0", "First release");
         assertEquals(1, first.sequence());
 
@@ -114,7 +117,7 @@ class PublishServiceTest {
                 CryptoSupport.decodePublicKey(project.publicKey())
         ));
         ReleaseManifest firstManifest = fixture.database.readManifest(first);
-        assertEquals(2, firstManifest.files().size());
+        assertEquals(3, firstManifest.files().size());
         for (var file : firstManifest.files()) {
             fixture.objects.verify(fixture.objects.require(file.sha256()), file.sha256(), file.size());
         }

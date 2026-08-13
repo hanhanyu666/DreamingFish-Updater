@@ -15,7 +15,7 @@ public record ProjectRules(
         List<String> forcedSyncFiles
 ) {
     public ProjectRules {
-        rules = rules == null ? List.of() : List.copyOf(rules);
+        rules = normalizeRules(rules);
         forcedSyncDirectories = normalizeForcedSyncDirectories(forcedSyncDirectories);
         forcedSyncFiles = normalizeForcedSyncFiles(forcedSyncFiles);
     }
@@ -35,9 +35,7 @@ public record ProjectRules(
                 new FileRule("logs/**", RuleAction.EXCLUDE),
                 new FileRule("crash-reports/**", RuleAction.EXCLUDE),
                 new FileRule("saves/**", RuleAction.EXCLUDE),
-                new FileRule("screenshots/**", RuleAction.EXCLUDE),
-                new FileRule("options.txt", RuleAction.DEFAULT),
-                new FileRule("servers.dat", RuleAction.DEFAULT)
+                new FileRule("screenshots/**", RuleAction.EXCLUDE)
         ), List.of(), List.of());
     }
 
@@ -47,6 +45,18 @@ public record ProjectRules(
 
     public ProjectRules withForcedSyncFiles(List<String> files) {
         return new ProjectRules(rules, forcedSyncDirectories, files);
+    }
+
+    private static List<FileRule> normalizeRules(List<FileRule> source) {
+        if (source == null || source.isEmpty()) return List.of();
+        List<FileRule> normalized = new ArrayList<>();
+        for (FileRule rule : source) {
+            // DEFAULT used to be injected for options.txt and servers.dat. It is
+            // retained in RuleAction only long enough to read and migrate old data.
+            if (rule.action() == RuleAction.LEGACY_DEFAULT) continue;
+            normalized.add(rule);
+        }
+        return List.copyOf(normalized);
     }
 
     private static List<String> normalizeForcedSyncDirectories(List<String> source) {

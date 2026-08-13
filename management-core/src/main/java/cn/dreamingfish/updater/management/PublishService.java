@@ -108,6 +108,13 @@ public final class PublishService {
             StoredRelease target = database.findRelease(projectId, targetReleaseId)
                     .orElseThrow(() -> new ManagementException("Unknown release: " + targetReleaseId));
             ReleaseManifest old = database.readManifest(target);
+            if (old.files().stream().anyMatch(
+                    file -> file.policy()
+                            == cn.dreamingfish.updater.protocol.FilePolicy.LEGACY_MISSING_ONLY)) {
+                throw new ManagementException(
+                        "This historical release uses the removed DEFAULT file policy and cannot be republished; "
+                                + "restore its files in the managed source directory and create a normal release instead");
+            }
             for (ManifestFile file : old.files()) {
                 Path object = objects.require(file.sha256());
                 objects.verify(object, file.sha256(), file.size());

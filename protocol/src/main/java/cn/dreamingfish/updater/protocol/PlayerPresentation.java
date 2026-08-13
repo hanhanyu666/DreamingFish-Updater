@@ -23,6 +23,9 @@ public record PlayerPresentation(
                 source.newsArticles(),
                 source.customPage(),
                 source.contentPages(),
-                null);
+                null,
+                source.welcomeText(),
+                source.topBarColor(),
+                source.cardColor());
     }
 }

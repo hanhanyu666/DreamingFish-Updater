@@ -492,7 +492,10 @@ public final class PlayerController {
                 presentation.newsArticles(),
                 presentation.customPage(),
                 presentation.contentPages(),
-                base.musicTracks());
+                base.musicTracks(),
+                presentation.welcomeText(),
+                presentation.topBarColor(),
+                presentation.cardColor());
     }
 
     private void restartWithUpdatedProgram(PlayerProgramUpdateResult result) {

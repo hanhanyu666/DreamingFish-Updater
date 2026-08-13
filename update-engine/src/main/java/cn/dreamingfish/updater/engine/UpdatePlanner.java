@@ -54,7 +54,7 @@ final class UpdatePlanner {
             }
 
             boolean install;
-            if (file.policy() == FilePolicy.DEFAULT) {
+            if (file.policy() == FilePolicy.LEGACY_MISSING_ONLY) {
                 install = !exists;
             } else {
                 install = !matches(destination, file.sha256(), file.size());

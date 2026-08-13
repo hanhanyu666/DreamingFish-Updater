@@ -55,9 +55,11 @@ class UpdateEngineTest {
             Files.writeString(instance.resolve("mods/custom.jar"), "custom");
 
             TestUpdateServer.TestFile forcedV1 = server.file("config/forced.txt", "forced-v1", FilePolicy.ENFORCED);
-            TestUpdateServer.TestFile defaults = server.file("config/player.txt", "default", FilePolicy.DEFAULT);
+            TestUpdateServer.TestFile legacyMissingOnly = server.file(
+                    "config/player.txt", "default", FilePolicy.LEGACY_MISSING_ONLY);
             TestUpdateServer.TestFile managedMod = server.file("mods/managed.jar", "managed", FilePolicy.ENFORCED);
-            ReleaseManifest first = server.release(1, "release-1", forcedV1, defaults, managedMod);
+            ReleaseManifest first = server.release(
+                    1, "release-1", forcedV1, legacyMissingOnly, managedMod);
             server.serve(first);
             server.bundle(instance, first, false);
 

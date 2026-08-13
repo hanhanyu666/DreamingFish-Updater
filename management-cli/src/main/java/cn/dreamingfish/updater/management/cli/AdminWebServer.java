@@ -368,6 +368,13 @@ final class AdminWebServer implements AutoCloseable {
             sendJson(exchange, 200, browsePath(request));
             return;
         }
+        if (path.equals("/api/system/import-player-pages")
+                && exchange.getRequestMethod().equals("POST")) {
+            LocalFileImportRequest request = readJson(
+                    exchange, LocalFileImportRequest.class);
+            sendJson(exchange, 200, importPlayerPages(request));
+            return;
+        }
         if (path.equals("/api/public-service/start")
                 && exchange.getRequestMethod().equals("POST")) {
             sendJson(exchange, 200, mutate(publicService::start));
@@ -381,6 +388,11 @@ final class AdminWebServer implements AutoCloseable {
         if (path.equals("/api/public-service/stop")
                 && exchange.getRequestMethod().equals("POST")) {
             sendJson(exchange, 200, mutate(publicService::stop));
+            return;
+        }
+        if (path.equals("/api/public-service/restart")
+                && exchange.getRequestMethod().equals("POST")) {
+            sendJson(exchange, 200, mutate(publicService::restart));
             return;
         }
 
@@ -419,6 +431,18 @@ final class AdminWebServer implements AutoCloseable {
             throw new WebApiException(
                     405, "method_not_allowed", "背景图片只允许 GET 或 PUT");
         }
+        if (segments.size() == 5 && segments.get(3).equals("cover")
+                && segments.get(4).equals("import")) {
+            if (!exchange.getRequestMethod().equals("POST")) {
+                throw new WebApiException(
+                        405, "method_not_allowed", "背景图片导入只允许 POST");
+            }
+            LocalFileImportRequest request = readJson(
+                    exchange, LocalFileImportRequest.class);
+            sendJson(exchange, 200, mutate(() ->
+                    importProjectCover(projectId, request)));
+            return;
+        }
         if (segments.size() == 4 && segments.get(3).equals("music")
                 && exchange.getRequestMethod().equals("GET")) {
             ProjectRecord project = root.services().database().requireProject(projectId);
@@ -437,6 +461,16 @@ final class AdminWebServer implements AutoCloseable {
                     }
                     sendJson(exchange, 201, mutate(() ->
                             uploadMusicTrack(exchange, projectId)));
+                }
+                case "import" -> {
+                    if (!exchange.getRequestMethod().equals("POST")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "音乐导入只允许 POST");
+                    }
+                    MusicImportRequest request = readJson(
+                            exchange, MusicImportRequest.class);
+                    sendJson(exchange, 201, mutate(() ->
+                            importMusicTrack(projectId, request)));
                 }
                 case "clear" -> {
                     if (!exchange.getRequestMethod().equals("POST")) {
@@ -486,6 +520,22 @@ final class AdminWebServer implements AutoCloseable {
                                     Path.of(required(request.sourcePath, "服务器文件路径")),
                                     defaultValue(request.targetDirectory, ""),
                                     Boolean.TRUE.equals(request.overwrite)))));
+                }
+                case "directory" -> {
+                    if (!exchange.getRequestMethod().equals("POST")) {
+                        throw new WebApiException(405, "method_not_allowed",
+                                "新建文件夹只允许 POST");
+                    }
+                    SourceDirectoryRequest request = readJson(
+                            exchange, SourceDirectoryRequest.class);
+                    sendJson(exchange, 201, mutate(() -> {
+                        String directory = root.services().sourceFiles()
+                                .createDirectory(projectId,
+                                        required(request.path, "文件夹路径"));
+                        return Map.of(
+                                "path", directory,
+                                "sourceFiles", sourceFilesView(projectId));
+                    }));
                 }
                 case "remove" -> {
                     if (!exchange.getRequestMethod().equals("POST")) {
@@ -864,6 +914,29 @@ final class AdminWebServer implements AutoCloseable {
         }
     }
 
+    private Map<String, Object> importProjectCover(
+            String projectId, LocalFileImportRequest request) throws IOException {
+        Path source = requireLocalRegularFile(
+                request.sourcePath, "管理端背景图片");
+        long size = Files.size(source);
+        if (size == 0) {
+            throw new WebApiException(400, "empty_cover", "所选背景图片是空文件");
+        }
+        if (size > MAX_COVER_BYTES) {
+            throw new WebApiException(413, "cover_too_large",
+                    "背景图片不能超过 32 MiB");
+        }
+        byte[] header;
+        try (InputStream input = Files.newInputStream(source)) {
+            header = input.readNBytes(16);
+        }
+        if (imageContentType(header) == null) {
+            throw new WebApiException(415, "unsupported_cover",
+                    "请选择 PNG、JPEG、GIF、BMP 或 WebP 图片");
+        }
+        return projectView(root.services().projects().setCover(projectId, source));
+    }
+
     private Map<String, Object> uploadMusicTrack(
             HttpExchange exchange, String projectId) throws IOException {
         String contentType = defaultValue(
@@ -926,6 +999,46 @@ final class AdminWebServer implements AutoCloseable {
         } finally {
             Files.deleteIfExists(temporaryMusic);
         }
+    }
+
+    private Map<String, Object> importMusicTrack(
+            String projectId, MusicImportRequest request) throws IOException {
+        Path source = requireLocalRegularFile(
+                request.sourcePath, "管理端 MP3 文件");
+        String fileName = source.getFileName().toString();
+        if (!fileName.toLowerCase(Locale.ROOT).endsWith(".mp3")) {
+            throw new WebApiException(415, "unsupported_music",
+                    "只支持 MP3 音乐文件");
+        }
+        long size = Files.size(source);
+        if (size == 0) {
+            throw new WebApiException(400, "empty_music",
+                    "所选 MP3 是空文件");
+        }
+        if (size > MAX_MUSIC_BYTES) {
+            throw new WebApiException(413, "music_too_large",
+                    "单首音乐不能超过 20 MiB");
+        }
+        return projectView(root.services().projects().addMusicTrack(
+                projectId, request.id, request.title, fileName, source,
+                Boolean.TRUE.equals(request.overwrite)));
+    }
+
+    private static Path requireLocalRegularFile(String rawPath, String label) {
+        String value = required(rawPath, label + "路径");
+        final Path source;
+        try {
+            source = Path.of(value).toAbsolutePath().normalize();
+        } catch (RuntimeException e) {
+            throw new WebApiException(400, "invalid_path",
+                    label + "路径格式无效");
+        }
+        if (!Files.isRegularFile(source, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(source)) {
+            throw new WebApiException(400, "file_not_found",
+                    label + "不存在，或不是安全的普通文件：" + source);
+        }
+        return source;
     }
 
     private static String imageContentType(byte[] bytes) {
@@ -1023,7 +1136,7 @@ final class AdminWebServer implements AutoCloseable {
 
     private Map<String, Object> browsePath(PathBrowseRequest request) {
         String kind = switch (request.kind == null ? "" : request.kind) {
-            case "directory", "file", "image" -> request.kind;
+            case "directory", "file", "image", "music", "json" -> request.kind;
             default -> throw new WebApiException(
                     400, "invalid_path_kind", "不支持的路径选择类型");
         };
@@ -1078,8 +1191,10 @@ final class AdminWebServer implements AutoCloseable {
             boolean regularFile = Files.isRegularFile(child);
             boolean selectable = directoryEntry
                     ? kind.equals("directory")
-                    : regularFile && (!kind.equals("image")
-                    || isImagePath(child));
+                    : regularFile
+                    && (!kind.equals("image") || isImagePath(child))
+                    && (!kind.equals("music") || isMusicPath(child))
+                    && (!kind.equals("json") || isJsonPath(child));
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("name", fileName(child));
             entry.put("path", child.toAbsolutePath().normalize().toString());
@@ -1100,7 +1215,10 @@ final class AdminWebServer implements AutoCloseable {
         result.put("parentPath", directory.getParent() == null
                 ? null : directory.getParent().toString());
         result.put("selectedPath", selectedFile != null
-                && (kind.equals("file") || isImagePath(selectedFile))
+                && (kind.equals("file")
+                || kind.equals("image") && isImagePath(selectedFile)
+                || kind.equals("music") && isMusicPath(selectedFile)
+                || kind.equals("json") && isJsonPath(selectedFile))
                 ? selectedFile.toString() : null);
         result.put("roots", roots);
         result.put("entries", entries);
@@ -1117,7 +1235,34 @@ final class AdminWebServer implements AutoCloseable {
         String name = fileName(path).toLowerCase(Locale.ROOT);
         return name.endsWith(".png") || name.endsWith(".jpg")
                 || name.endsWith(".jpeg") || name.endsWith(".webp")
-                || name.endsWith(".bmp");
+                || name.endsWith(".bmp") || name.endsWith(".gif");
+    }
+
+    private static boolean isMusicPath(Path path) {
+        return fileName(path).toLowerCase(Locale.ROOT).endsWith(".mp3");
+    }
+
+    private static boolean isJsonPath(Path path) {
+        return fileName(path).toLowerCase(Locale.ROOT).endsWith(".json");
+    }
+
+    private PlayerPagesConfig importPlayerPages(LocalFileImportRequest request) {
+        Path source = requireLocalRegularFile(
+                request.sourcePath, "玩家端页面配置");
+        if (!isJsonPath(source)) {
+            throw new WebApiException(415, "unsupported_page_config",
+                    "玩家端页面配置必须是 JSON 文件");
+        }
+        try {
+            if (Files.size(source) > 1024 * 1024) {
+                throw new WebApiException(413, "page_config_too_large",
+                        "玩家端页面配置不能超过 1 MiB");
+            }
+            return root.services().json().read(source, PlayerPagesConfig.class);
+        } catch (IOException e) {
+            throw new ManagementException(
+                    "无法读取玩家端页面配置：" + source, e);
+        }
     }
 
     private static long safeFileSize(Path path) {
@@ -1138,6 +1283,8 @@ final class AdminWebServer implements AutoCloseable {
                 .sum();
         return Map.of(
                 "files", files,
+                "directories", root.services().sourceFiles()
+                        .listDirectories(projectId),
                 "count", files.size(),
                 "totalBytes", totalBytes
         );
@@ -1223,6 +1370,18 @@ final class AdminWebServer implements AutoCloseable {
         String secondary = defaultValue(
                 request.secondaryAccentColor,
                 current == null ? "#b06cff" : current.secondaryAccentColor());
+        String welcomeText = defaultValue(
+                request.welcomeText,
+                current == null ? Branding.DEFAULT_WELCOME_TEXT
+                        : current.welcomeText());
+        String topBarColor = defaultValue(
+                request.topBarColor,
+                current == null ? Branding.DEFAULT_TOP_BAR_COLOR
+                        : current.topBarColor());
+        String cardColor = defaultValue(
+                request.cardColor,
+                current == null ? Branding.DEFAULT_CARD_COLOR
+                        : current.cardColor());
         String brandName = defaultValue(
                 request.brandName,
                 current == null
@@ -1247,7 +1406,8 @@ final class AdminWebServer implements AutoCloseable {
                 productName, subtitle, serverAddress,
                 coverObject, accent, secondary, brandName, brandEnglishName,
                 newsArticles, customPage, contentPages,
-                current == null ? null : current.musicTracks());
+                current == null ? null : current.musicTracks(),
+                welcomeText, topBarColor, cardColor);
     }
 
     private Map<String, Object> projectSummary(
@@ -1606,10 +1766,13 @@ final class AdminWebServer implements AutoCloseable {
             List<String> forcedSyncDirectories,
             List<String> forcedSyncFiles,
             String productName,
+            String welcomeText,
             String subtitle,
             String serverAddress,
             String accentColor,
             String secondaryAccentColor,
+            String topBarColor,
+            String cardColor,
             String brandName,
             String brandEnglishName,
             List<PlayerNewsArticle> newsArticles,
@@ -1636,6 +1799,27 @@ final class AdminWebServer implements AutoCloseable {
             String sourcePath,
             String targetDirectory,
             Boolean overwrite
+    ) {
+    }
+
+    private record SourceDirectoryRequest(String path) {
+    }
+
+    private record LocalFileImportRequest(String sourcePath) {
+    }
+
+    private record MusicImportRequest(
+            String sourcePath,
+            String id,
+            String title,
+            Boolean overwrite
+    ) {
+    }
+
+    private record PlayerPagesConfig(
+            int schemaVersion,
+            String description,
+            List<PlayerContentPage> pages
     ) {
     }
 

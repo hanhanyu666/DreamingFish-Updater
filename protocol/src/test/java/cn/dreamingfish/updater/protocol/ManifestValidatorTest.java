@@ -154,7 +154,8 @@ class ManifestValidatorTest {
                 1, "dreamhaven", "release-1", 1, Instant.now(), "1", "0.1.4", "",
                 Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC),
                 List.of("mods"), Branding.empty(), List.of(new ManifestFile(
-                "mods/example.jar", "a".repeat(64), 1, FilePolicy.DEFAULT, false)));
+                "mods/example.jar", "a".repeat(64), 1,
+                FilePolicy.LEGACY_MISSING_ONLY, false)));
         assertThrows(ProtocolException.class,
                 () -> ManifestValidator.validateRelease(defaultFile,
                         Set.of(ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC)));

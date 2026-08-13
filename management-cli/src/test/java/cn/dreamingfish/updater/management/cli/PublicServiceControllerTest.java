@@ -32,14 +32,46 @@ class PublicServiceControllerTest {
             PublicServiceController.Status status = controller.status();
             assertTrue(status.running());
             assertFalse(status.managed());
+            assertFalse(status.controllable());
             assertTrue(status.portOccupied());
             assertTrue(status.detail().contains("另一个管理端进程"));
 
             PublicServiceController.Status afterStart = controller.start();
             assertTrue(afterStart.running());
             assertFalse(afterStart.managed());
-            assertTrue(controller.stop().running(),
-                    "当前 Web 管理端不能误停另一个进程中的下载服务");
+            assertThrows(ManagementException.class, controller::stop,
+                    "没有安全控制通道时不能误停另一个进程中的服务");
+        }
+    }
+
+    @Test
+    void stopsAndRestartsARegisteredServiceFromAnotherManagementProcess()
+            throws Exception {
+        ManagementCli root = rootWithPort(availablePort());
+        ManagementCli.Services services = root.services();
+        try (PublicFileServer external = new PublicFileServer(
+                services.database(), services.objects(),
+                new InetSocketAddress("127.0.0.1", root.settings().httpPort()))) {
+            external.start();
+            try (PublicServiceControl ignored = PublicServiceControl.register(
+                    root, root.settings().httpHost(), root.settings().httpPort(),
+                    external::close);
+                 PublicServiceController controller =
+                         new PublicServiceController(root)) {
+                PublicServiceController.Status status = controller.status();
+                assertTrue(status.running());
+                assertFalse(status.managed());
+                assertTrue(status.controllable());
+
+                PublicServiceController.Status stopped = controller.stop();
+                assertFalse(stopped.running());
+                assertFalse(stopped.portOccupied());
+
+                PublicServiceController.Status restarted = controller.start();
+                assertTrue(restarted.running());
+                assertTrue(restarted.managed());
+                assertTrue(restarted.controllable());
+            }
         }
     }
 

@@ -175,7 +175,7 @@ function formatNewsDate(value: string): string {
         class="identity-pane reveal"
         style="--reveal-delay: 130ms; --from-x: -22px; --from-y: 6px"
       >
-        <div class="welcome-title">欢迎来到</div>
+        <div class="welcome-title">{{ store.state.branding.welcomeText }}</div>
         <div class="product-name">{{ store.state.branding.productName }}</div>
         <div class="subtitle">{{ store.state.branding.subtitle }}</div>
       </div>
@@ -217,7 +217,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.1.37" }}
+        DreamingFish Updater {{ "0.1.38" }}
       </div>
 
       <ContentPages />

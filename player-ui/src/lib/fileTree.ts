@@ -40,7 +40,7 @@ export function detailText(entry: LocalFileEntry): string {
   } else if (!entry.present) {
     details.push("当前版本中已不存在");
   } else if (entry.policy === "DEFAULT") {
-    details.push("DEFAULT · 仅缺失时安装");
+    details.push("旧版发布兼容 · 仅缺失时补齐");
   } else {
     details.push("ENFORCED · 校验并同步");
   }

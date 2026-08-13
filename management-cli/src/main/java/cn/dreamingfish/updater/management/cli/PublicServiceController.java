@@ -17,6 +17,7 @@ final class PublicServiceController implements AutoCloseable {
 
     private final ManagementCli root;
     private PublicFileServer server;
+    private PublicServiceControl control;
 
     PublicServiceController(ManagementCli root) {
         this.root = root;
@@ -41,8 +42,16 @@ final class PublicServiceController implements AutoCloseable {
                     new InetSocketAddress(settings.httpHost(), settings.httpPort()));
             candidate.start();
             server = candidate;
+            control = PublicServiceControl.register(
+                    root, settings.httpHost(), settings.httpPort(),
+                    this::stopLocalFromControl);
             return status();
         } catch (RuntimeException e) {
+            if (control != null) {
+                control.close();
+                control = null;
+            }
+            server = null;
             if (candidate != null) candidate.close();
             if (isPortOccupied(settings)) {
                 throw new ManagementException("无法启动下载服务：端口 "
@@ -52,12 +61,38 @@ final class PublicServiceController implements AutoCloseable {
         }
     }
 
-    synchronized Status stop() {
-        if (server != null) {
-            server.close();
-            server = null;
+    Status stop() {
+        Status current;
+        synchronized (this) {
+            if (server != null) {
+                stopLocal();
+                return status();
+            }
+            current = status();
         }
+        if (!current.running()) return current;
+        if (!current.controllable()) {
+            throw new ManagementException(
+                    "这个下载服务没有注册安全控制通道。请先在原终端停止它；"
+                            + "使用新版管理端重新启动后即可在概览中管理");
+        }
+        if (!PublicServiceControl.requestStop(root)) {
+            throw new ManagementException(
+                    "下载服务控制请求失败，请刷新状态后重试");
+        }
+        waitUntilStopped();
         return status();
+    }
+
+    Status restart() {
+        Status current = status();
+        if (current.running()) stop();
+        Status stopped = status();
+        if (stopped.portOccupied()) {
+            throw new ManagementException(
+                    "下载服务停止后端口仍被占用，无法安全重启");
+        }
+        return start();
     }
 
     synchronized Status restartIfRunning() {
@@ -74,25 +109,64 @@ final class PublicServiceController implements AutoCloseable {
         ManagementSettings settings = root.settings();
         String address = "http://" + settings.httpHost() + ":" + settings.httpPort() + "/";
         if (server != null) {
-            return new Status(true, true, true, address, address + "healthz",
+            return new Status(true, true, control != null, true,
+                    address, address + "healthz",
                     "由当前 Web 管理端运行，可以在这里停止");
         }
         Probe probe = probe(settings);
         if (probe == Probe.HEALTHY) {
-            return new Status(true, false, true, address, address + "healthz",
-                    "已识别到由另一个管理端进程启动的下载服务");
+            boolean controllable = PublicServiceControl.available(root);
+            return new Status(true, false, controllable, true,
+                    address, address + "healthz",
+                    controllable
+                            ? "已识别另一个管理端进程启动的下载服务，可以在这里停止或重启"
+                            : "已识别另一个管理端进程中的下载服务，但它没有注册新版安全控制通道");
         }
         if (probe == Probe.OCCUPIED) {
-            return new Status(false, false, true, address, address + "healthz",
+            return new Status(false, false, false, true,
+                    address, address + "healthz",
                     "端口已被占用，但下载服务没有正常响应");
         }
-        return new Status(false, false, false, address, address + "healthz",
+        return new Status(false, false, false, false,
+                address, address + "healthz",
                 "下载服务尚未启动");
     }
 
     @Override
     public void close() {
-        stop();
+        synchronized (this) {
+            stopLocal();
+        }
+    }
+
+    private synchronized void stopLocalFromControl() {
+        stopLocal();
+    }
+
+    private void stopLocal() {
+        PublicServiceControl activeControl = control;
+        control = null;
+        if (activeControl != null) activeControl.close();
+        PublicFileServer activeServer = server;
+        server = null;
+        if (activeServer != null) activeServer.close();
+    }
+
+    private void waitUntilStopped() {
+        long deadline = System.nanoTime()
+                + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (probe(root.settings()) == Probe.FREE) return;
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ManagementException(
+                        "等待下载服务停止时被中断", e);
+            }
+        }
+        throw new ManagementException(
+                "下载服务已收到停止请求，但端口在 5 秒后仍未释放");
     }
 
     private static Probe probe(ManagementSettings settings) {
@@ -161,7 +235,8 @@ final class PublicServiceController implements AutoCloseable {
         OCCUPIED
     }
 
-    record Status(boolean running, boolean managed, boolean portOccupied,
+    record Status(boolean running, boolean managed, boolean controllable,
+                  boolean portOccupied,
                   String address, String healthCheck, String detail) {
     }
 }

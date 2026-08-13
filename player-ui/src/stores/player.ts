@@ -327,6 +327,14 @@ export function setBranding(branding: Branding | null): void {
     "--dfs-secondary",
     validColor(display.secondaryAccentColor, "#b06cff"),
   );
+  document.documentElement.style.setProperty(
+    "--dfs-topbar-rgb",
+    surfaceRgb(display.topBarColor, "#030708"),
+  );
+  document.documentElement.style.setProperty(
+    "--dfs-card-rgb",
+    surfaceRgb(display.cardColor, "#030708"),
+  );
 }
 
 export function displayBranding(branding: Branding | null | undefined): Branding {
@@ -339,6 +347,10 @@ export function displayBranding(branding: Branding | null | undefined): Branding
     coverObject: branding.coverObject,
     accentColor: branding.accentColor,
     secondaryAccentColor: branding.secondaryAccentColor,
+    welcomeText: unusableText(branding.welcomeText)
+      ? DEFAULT_BRANDING.welcomeText : branding.welcomeText,
+    topBarColor: validColor(branding.topBarColor, "#030708"),
+    cardColor: validColor(branding.cardColor, "#030708"),
     brandName: unusableText(branding.brandName)
       ? DEFAULT_BRANDING.brandName : branding.brandName,
     brandEnglishName: unusableText(branding.brandEnglishName)
@@ -348,6 +360,18 @@ export function displayBranding(branding: Branding | null | undefined): Branding
     contentPages: branding.contentPages ?? null,
     musicTracks: branding.musicTracks ?? null,
   };
+}
+
+function surfaceRgb(value: string | null | undefined, fallback: string): string {
+  const color = validColor(value, fallback).slice(1);
+  const channels = [
+    Number.parseInt(color.slice(0, 2), 16),
+    Number.parseInt(color.slice(2, 4), 16),
+    Number.parseInt(color.slice(4, 6), 16),
+  ];
+  const brightest = Math.max(...channels);
+  const scale = brightest > 72 ? 72 / brightest : 1;
+  return channels.map((channel) => Math.round(channel * scale)).join(", ");
 }
 
 function contentRoute(id: string): Page {

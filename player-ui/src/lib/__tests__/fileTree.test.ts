@@ -60,7 +60,7 @@ describe("file entry helpers", () => {
 
   it("formats details with policy labels", () => {
     expect(detailText(entries[1])).toContain("ENFORCED · 校验并同步");
-    expect(detailText(entries[3])).toContain("DEFAULT · 仅缺失时安装");
+    expect(detailText(entries[3])).toContain("旧版发布兼容 · 仅缺失时补齐");
     expect(detailText(entries[0])).toContain("2 个远程文件");
   });
 

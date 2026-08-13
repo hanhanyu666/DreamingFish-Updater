@@ -60,6 +60,18 @@ class JsonCodecTest {
     }
 
     @Test
+    void readsLegacyDefaultPolicyWithoutGeneratingANewPolicyName() {
+        byte[] legacy = "\"DEFAULT\"".getBytes(
+                java.nio.charset.StandardCharsets.UTF_8);
+
+        assertEquals(FilePolicy.LEGACY_MISSING_ONLY,
+                codec.read(legacy, FilePolicy.class));
+        assertEquals("\"DEFAULT\"", new String(
+                codec.write(FilePolicy.LEGACY_MISSING_ONLY),
+                java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
     void roundTripsConfigurablePlayerContent() {
         Branding branding = new Branding(
                 "星河", "一起出发", "play.example.com", null,

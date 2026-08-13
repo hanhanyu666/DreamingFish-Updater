@@ -78,6 +78,66 @@ public final class SourceFileService {
         return List.copyOf(result);
     }
 
+    /** Lists every real directory, including empty upload destinations. */
+    public List<String> listDirectories(String projectId) {
+        ProjectRecord project = database.requireProject(projectId);
+        List<String> result = new ArrayList<>();
+        try (var stream = Files.walk(project.sourceDirectory())) {
+            for (Path path : stream.sorted().toList()) {
+                if (path.equals(project.sourceDirectory())) continue;
+                String relative = relative(project, path);
+                if (Files.isSymbolicLink(path)) {
+                    throw new ManagementException(
+                            "Managed source path cannot be a symbolic link: " + relative);
+                }
+                if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+                    result.add(relative);
+                }
+            }
+        } catch (IOException e) {
+            throw new ManagementException(
+                    "Unable to read standard modpack directories "
+                            + project.sourceDirectory(), e);
+        }
+        result.sort(String::compareTo);
+        return List.copyOf(result);
+    }
+
+    /** Creates an empty upload destination below the standard source root. */
+    public String createDirectory(String projectId, String relativePath) {
+        ProjectRecord project = database.requireProject(projectId);
+        String normalized = PathSafety.normalizeManifestPath(relativePath);
+        ensureManageable(project, normalized + "/.dfs-directory-check");
+        Path target = resolve(project, normalized);
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)
+                    && !Files.isSymbolicLink(target)) {
+                throw new ManagementException(
+                        "A managed source directory already exists at " + normalized);
+            }
+            throw new ManagementException(
+                    "A managed source file already exists at " + normalized);
+        }
+        try {
+            Files.createDirectories(target);
+            Path current = target;
+            Path root = project.sourceDirectory().toAbsolutePath().normalize();
+            while (current != null && !current.equals(root)
+                    && current.startsWith(root)) {
+                if (Files.isSymbolicLink(current)) {
+                    throw new ManagementException(
+                            "Managed source directory cannot contain symbolic links: "
+                                    + normalized);
+                }
+                current = current.getParent();
+            }
+            return normalized;
+        } catch (IOException e) {
+            throw new ManagementException(
+                    "Unable to create managed source directory: " + normalized, e);
+        }
+    }
+
     public SourceMutation importFile(String projectId, Path externalFile,
                                      String targetDirectory, boolean overwrite) {
         ProjectRecord project = database.requireProject(projectId);

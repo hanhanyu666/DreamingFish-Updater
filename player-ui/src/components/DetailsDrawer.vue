@@ -11,6 +11,7 @@ const store = usePlayerStore();
 const modSearch = ref("");
 const playerModSearch = ref("");
 const logsElement = ref<HTMLElement | null>(null);
+const followLatestLog = ref(true);
 
 const result = computed(() => store.state.result);
 
@@ -129,13 +130,23 @@ const playerModEmptyText = computed(() =>
 
 watch(
   [() => store.state.logs.length, () => store.state.drawerMode],
-  async () => {
+  async ([, mode], [, previousMode]) => {
+    if (mode !== "LOGS") return;
+    if (previousMode !== "LOGS") followLatestLog.value = true;
     await nextTick();
-    if (logsElement.value != null) {
+    if (logsElement.value != null && followLatestLog.value) {
       logsElement.value.scrollTop = logsElement.value.scrollHeight;
     }
   },
+  { flush: "post" },
 );
+
+function onLogScroll(): void {
+  const element = logsElement.value;
+  if (element == null) return;
+  followLatestLog.value =
+    element.scrollHeight - element.scrollTop - element.clientHeight <= 28;
+}
 
 function expand(): void {
   store.setDrawerExpanded(!store.state.drawerExpanded);
@@ -238,7 +249,7 @@ function expand(): void {
         </template>
       </div>
 
-      <div v-if="store.state.drawerMode === 'LOGS'" ref="logsElement" class="log-list">
+      <div v-if="store.state.drawerMode === 'LOGS'" ref="logsElement" class="log-list" @scroll="onLogScroll">
         <div v-if="store.state.logs.length === 0" class="drawer-empty">
           还没有运行记录
         </div>
