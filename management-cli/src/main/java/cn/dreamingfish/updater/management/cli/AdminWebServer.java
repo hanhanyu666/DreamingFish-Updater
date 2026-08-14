@@ -1378,10 +1378,18 @@ final class AdminWebServer implements AutoCloseable {
                 request.topBarColor,
                 current == null ? Branding.DEFAULT_TOP_BAR_COLOR
                         : current.topBarColor());
+        double topBarOpacity = request.topBarOpacity == null
+                ? current == null ? Branding.DEFAULT_TOP_BAR_OPACITY
+                        : current.topBarOpacity()
+                : request.topBarOpacity;
         String cardColor = defaultValue(
                 request.cardColor,
                 current == null ? Branding.DEFAULT_CARD_COLOR
                         : current.cardColor());
+        String titleColor = defaultValue(
+                request.titleColor,
+                current == null ? Branding.DEFAULT_TITLE_COLOR
+                        : current.titleColor());
         String brandName = defaultValue(
                 request.brandName,
                 current == null
@@ -1407,7 +1415,7 @@ final class AdminWebServer implements AutoCloseable {
                 coverObject, accent, secondary, brandName, brandEnglishName,
                 newsArticles, customPage, contentPages,
                 current == null ? null : current.musicTracks(),
-                welcomeText, topBarColor, cardColor);
+                welcomeText, topBarColor, cardColor, topBarOpacity, titleColor);
     }
 
     private Map<String, Object> projectSummary(
@@ -1772,7 +1780,9 @@ final class AdminWebServer implements AutoCloseable {
             String accentColor,
             String secondaryAccentColor,
             String topBarColor,
+            Double topBarOpacity,
             String cardColor,
+            String titleColor,
             String brandName,
             String brandEnglishName,
             List<PlayerNewsArticle> newsArticles,

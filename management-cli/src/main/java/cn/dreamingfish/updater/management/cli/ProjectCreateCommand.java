@@ -39,8 +39,16 @@ final class ProjectCreateCommand implements Runnable {
     @CommandLine.Option(names = "--secondary-accent", defaultValue = "#b06cff")
     String secondaryAccent;
 
+    @CommandLine.Option(names = "--title-color", defaultValue = "#fff8dc",
+            description = "Home welcome and title text color")
+    String titleColor;
+
     @CommandLine.Option(names = "--top-bar-color", defaultValue = "#030708")
     String topBarColor;
+
+    @CommandLine.Option(names = "--top-bar-opacity", defaultValue = "0.22",
+            description = "Title-bar base-color opacity from 0.0 to 1.0")
+    double topBarOpacity;
 
     @CommandLine.Option(names = "--card-color", defaultValue = "#030708")
     String cardColor;
@@ -83,7 +91,7 @@ final class ProjectCreateCommand implements Runnable {
         Branding branding = new Branding(name, subtitle, serverAddress, null,
                 accent, secondaryAccent, brandName, brandEnglishName,
                 java.util.List.of(), null, java.util.List.of(), java.util.List.of(),
-                welcomeText, topBarColor, cardColor);
+                welcomeText, topBarColor, cardColor, topBarOpacity, titleColor);
         ProjectRecord project = services.projects().create(
                 projectId, name, source, publicUrl, branding, rules);
         if (cover != null) {

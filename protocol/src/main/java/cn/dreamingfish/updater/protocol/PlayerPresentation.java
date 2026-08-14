@@ -26,6 +26,8 @@ public record PlayerPresentation(
                 null,
                 source.welcomeText(),
                 source.topBarColor(),
-                source.cardColor());
+                source.cardColor(),
+                source.topBarOpacity(),
+                source.titleColor());
     }
 }

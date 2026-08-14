@@ -495,7 +495,9 @@ public final class PlayerController {
                 base.musicTracks(),
                 presentation.welcomeText(),
                 presentation.topBarColor(),
-                presentation.cardColor());
+                presentation.cardColor(),
+                presentation.topBarOpacity(),
+                presentation.titleColor());
     }
 
     private void restartWithUpdatedProgram(PlayerProgramUpdateResult result) {

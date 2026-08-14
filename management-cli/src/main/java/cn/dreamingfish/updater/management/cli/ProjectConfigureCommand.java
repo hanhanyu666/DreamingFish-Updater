@@ -32,8 +32,13 @@ final class ProjectConfigureCommand implements Runnable {
     String accent;
     @CommandLine.Option(names = "--secondary-accent")
     String secondaryAccent;
+    @CommandLine.Option(names = "--title-color")
+    String titleColor;
     @CommandLine.Option(names = "--top-bar-color")
     String topBarColor;
+    @CommandLine.Option(names = "--top-bar-opacity",
+            description = "Title-bar base-color opacity from 0.0 to 1.0")
+    Double topBarOpacity;
     @CommandLine.Option(names = "--card-color")
     String cardColor;
     @CommandLine.Option(names = "--brand-name")
@@ -74,7 +79,9 @@ final class ProjectConfigureCommand implements Runnable {
                 old.newsArticles(), old.customPage(), old.contentPages(), old.musicTracks(),
                 welcomeText == null ? old.welcomeText() : welcomeText,
                 topBarColor == null ? old.topBarColor() : topBarColor,
-                cardColor == null ? old.cardColor() : cardColor
+                cardColor == null ? old.cardColor() : cardColor,
+                topBarOpacity == null ? old.topBarOpacity() : topBarOpacity,
+                titleColor == null ? old.titleColor() : titleColor
         );
         ProjectRules rules = rulesFile == null ? current.rules() : ProjectCreateCommand.readRules(services, rulesFile);
         if (clearForceSync && forcedSyncDirectories != null) {

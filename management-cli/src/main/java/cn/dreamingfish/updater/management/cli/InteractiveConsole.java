@@ -329,8 +329,13 @@ final class InteractiveConsole {
         String accent = promptColor("主强调色", old.accentColor());
         String secondaryAccent = promptColor(
                 "次强调色", old.secondaryAccentColor());
+        String titleColor = promptColor(
+                "首页标题文字颜色", old.titleColor());
         String topBarColor = promptColor(
                 "窗口顶栏颜色", old.topBarColor());
+        double topBarOpacity = promptPercentage(
+                "窗口顶栏底色不透明度（0 去掉底色，100 使用实色）",
+                old.topBarOpacity());
         String cardColor = promptColor(
                 "布局卡片颜色", old.cardColor());
         String coverInput = readLine(
@@ -357,7 +362,8 @@ final class InteractiveConsole {
                 productName, subtitle, serverAddress,
                 coverObject, accent, secondaryAccent,
                 brandName, brandEnglishName, List.of(), null, contentPages,
-                old.musicTracks(), welcomeText, topBarColor, cardColor);
+                old.musicTracks(), welcomeText, topBarColor, cardColor,
+                topBarOpacity, titleColor);
         var services = root.services();
         ProjectRecord updated = services.projects().configure(
                 current.id(), current.displayName(), current.sourceDirectory(),
@@ -373,6 +379,8 @@ final class InteractiveConsole {
         root.out().println("  首页副标题：" + displayOrNone(updated.branding().subtitle()));
         root.out().println("  服务器地址：" + displayOrNone(
                 updated.branding().serverAddress()));
+        root.out().println("  顶栏不透明度：" + Math.round(
+                updated.branding().topBarOpacity() * 100) + "%");
         root.out().println("  自定义背景："
                 + (updated.branding().coverObject() == null ? "未设置" : "已设置"));
         root.out().println("  玩家端页面：" + updated.branding().contentPages().size() + " 个");
@@ -1063,6 +1071,22 @@ final class InteractiveConsole {
                 return value.toLowerCase(Locale.ROOT);
             }
             root.out().println("颜色必须使用 #RRGGBB 格式，例如 #2ee8df。");
+        }
+    }
+
+    private double promptPercentage(String label, double defaultValue) {
+        int defaultPercent = (int) Math.round(defaultValue * 100.0d);
+        while (true) {
+            String value = prompt(label, Integer.toString(defaultPercent));
+            try {
+                int percent = Integer.parseInt(value);
+                if (percent >= 0 && percent <= 100) {
+                    return percent / 100.0d;
+                }
+            } catch (NumberFormatException ignored) {
+                // Explain the accepted range below and ask again.
+            }
+            root.out().println("请输入 0 到 100 之间的整数。");
         }
     }
 

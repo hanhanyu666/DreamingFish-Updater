@@ -64,6 +64,24 @@ class ManifestValidatorTest {
     }
 
     @Test
+    void rejectsTopBarOpacityOutsideTheSupportedRange() {
+        Branding source = Branding.empty();
+        Branding invalid = new Branding(
+                source.productName(), source.subtitle(), source.serverAddress(),
+                source.coverObject(), source.accentColor(),
+                source.secondaryAccentColor(), source.brandName(),
+                source.brandEnglishName(), source.newsArticles(),
+                source.customPage(), source.contentPages(), source.musicTracks(),
+                source.welcomeText(), source.topBarColor(), source.cardColor(),
+                1.01d);
+
+        assertThrows(ProtocolException.class, () ->
+                ManifestValidator.validatePlayerPresentation(new PlayerPresentation(
+                        ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION,
+                        "dreamhaven", invalid)));
+    }
+
+    @Test
     void rejectsOverlongTitleBarBrandNames() {
         ReleaseManifest original = JsonCodecTest.sampleManifest();
         Branding invalid = new Branding(

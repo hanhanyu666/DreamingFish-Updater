@@ -328,8 +328,16 @@ export function setBranding(branding: Branding | null): void {
     validColor(display.secondaryAccentColor, "#b06cff"),
   );
   document.documentElement.style.setProperty(
+    "--dfs-title-color",
+    validColor(display.titleColor, "#fff8dc"),
+  );
+  document.documentElement.style.setProperty(
     "--dfs-topbar-rgb",
     surfaceRgb(display.topBarColor, "#030708"),
+  );
+  document.documentElement.style.setProperty(
+    "--dfs-topbar-opacity",
+    String(validOpacity(display.topBarOpacity, 0.22)),
   );
   document.documentElement.style.setProperty(
     "--dfs-card-rgb",
@@ -347,9 +355,11 @@ export function displayBranding(branding: Branding | null | undefined): Branding
     coverObject: branding.coverObject,
     accentColor: branding.accentColor,
     secondaryAccentColor: branding.secondaryAccentColor,
+    titleColor: validColor(branding.titleColor, "#fff8dc"),
     welcomeText: unusableText(branding.welcomeText)
       ? DEFAULT_BRANDING.welcomeText : branding.welcomeText,
     topBarColor: validColor(branding.topBarColor, "#030708"),
+    topBarOpacity: validOpacity(branding.topBarOpacity, 0.22),
     cardColor: validColor(branding.cardColor, "#030708"),
     brandName: unusableText(branding.brandName)
       ? DEFAULT_BRANDING.brandName : branding.brandName,
@@ -360,6 +370,15 @@ export function displayBranding(branding: Branding | null | undefined): Branding
     contentPages: branding.contentPages ?? null,
     musicTracks: branding.musicTracks ?? null,
   };
+}
+
+function validOpacity(value: number | null | undefined, fallback: number): number {
+  return typeof value === "number"
+      && Number.isFinite(value)
+      && value >= 0
+      && value <= 1
+    ? value
+    : fallback;
 }
 
 function surfaceRgb(value: string | null | undefined, fallback: string): string {

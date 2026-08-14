@@ -1,6 +1,7 @@
 .app-root {
     -dfs-accent: #2ee8df;
     -dfs-secondary: #b06cff;
+    -dfs-title-color: #fff8dc;
     -fx-background-color: #05090b;
     -fx-background-radius: 29;
     -fx-font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Noto Sans SC", "Segoe UI";
@@ -168,14 +169,14 @@
 }
 
 .welcome-title {
-    -fx-text-fill: #fff8dc;
+    -fx-text-fill: -dfs-title-color;
     -fx-font-size: 35px;
     -fx-font-weight: 700;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.62), 26, 0.22, 0, 8);
 }
 
 .product-name {
-    -fx-text-fill: #fff8dc;
+    -fx-text-fill: -dfs-title-color;
     -fx-font-size: 65px;
     -fx-font-weight: 800;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.70), 34, 0.25, 0, 12);

@@ -826,6 +826,21 @@ td:last-child {
   font-size: 12px;
 }
 
+.form-section-heading-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-reset-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
 .form-section-heading small {
   color: var(--faint);
   font-size: 10px;
@@ -898,6 +913,37 @@ input[readonly] {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 8px;
+}
+
+.opacity-control {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 76px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.opacity-control input[type="range"] {
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  accent-color: var(--cyan);
+  cursor: pointer;
+}
+
+.opacity-control input[type="range"]:focus-visible {
+  outline: 2px solid rgba(53, 216, 208, 0.72);
+  outline-offset: 2px;
+}
+
+.opacity-control input[type="number"] {
+  text-align: right;
+}
+
+.opacity-control > span {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .path-input-row {

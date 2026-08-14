@@ -161,7 +161,8 @@ class PlayerControllerTest {
         Branding presentation = new Branding(
                 "新标题", "新副标题", "new.example.test", "d".repeat(64),
                 "#333333", "#444444", "新品牌", "NewBrand",
-                List.of(), null, List.of(), List.of(unpublishedTrack));
+                List.of(), null, List.of(), List.of(unpublishedTrack),
+                "欢迎进入", "#102030", "#203040", 0.35d, "#f0e1c2");
 
         Branding merged = PlayerController.mergePresentation(release, presentation);
 
@@ -170,6 +171,8 @@ class PlayerControllerTest {
         assertEquals("new.example.test", merged.serverAddress());
         assertEquals("c".repeat(64), merged.coverObject());
         assertEquals(List.of(releaseTrack), merged.musicTracks());
+        assertEquals(0.35d, merged.topBarOpacity());
+        assertEquals("#f0e1c2", merged.titleColor());
     }
 
     private static final class RecordingViewPort implements PlayerViewPort {

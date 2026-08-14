@@ -261,7 +261,9 @@ final class PlayerView {
         subtitle.setText(display.subtitle());
         String accent = validColor(display.accentColor(), "#2ee8df");
         String secondary = validColor(display.secondaryAccentColor(), "#b06cff");
-        root.setStyle("-dfs-accent: " + accent + "; -dfs-secondary: " + secondary + ";");
+        String titleColor = validColor(display.titleColor(), "#fff8dc");
+        root.setStyle("-dfs-accent: " + accent + "; -dfs-secondary: "
+                + secondary + "; -dfs-title-color: " + titleColor + ";");
     }
 
     static Branding displayBranding(Branding branding) {
@@ -275,7 +277,8 @@ final class PlayerView {
                 branding.brandName(), branding.brandEnglishName(),
                 branding.newsArticles(), branding.customPage(), branding.contentPages(),
                 branding.musicTracks(), branding.welcomeText(),
-                branding.topBarColor(), branding.cardColor());
+                branding.topBarColor(), branding.cardColor(),
+                branding.topBarOpacity(), branding.titleColor());
     }
 
     private static boolean unusableText(String value) {

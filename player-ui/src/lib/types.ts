@@ -53,8 +53,10 @@ export interface Branding {
   coverObject: string | null;
   accentColor: string | null;
   secondaryAccentColor: string | null;
+  titleColor?: string | null;
   welcomeText?: string | null;
   topBarColor?: string | null;
+  topBarOpacity?: number | null;
   cardColor?: string | null;
   brandName: string;
   brandEnglishName: string;
@@ -204,8 +206,10 @@ export const DEFAULT_BRANDING: Branding = {
   coverObject: null,
   accentColor: "#2ee8df",
   secondaryAccentColor: "#b06cff",
+  titleColor: "#fff8dc",
   welcomeText: "欢迎来到",
   topBarColor: "#030708",
+  topBarOpacity: 0.22,
   cardColor: "#030708",
   brandName: "梦鱼服",
   brandEnglishName: "DreamingFish",

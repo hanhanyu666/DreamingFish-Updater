@@ -9,9 +9,11 @@
   --dfs-accent: #2ee8df;
   --dfs-secondary: #b06cff;
   --dfs-text: #fff8dc;
+  --dfs-title-color: #fff8dc;
   --dfs-text-dim: rgba(255, 248, 220, 0.64);
   --dfs-bg: #05090b;
   --dfs-topbar-rgb: 3, 7, 8;
+  --dfs-topbar-opacity: 0.22;
   --dfs-card-rgb: 3, 7, 8;
 }
 
@@ -193,7 +195,7 @@ input {
   border-radius: 29px 29px 0 0;
   background:
     linear-gradient(to bottom, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.025)),
-    rgba(var(--dfs-topbar-rgb), 0.72);
+    rgba(var(--dfs-topbar-rgb), var(--dfs-topbar-opacity));
   z-index: 50;
 }
 
@@ -625,14 +627,14 @@ input {
 }
 
 .welcome-title {
-  color: #fff8dc;
+  color: var(--dfs-title-color);
   font-size: 35px;
   font-weight: 700;
   text-shadow: 0 8px 26px rgba(0, 0, 0, 0.62);
 }
 
 .product-name {
-  color: #fff8dc;
+  color: var(--dfs-title-color);
   font-size: 65px;
   font-weight: 800;
   line-height: 1.1;

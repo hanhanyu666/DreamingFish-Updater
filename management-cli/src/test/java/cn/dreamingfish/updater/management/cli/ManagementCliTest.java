@@ -25,7 +25,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.1.24"));
+        assertTrue(version.out().contains("0.1.26"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -262,7 +262,9 @@ class ManagementCliTest {
                 "not-a-color",
                 "#112233",
                 "#445566",
+                "#f0e1c2",
                 "",
+                "35",
                 "",
                 "-",
                 "",
@@ -296,6 +298,10 @@ class ManagementCliTest {
                 personalizedProject.branding().accentColor());
         assertEquals("#445566",
                 personalizedProject.branding().secondaryAccentColor());
+        assertEquals("#f0e1c2",
+                personalizedProject.branding().titleColor());
+        assertEquals(0.35d,
+                personalizedProject.branding().topBarOpacity());
     }
 
     @Test

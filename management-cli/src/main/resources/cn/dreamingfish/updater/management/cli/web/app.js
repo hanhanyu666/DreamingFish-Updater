@@ -40,6 +40,15 @@ const app = {
   }
 };
 
+const DEFAULT_PLAYER_APPEARANCE = Object.freeze({
+  accentColor: "#2ee8df",
+  secondaryAccentColor: "#b06cff",
+  titleColor: "#fff8dc",
+  topBarColor: "#030708",
+  topBarOpacity: 0.22,
+  cardColor: "#030708"
+});
+
 const titles = {
   dashboard: "运行概览",
   project: "项目设置",
@@ -555,7 +564,9 @@ function renderPersonalizationForm() {
     "secondaryAccentColor",
     branding.secondaryAccentColor
   );
+  setColor(form, "titleColor", branding.titleColor);
   setColor(form, "topBarColor", branding.topBarColor);
+  setOpacity(form, "topBarOpacity", branding.topBarOpacity);
   setColor(form, "cardColor", branding.cardColor);
   clearPendingCover();
   form.elements.removeCover.checked = false;
@@ -1183,7 +1194,9 @@ function updatePlayerPreview() {
       coverObject: app.project.branding?.coverObject || null,
       accentColor: value("accentColorText", "#2ee8df"),
       secondaryAccentColor: value("secondaryAccentColorText", "#b06cff"),
+      titleColor: value("titleColorText", "#fff8dc"),
       topBarColor: value("topBarColorText", "#030708"),
+      topBarOpacity: opacityValue(form, "topBarOpacity"),
       cardColor: value("cardColorText", "#030708"),
       brandName: value("brandName", "服务器"),
       brandEnglishName: value("brandEnglishName", "Minecraft"),
@@ -2613,8 +2626,24 @@ function bindPersonalizationForm() {
   const coverInput = byId("cover-upload-input");
   bindColorPair(form, "accentColor");
   bindColorPair(form, "secondaryAccentColor");
+  bindColorPair(form, "titleColor");
   bindColorPair(form, "topBarColor");
+  bindOpacityPair(form, "topBarOpacity");
   bindColorPair(form, "cardColor");
+  byId("reset-theme-colors").addEventListener("click", () => {
+    setColor(form, "accentColor", DEFAULT_PLAYER_APPEARANCE.accentColor);
+    setColor(
+      form,
+      "secondaryAccentColor",
+      DEFAULT_PLAYER_APPEARANCE.secondaryAccentColor
+    );
+    setColor(form, "titleColor", DEFAULT_PLAYER_APPEARANCE.titleColor);
+    setColor(form, "topBarColor", DEFAULT_PLAYER_APPEARANCE.topBarColor);
+    setOpacity(form, "topBarOpacity", DEFAULT_PLAYER_APPEARANCE.topBarOpacity);
+    setColor(form, "cardColor", DEFAULT_PLAYER_APPEARANCE.cardColor);
+    updatePlayerPreview();
+    toast("已恢复默认配色；点击“保存个性化设置”后才会正式生效");
+  });
   byId("choose-cover-upload").addEventListener("click", () => coverInput.click());
   coverInput.addEventListener("change", () => {
     selectPendingCover(coverInput.files?.[0] || null);
@@ -2775,7 +2804,9 @@ function bindPersonalizationForm() {
       serverAddress: textValue(data, "serverAddress"),
       accentColor: textValue(data, "accentColorText"),
       secondaryAccentColor: textValue(data, "secondaryAccentColorText"),
+      titleColor: textValue(data, "titleColorText"),
       topBarColor: textValue(data, "topBarColorText"),
+      topBarOpacity: opacityValue(form, "topBarOpacity"),
       cardColor: textValue(data, "cardColorText"),
       removeCover: form.elements.removeCover.checked,
       newsArticles: [],
@@ -3369,17 +3400,49 @@ function setFormValue(form, name, value) {
 }
 
 function setColor(form, name, value) {
-  const defaults = {
-    accentColor: "#2ee8df",
-    secondaryAccentColor: "#b06cff",
-    topBarColor: "#030708",
-    cardColor: "#030708"
-  };
   const normalized = /^#[0-9a-f]{6}$/i.test(value || "")
     ? value
-    : defaults[name] || "#030708";
+    : DEFAULT_PLAYER_APPEARANCE[name] || "#030708";
   setFormValue(form, name, normalized);
   setFormValue(form, name + "Text", normalized);
+}
+
+function opacityPercent(value, fallback = 22) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(100, Math.max(0, parsed));
+}
+
+function setOpacity(form, name, value) {
+  const parsed = Number(value);
+  const percent = Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
+    ? Math.round(parsed * 100)
+    : 22;
+  setFormValue(form, name, percent);
+  setFormValue(form, name + "Number", percent);
+}
+
+function opacityValue(form, name) {
+  const control = form.elements.namedItem(name);
+  return opacityPercent(control?.value) / 100;
+}
+
+function bindOpacityPair(form, name) {
+  const slider = form.elements.namedItem(name);
+  const number = form.elements.namedItem(name + "Number");
+  slider.addEventListener("input", () => {
+    number.value = slider.value;
+  });
+  number.addEventListener("input", () => {
+    if (number.value !== "" && number.validity.valid) {
+      slider.value = String(opacityPercent(number.value));
+    }
+  });
+  number.addEventListener("change", () => {
+    const percent = opacityPercent(number.value);
+    number.value = String(percent);
+    slider.value = String(percent);
+  });
 }
 
 function bindColorPair(form, name) {

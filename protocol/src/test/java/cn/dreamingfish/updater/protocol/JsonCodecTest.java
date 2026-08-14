@@ -54,6 +54,9 @@ class JsonCodecTest {
 
         assertEquals("梦鱼服", branding.brandName());
         assertEquals("DreamingFish", branding.brandEnglishName());
+        assertEquals(Branding.DEFAULT_TOP_BAR_OPACITY,
+                branding.topBarOpacity());
+        assertEquals(Branding.DEFAULT_TITLE_COLOR, branding.titleColor());
         assertNull(branding.newsArticles());
         assertNull(branding.customPage());
         assertNull(branding.contentPages());
@@ -87,6 +90,24 @@ class JsonCodecTest {
         Branding restored = codec.read(codec.write(branding), Branding.class);
 
         assertEquals(branding, restored);
+    }
+
+    @Test
+    void roundTripsConfigurableTopBarOpacity() {
+        Branding source = Branding.empty();
+        Branding branding = new Branding(
+                source.productName(), source.subtitle(), source.serverAddress(),
+                source.coverObject(), source.accentColor(),
+                source.secondaryAccentColor(), source.brandName(),
+                source.brandEnglishName(), source.newsArticles(),
+                source.customPage(), source.contentPages(), source.musicTracks(),
+                source.welcomeText(), source.topBarColor(), source.cardColor(),
+                0.35d, "#f0e1c2");
+
+        Branding restored = codec.read(codec.write(branding), Branding.class);
+
+        assertEquals(0.35d, restored.topBarOpacity());
+        assertEquals("#f0e1c2", restored.titleColor());
     }
 
     static ReleaseManifest sampleManifest() {

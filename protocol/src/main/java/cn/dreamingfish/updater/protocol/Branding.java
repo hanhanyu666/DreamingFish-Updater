@@ -17,13 +17,17 @@ public record Branding(
         List<PlayerMusicTrack> musicTracks,
         String welcomeText,
         String topBarColor,
-        String cardColor
+        String cardColor,
+        Double topBarOpacity,
+        String titleColor
 ) {
     public static final String DEFAULT_BRAND_NAME = "梦鱼服";
     public static final String DEFAULT_BRAND_ENGLISH_NAME = "DreamingFish";
     public static final String DEFAULT_WELCOME_TEXT = "欢迎来到";
     public static final String DEFAULT_TOP_BAR_COLOR = "#030708";
     public static final String DEFAULT_CARD_COLOR = "#030708";
+    public static final double DEFAULT_TOP_BAR_OPACITY = 0.22d;
+    public static final String DEFAULT_TITLE_COLOR = "#fff8dc";
 
     public Branding {
         brandName = defaultText(brandName, DEFAULT_BRAND_NAME);
@@ -32,6 +36,9 @@ public record Branding(
         welcomeText = defaultText(welcomeText, DEFAULT_WELCOME_TEXT);
         topBarColor = defaultText(topBarColor, DEFAULT_TOP_BAR_COLOR);
         cardColor = defaultText(cardColor, DEFAULT_CARD_COLOR);
+        topBarOpacity = topBarOpacity == null
+                ? DEFAULT_TOP_BAR_OPACITY : topBarOpacity;
+        titleColor = defaultText(titleColor, DEFAULT_TITLE_COLOR);
         if (newsArticles != null) newsArticles = List.copyOf(newsArticles);
         if (contentPages != null) contentPages = List.copyOf(contentPages);
         if (musicTracks != null) musicTracks = List.copyOf(musicTracks);
@@ -47,7 +54,7 @@ public record Branding(
         this(productName, subtitle, serverAddress, coverObject, accentColor,
                 secondaryAccentColor, brandName, brandEnglishName,
                 newsArticles, customPage, null, null,
-                null, null, null);
+                null, null, null, null, null);
     }
 
     public Branding(
@@ -63,7 +70,7 @@ public record Branding(
         this(productName, subtitle, serverAddress, coverObject, accentColor,
                 secondaryAccentColor, brandName, brandEnglishName,
                 List.of(), PlayerCustomPage.disabled(), List.of(), List.of(),
-                null, null, null);
+                null, null, null, null, null);
     }
 
     public Branding(
@@ -88,14 +95,14 @@ public record Branding(
         return new Branding(productName, subtitle, serverAddress, value,
                 accentColor, secondaryAccentColor, brandName,
                 brandEnglishName, newsArticles, customPage, contentPages, musicTracks,
-                welcomeText, topBarColor, cardColor);
+                welcomeText, topBarColor, cardColor, topBarOpacity, titleColor);
     }
 
     public Branding withMusicTracks(List<PlayerMusicTrack> value) {
         return new Branding(productName, subtitle, serverAddress, coverObject,
                 accentColor, secondaryAccentColor, brandName, brandEnglishName,
                 newsArticles, customPage, contentPages, value,
-                welcomeText, topBarColor, cardColor);
+                welcomeText, topBarColor, cardColor, topBarOpacity, titleColor);
     }
 
     /** Compatibility constructor for callers that already provide content pages. */
@@ -109,7 +116,7 @@ public record Branding(
         this(productName, subtitle, serverAddress, coverObject, accentColor,
                 secondaryAccentColor, brandName, brandEnglishName,
                 newsArticles, customPage, contentPages, null,
-                null, null, null);
+                null, null, null, null, null);
     }
 
     /** Backward-compatible constructor used before surface theme options. */
@@ -124,7 +131,40 @@ public record Branding(
         this(productName, subtitle, serverAddress, coverObject, accentColor,
                 secondaryAccentColor, brandName, brandEnglishName,
                 newsArticles, customPage, contentPages, musicTracks,
-                null, null, null);
+                null, null, null, null, null);
+    }
+
+    /** Backward-compatible constructor used before configurable top-bar opacity. */
+    public Branding(
+            String productName, String subtitle, String serverAddress,
+            String coverObject, String accentColor, String secondaryAccentColor,
+            String brandName, String brandEnglishName,
+            List<PlayerNewsArticle> newsArticles, PlayerCustomPage customPage,
+            List<PlayerContentPage> contentPages,
+            List<PlayerMusicTrack> musicTracks,
+            String welcomeText, String topBarColor, String cardColor
+    ) {
+        this(productName, subtitle, serverAddress, coverObject, accentColor,
+                secondaryAccentColor, brandName, brandEnglishName,
+                newsArticles, customPage, contentPages, musicTracks,
+                welcomeText, topBarColor, cardColor, null, null);
+    }
+
+    /** Backward-compatible constructor used before configurable title color. */
+    public Branding(
+            String productName, String subtitle, String serverAddress,
+            String coverObject, String accentColor, String secondaryAccentColor,
+            String brandName, String brandEnglishName,
+            List<PlayerNewsArticle> newsArticles, PlayerCustomPage customPage,
+            List<PlayerContentPage> contentPages,
+            List<PlayerMusicTrack> musicTracks,
+            String welcomeText, String topBarColor, String cardColor,
+            Double topBarOpacity
+    ) {
+        this(productName, subtitle, serverAddress, coverObject, accentColor,
+                secondaryAccentColor, brandName, brandEnglishName,
+                newsArticles, customPage, contentPages, musicTracks,
+                welcomeText, topBarColor, cardColor, topBarOpacity, null);
     }
 
     private static String defaultText(String value, String fallback) {

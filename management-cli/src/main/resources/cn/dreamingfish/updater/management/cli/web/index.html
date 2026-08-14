@@ -250,7 +250,10 @@
 
                 <section class="personalization-block">
                   <div class="form-section-heading">
-                    <strong>外观与背景</strong>
+                    <div class="form-section-heading-row">
+                      <strong>外观与背景</strong>
+                      <button class="secondary-button section-reset-button" id="reset-theme-colors" type="button">↺ 恢复默认配色</button>
+                    </div>
                     <small>强调色、顶栏和卡片都可以分别调整；不填写时继续使用现在这套默认颜色。</small>
                   </div>
                   <div class="form-grid">
@@ -265,9 +268,23 @@
                       <small class="field-help">用于辅助强调和品牌渐变的另一端。</small>
                     </label>
                     <label class="field color-field">
+                      <span>首页标题文字颜色</span>
+                      <div><input name="titleColor" type="color"><input name="titleColorText"></div>
+                      <small class="field-help">用于首页的欢迎文字和大号主标题；默认保留当前的米白色。</small>
+                    </label>
+                    <label class="field color-field">
                       <span>窗口顶栏颜色</span>
                       <div><input name="topBarColor" type="color"><input name="topBarColorText"></div>
                       <small class="field-help">用于顶部导航和窗口按钮所在区域；玩家端会自动压暗过亮颜色，保证文字清楚。</small>
+                    </label>
+                    <label class="field opacity-field">
+                      <span>窗口顶栏底色不透明度</span>
+                      <div class="opacity-control">
+                        <input name="topBarOpacity" type="range" min="0" max="100" step="1" value="22">
+                        <input name="topBarOpacityNumber" type="number" min="0" max="100" step="1" value="22" inputmode="numeric" aria-label="窗口顶栏底色不透明度百分比">
+                        <span>%</span>
+                      </div>
+                      <small class="field-help">0% 去掉顶栏底色、只保留轻微玻璃高光，100% 使用实色；默认 22%，就是原来的半透明效果。</small>
                     </label>
                     <label class="field color-field">
                       <span>布局卡片颜色</span>

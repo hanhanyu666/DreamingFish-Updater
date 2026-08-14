@@ -263,6 +263,13 @@ public final class ManifestValidator {
         validateColor(branding.secondaryAccentColor(), "secondary accent color");
         validateColor(branding.topBarColor(), "top bar color");
         validateColor(branding.cardColor(), "card color");
+        validateColor(branding.titleColor(), "title color");
+        if (branding.topBarOpacity() == null
+                || !Double.isFinite(branding.topBarOpacity())
+                || branding.topBarOpacity() < 0.0d
+                || branding.topBarOpacity() > 1.0d) {
+            throw new ProtocolException("Invalid top bar opacity");
+        }
         validateNews(branding.newsArticles());
         validateCustomPage(branding.customPage());
         validateContentPages(branding.contentPages());

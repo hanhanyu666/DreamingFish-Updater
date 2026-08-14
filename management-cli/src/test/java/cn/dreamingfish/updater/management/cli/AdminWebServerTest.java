@@ -68,8 +68,13 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("从当前电脑上传背景图"));
             assertTrue(page.body().contains("从管理端所在电脑 / 服务器导入"));
             assertTrue(page.body().contains("name=\"welcomeText\""));
+            assertTrue(page.body().contains("name=\"titleColor\""));
             assertTrue(page.body().contains("name=\"topBarColor\""));
+            assertTrue(page.body().contains("name=\"topBarOpacity\""));
+            assertTrue(page.body().contains("name=\"topBarOpacityNumber\""));
             assertTrue(page.body().contains("name=\"cardColor\""));
+            assertTrue(page.body().contains("id=\"reset-theme-colors\""));
+            assertTrue(page.body().contains("恢复默认配色"));
             assertTrue(page.body().contains("id=\"import-player-pages-server\""));
             assertTrue(page.body().contains("id=\"create-source-folder\""));
             assertTrue(page.body().contains("id=\"service-restart\""));
@@ -239,8 +244,10 @@ class AdminWebServerTest {
                             Map.entry("serverAddress", "play.example.com:25565"),
                             Map.entry("accentColor", "#112233"),
                             Map.entry("secondaryAccentColor", "#445566"),
+                            Map.entry("titleColor", "#f0e1c2"),
                             Map.entry("welcomeText", "欢迎进入星河"),
                             Map.entry("topBarColor", "#102030"),
+                            Map.entry("topBarOpacity", 0.35d),
                             Map.entry("cardColor", "#203040"),
                             Map.entry("newsArticles", List.of(Map.of(
                                     "id", "welcome",
@@ -261,7 +268,9 @@ class AdminWebServerTest {
             assertTrue(personalized.body().contains("\"productName\":\"星河新主页\""));
             assertTrue(personalized.body().contains("\"brandName\":\"新星河服\""));
             assertTrue(personalized.body().contains("\"welcomeText\":\"欢迎进入星河\""));
+            assertTrue(personalized.body().contains("\"titleColor\":\"#f0e1c2\""));
             assertTrue(personalized.body().contains("\"topBarColor\":\"#102030\""));
+            assertTrue(personalized.body().contains("\"topBarOpacity\":0.35"));
             assertTrue(personalized.body().contains("\"cardColor\":\"#203040\""));
             assertTrue(personalized.body().contains("\"title\":\"欢迎来到星河服\""));
             assertTrue(personalized.body().contains("\"navigationLabel\":\"玩法介绍\""));

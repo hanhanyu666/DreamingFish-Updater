@@ -42,10 +42,12 @@ describe("player store", () => {
       coverObject: null,
       accentColor: "#123456",
       secondaryAccentColor: "#654321",
+      titleColor: "#f0e1c2",
       brandName: "星河服",
       brandEnglishName: "StarRiver",
       welcomeText: "踏入星海",
       topBarColor: "#123456",
+      topBarOpacity: 0.35,
       cardColor: "#654321",
     });
     expect(configured).toMatchObject({
@@ -53,11 +55,16 @@ describe("player store", () => {
       brandEnglishName: "StarRiver",
       welcomeText: "踏入星海",
       topBarColor: "#123456",
+      topBarOpacity: 0.35,
       cardColor: "#654321",
     });
     setBranding(configured);
     expect(document.documentElement.style.getPropertyValue("--dfs-topbar-rgb"))
       .toBe("15, 44, 72");
+    expect(document.documentElement.style.getPropertyValue("--dfs-title-color"))
+      .toBe("#f0e1c2");
+    expect(document.documentElement.style.getPropertyValue("--dfs-topbar-opacity"))
+      .toBe("0.35");
     expect(document.documentElement.style.getPropertyValue("--dfs-card-rgb"))
       .toBe("72, 48, 24");
 
@@ -73,7 +80,9 @@ describe("player store", () => {
       brandName: "梦鱼服",
       brandEnglishName: "DreamingFish",
       welcomeText: "欢迎来到",
+      titleColor: "#fff8dc",
       topBarColor: "#030708",
+      topBarOpacity: 0.22,
       cardColor: "#030708",
     });
   });
