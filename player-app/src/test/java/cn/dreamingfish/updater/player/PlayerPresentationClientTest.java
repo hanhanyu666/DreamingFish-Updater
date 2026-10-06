@@ -42,6 +42,7 @@ class PlayerPresentationClientTest {
         String etag = '"' + CryptoSupport.sha256(payload) + '"';
         AtomicInteger notModified = new AtomicInteger();
         AtomicBoolean sidecarOnly = new AtomicBoolean();
+        AtomicBoolean atomicDocument = new AtomicBoolean();
         HttpServer server = HttpServer.create(
                 new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/projects/demo/presentation", exchange -> {
@@ -72,6 +73,14 @@ class PlayerPresentationClientTest {
             }
         });
         server.start();
+        server.createContext("/v1/projects/demo/presentation.signed", exchange -> {
+            try {
+                if (!atomicDocument.get()) { exchange.sendResponseHeaders(404, -1); return; }
+                byte[] body = new cn.dreamingfish.updater.protocol.SignedDocument(payload, signature).encode();
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            } finally { exchange.close(); }
+        });
         try {
             Path playerHome = temporary.resolve("player-home");
             ProjectBinding binding = new ProjectBinding(
@@ -97,6 +106,10 @@ class PlayerPresentationClientTest {
                     temporary.resolve("static-instance"), staticPlayerHome, binding,
                     "0.1.35", Set.of());
             assertEquals("实时标题", client.fetch(staticRequest).productName());
+            atomicDocument.set(true);
+            UpdateRequest atomicRequest = UpdateRequest.defaults(temporary.resolve("atomic-instance"),
+                    temporary.resolve("atomic-home"), binding, "0.1.40", Set.of());
+            assertEquals("实时标题", client.fetch(atomicRequest).productName());
 
             Files.writeString(playerHome.resolve("state/player-presentation.json"),
                     "{\"projectId\":\"attacker\"}", StandardCharsets.UTF_8);

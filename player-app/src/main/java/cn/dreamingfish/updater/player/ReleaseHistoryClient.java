@@ -4,6 +4,8 @@ import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.ProjectBinding;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
 import cn.dreamingfish.updater.protocol.ReleaseHistory;
+import cn.dreamingfish.updater.engine.HttpTransfer;
+import cn.dreamingfish.updater.engine.CancellationToken;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -36,11 +38,11 @@ final class ReleaseHistoryClient {
                 .header("Accept-Encoding", "identity")
                 .build();
         try {
-            HttpResponse<InputStream> response = HttpClient.newBuilder()
+            HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(5))
                     .followRedirects(HttpClient.Redirect.NEVER)
-                    .build()
-                    .send(request, HttpResponse.BodyHandlers.ofInputStream());
+                    .build();
+            HttpResponse<InputStream> response = HttpTransfer.send(client, request, Duration.ofSeconds(8), CancellationToken.NEVER);
             try (InputStream input = response.body()) {
                 if (response.statusCode() != 200) {
                     throw new IOException("Release history returned HTTP " + response.statusCode());

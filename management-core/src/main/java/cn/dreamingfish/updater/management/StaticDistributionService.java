@@ -14,6 +14,7 @@ import cn.dreamingfish.updater.protocol.ProtocolConstants;
 import cn.dreamingfish.updater.protocol.ReleaseHistory;
 import cn.dreamingfish.updater.protocol.ReleaseHistoryEntry;
 import cn.dreamingfish.updater.protocol.ReleaseManifest;
+import cn.dreamingfish.updater.protocol.SignedDocument;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -131,15 +132,20 @@ public final class StaticDistributionService {
             // This keeps an export directory safe even while it is being served directly.
             writeMutable(output, projectRoot + "latest", latestPayload);
             writeSignature(output, projectRoot + "latest.sig", latest.signature(), false);
+            writeMutable(output, projectRoot + "latest.signed", new SignedDocument(latestPayload, latest.signature()).encode());
             writeJson(output, projectRoot + "history", releaseHistory(projectId, releases));
             writeMutable(output, projectRoot + "presentation", presentation.payload());
             writeSignature(output, projectRoot + "presentation.sig",
                     presentation.signature(), false);
+            writeMutable(output, projectRoot + "presentation.signed",
+                    new SignedDocument(presentation.payload(), presentation.signature()).encode());
             for (Map.Entry<String, SignedPayload> current : currentPrograms.entrySet()) {
                 String route = projectRoot + "player/" + current.getKey() + "/latest";
                 writeMutable(output, route, current.getValue().payload());
                 writeSignature(output, route + ".sig",
                         current.getValue().signature(), false);
+                writeMutable(output, route + ".signed",
+                        new SignedDocument(current.getValue().payload(), current.getValue().signature()).encode());
             }
             writeMutable(output, "healthz",
                     "{\n  \"status\" : \"ok\"\n}\n".getBytes(StandardCharsets.UTF_8));
@@ -161,6 +167,10 @@ public final class StaticDistributionService {
             throw new ManagementException("请选择静态分发目录");
         }
         Path output = selected.toAbsolutePath().normalize();
+        try { cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(output); }
+        catch (IOException | cn.dreamingfish.updater.protocol.ProtocolException unsafe) {
+            throw new ManagementException("静态分发目录不能穿过符号链接或目录联接", unsafe);
+        }
         if (output.getParent() == null) {
             throw new ManagementException("不能把磁盘根目录作为静态分发目录");
         }
@@ -414,9 +424,13 @@ public final class StaticDistributionService {
                   Cache-Control: no-cache, max-age=0
                 /v1/projects/%s/latest.sig
                   Cache-Control: no-cache, max-age=0
+                /v1/projects/%s/latest.signed
+                  Cache-Control: no-cache, max-age=0
                 /v1/projects/%s/presentation
                   Cache-Control: no-cache, max-age=0
                 /v1/projects/%s/presentation.sig
+                  Cache-Control: no-cache, max-age=0
+                /v1/projects/%s/presentation.signed
                   Cache-Control: no-cache, max-age=0
                 /v1/projects/%s/history
                   Cache-Control: no-cache, max-age=0
@@ -424,18 +438,20 @@ public final class StaticDistributionService {
                   Cache-Control: no-cache, max-age=0
                 /v1/projects/%s/player/*/latest.sig
                   Cache-Control: no-cache, max-age=0
+                /v1/projects/%s/player/*/latest.signed
+                  Cache-Control: no-cache, max-age=0
                 /healthz
                   Cache-Control: no-cache, max-age=0
                 """.formatted(projectId, projectId, projectId, projectId,
-                projectId, projectId, projectId, projectId, projectId);
+                projectId, projectId, projectId, projectId, projectId, projectId, projectId, projectId);
         writeMutable(output, "_headers", headers.getBytes(StandardCharsets.UTF_8));
         String readme = """
                 DreamingFish Updater 静态分发目录
 
                 1. 请把这个目录中的全部文件原样上传到 HTTP、对象存储或 CDN 的公开根目录。
-                2. 不要改名，也不要只上传 latest；对象、清单和 .sig 签名文件必须一起上传。
+                2. 不要改名，也不要只上传 latest；对象、清单、.sig 和 .signed 签名文件必须一起上传。
                 3. 玩家端地址填写公开根地址，例如：https://update.example.com/
-                4. 对象文件建议长期缓存；latest、presentation 及对应 .sig 不要长期缓存。
+                4. 对象文件建议长期缓存；latest、presentation 及对应 .sig、.signed 不要长期缓存。
                 5. _headers 是缓存规则示例；托管平台不支持时，请在平台控制台设置等效规则。
                 6. 更新整合包、玩家端程序或个性化内容后，请重新导出并上传。
 

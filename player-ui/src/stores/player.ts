@@ -13,9 +13,11 @@ import {
   STAGE_NAMES,
   type Branding,
   type AdminPreviewPayload,
+  type ArchiveDto,
   type ConfirmRequest,
   type LocalFileEntry,
   type LocalModEntry,
+  type OptionalGroupView,
   type ProgressEvent,
   type PlayerContentPage,
   type ReleaseHistory,
@@ -28,14 +30,15 @@ import type { NewsArticle } from "../lib/news";
 import { loadBundledNews } from "../lib/news";
 
 export type Page = "HOME" | "NEWS" | "CUSTOM" | "ABOUT" | `CONTENT:${string}`;
-export type DrawerMode = "UPDATE" | "HISTORY" | "LOGS" | "FILES" | "PLAYER_MODS";
-export type LocalManagementMode = "FILES" | "MODS";
+export type DrawerMode = "UPDATE" | "HISTORY" | "LOGS" | "FILES" | "BACKUPS" | "PLAYER_MODS";
+export type LocalManagementMode = "OPTIONS" | "FILES" | "MODS";
 
 export const DRAWER_LABELS: Record<DrawerMode, string> = {
   UPDATE: "本次更新",
   HISTORY: "更新记录",
   LOGS: "运行记录",
   FILES: "本地文件",
+  BACKUPS: "备份与恢复",
   PLAYER_MODS: "自选模组",
 };
 
@@ -112,6 +115,9 @@ interface PlayerState {
   restartPending: boolean;
   mods: LocalModEntry[];
   files: LocalFileEntry[];
+  groups: OptionalGroupView[];
+  archives: ArchiveDto[];
+  archivesLoaded: boolean;
   unmanaged: UnmanagedNotice | null;
   drawerOpen: boolean;
   drawerMode: DrawerMode;
@@ -162,6 +168,9 @@ const state = reactive<PlayerState>({
   restartPending: false,
   mods: [],
   files: [],
+  groups: [],
+  archives: [],
+  archivesLoaded: false,
   unmanaged: null,
   drawerOpen: false,
   drawerMode: "HISTORY",
@@ -203,6 +212,8 @@ interface PendingConfirmation {
 
 const confirmationQueue: PendingConfirmation[] = [];
 let activeConfirmation: PendingConfirmation | null = null;
+/** Whether the player picked a local management mode, so new groups do not switch it. */
+let localModeChosen = false;
 
 export function handleSidecarMessage(message: SidecarMessage): void {
   switch (message.type) {
@@ -260,6 +271,13 @@ export function handleSidecarMessage(message: SidecarMessage): void {
       break;
     case "files":
       state.files = message.entries ?? [];
+      break;
+    case "groups":
+      setGroups(message.groups ?? []);
+      break;
+    case "archives":
+      state.archives = message.archives ?? [];
+      state.archivesLoaded = true;
       break;
     case "countdown":
       state.countdownRemaining = message.seconds;
@@ -592,35 +610,47 @@ function ensureCurrentReleaseInHistory(result: UpdateResultDto): void {
 function showFileNotices(result: UpdateResultDto): void {
   const archived = result.archivedFiles ?? [];
   const released = result.releasedPaths ?? [];
+  const kept = result.keptModifiedPaths ?? [];
+  const skipped = result.skippedSelfManagedPaths ?? [];
+  const reset = result.resetPaths ?? [];
   const unmanagedMods = result.unmanagedMods ?? [];
-  if (archived.length > 0 || released.length > 0) {
-    const directories = (result.forcedSyncDirectories ?? []).length > 0
-      ? (result.forcedSyncDirectories ?? []).map((value) => value + "/").join("、")
-      : "所选目录";
-    let text = "";
-    if (archived.length > 0) {
-      text =
-        "远程管理端已对 " + directories + " 启用强制同步；已将 " +
-        archived.length + " 个本地额外文件移入备份";
+  const parts: string[] = [];
+  const lines: string[] = [];
+  if (archived.length > 0) {
+    parts.push("已将 " + archived.length + " 个本地文件移入备份");
+    const reasons = result.archived ?? [];
+    if (reasons.length > 0) {
+      reasons.slice(0, 20).forEach((file) =>
+        lines.push("备份：" + file.path + "（" + file.reasonText + "）"));
+    } else {
+      archived.slice(0, 20).forEach((path) => lines.push("备份：" + path));
     }
-    if (released.length > 0) {
-      if (text.length > 0) text += "；";
-      text += "服主已停止管理 " + released.length + " 个文件，本地副本已保留";
-    }
-    if (unmanagedMods.length > 0) {
-      text += "；另有 " + unmanagedMods.length + " 个玩家自选模组已保留";
-    }
-    const noticeLines: string[] = [];
-    if (archived.length > 0) {
-      noticeLines.push("备份位置：" + (result.archiveDirectory ?? ""));
-      archived.slice(0, 20).forEach((path) => noticeLines.push("备份：" + path));
-    }
-    released.slice(0, 20).forEach((path) => noticeLines.push("保留：" + path));
-    if (unmanagedMods.length > 0) text += "  ›";
-    updateUnmanagedNotice(text, unmanagedMods, noticeLines);
+  }
+  if (reset.length > 0) {
+    parts.push("已恢复 " + reset.length + " 个默认配置");
+    reset.slice(0, 10).forEach((path) => lines.push("恢复默认：" + path));
+  }
+  if (kept.length > 0) {
+    parts.push("保留了你修改过的 " + kept.length + " 个配置");
+    kept.slice(0, 10).forEach((path) => lines.push("保留你的修改：" + path));
+  }
+  if (skipped.length > 0) {
+    parts.push(skipped.length + " 个自行管理的文件有新版本，未更新");
+    skipped.slice(0, 10).forEach((path) => lines.push("自行管理，未更新：" + path));
+  }
+  if (released.length > 0) {
+    parts.push("服主已停止管理 " + released.length + " 个文件，本地副本已保留");
+    released.slice(0, 20).forEach((path) => lines.push("保留：" + path));
+  }
+  if (parts.length === 0) {
+    showUnmanaged(unmanagedMods);
     return;
   }
-  showUnmanaged(unmanagedMods);
+  let text = parts.join("；");
+  if (unmanagedMods.length > 0) {
+    text += "；另有 " + unmanagedMods.length + " 个玩家自选模组已保留  ›";
+  }
+  updateUnmanagedNotice(text, unmanagedMods, lines);
 }
 
 export function showUnmanaged(mods: string[]): void {
@@ -724,6 +754,7 @@ export function openDrawer(mode: DrawerMode): void {
   state.drawerOpen = true;
   state.drawerMode = mode;
   keepWindowOpen();
+  if (mode === "BACKUPS") refreshArchives();
 }
 
 export function toggleDrawer(mode: DrawerMode): void {
@@ -743,7 +774,45 @@ export function setDrawerExpanded(expanded: boolean): void {
 }
 
 export function showLocalMode(mode: LocalManagementMode): void {
-  state.localMode = mode;
+  localModeChosen = true;
+  state.localMode = mode === "OPTIONS" && state.groups.length === 0 ? "FILES" : mode;
+}
+
+function setGroups(groups: OptionalGroupView[]): void {
+  state.groups = groups;
+  if (groups.length === 0 && state.localMode === "OPTIONS") {
+    state.localMode = "FILES";
+  } else if (groups.length > 0 && !localModeChosen) {
+    // Optional content is what most players come to change, so it opens first.
+    state.localMode = "OPTIONS";
+  }
+}
+
+/** Switches an optional group; {@code null} follows the owner's default again. */
+export function setGroupChoice(group: Pick<OptionalGroupView, "id">, enabled: boolean | null): void {
+  sendCommand({ command: "toggle-group", groupId: group.id, enabled });
+}
+
+/** Asks the next update to restore the shipped default; the updater confirms first. */
+export function requestDefaultReset(entry: LocalFileEntry): void {
+  sendCommand({ command: "reset-default", entry });
+}
+
+export function refreshArchives(): void {
+  sendCommand({ command: "archives" });
+}
+
+/** Puts one backed-up file back; the updater explains when the next update would move it again. */
+export function restoreArchivedFile(archiveId: string, path: string): void {
+  sendCommand({ command: "restore-archive", archiveId, path });
+}
+
+export function deleteArchive(archiveId: string): void {
+  sendCommand({ command: "delete-archive", archiveId });
+}
+
+export function openArchive(archiveId?: string): void {
+  sendCommand(archiveId == null ? { command: "open-archive" } : { command: "open-archive", archiveId });
 }
 
 export function showPage(page: Page): void {
@@ -1023,6 +1092,12 @@ export function usePlayerStore() {
     confirmRestoreFiles,
     confirmRestoreMods,
     confirmDisableMod,
+    setGroupChoice,
+    requestDefaultReset,
+    refreshArchives,
+    restoreArchivedFile,
+    deleteArchive,
+    openArchive,
     openPlayerModPage,
     countdownTick,
     startPreview,

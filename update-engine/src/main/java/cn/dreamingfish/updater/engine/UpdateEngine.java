@@ -71,26 +71,31 @@ public final class UpdateEngine {
                 if (e.code() != UpdateErrorCode.NETWORK_UNAVAILABLE) throw e;
                 return allowOfflineOrFail(paths, local, request, progress, e);
             }
+            if (local != null && cn.dreamingfish.updater.protocol.MaintenanceModel.of(local.release().manifest()).simplified()
+                    && !cn.dreamingfish.updater.protocol.MaintenanceModel.of(target.manifest()).simplified()) {
+                throw new UpdateException(UpdateErrorCode.INVALID_MANIFEST,
+                        "这个项目已采用简化维护规则，新发布不能降回旧协议；请升级管理端后重新发布");
+            }
 
-            LocalFileOverrides effectiveOverrides = request.localFileOverrides()
-                    .withForcedManagement(
-                            target.manifest().forcedSyncFiles(),
-                            target.manifest().forcedSyncDirectories());
-            UpdatePlan plan = planner.create(paths, target, local, effectiveOverrides, progress,
+            LocalFileOverrides choices = request.localFileOverrides();
+            LocalFileIndex index = LocalFileIndex.load(paths.fileIndex());
+            UpdatePlan plan = planner.create(paths, target, local, choices, index, progress,
                     request.cancellationToken());
             boolean sameRelease = local != null && local.release().sha256().equals(target.sha256());
             if (sameRelease && plan.operations().isEmpty()) {
                 if (gameUpdateLock != null) {
                     syncMusicTracks(request, paths, target.manifest().branding().musicTracks(),
                             progress, local == null ? null : local.release().manifest().branding().musicTracks());
+                    persistBundledBaseline(paths, local, plan.nextState());
                 }
-                persistBundledBaseline(paths, local);
+                index.save();
                 storageMaintenance.cleanObjectCache(paths);
                 progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
                         "本地整合包已是最新版本", null, 1, 1));
                 return new UpdateResult(UpdateOutcome.UP_TO_DATE, target.manifest(),
                         0, 0, 0, plan.unmanagedMods(), List.of(), null,
-                        List.of(), List.of(), plan.releasedPaths());
+                        List.of(), List.of(), plan.releasedPaths(), List.of(),
+                        plan.keptModifiedPaths(), plan.skippedSelfManagedPaths(), List.of());
             }
 
             if (gameUpdateLock == null) throw gameRunning();
@@ -101,8 +106,9 @@ public final class UpdateEngine {
             progress.onProgress(new ProgressEvent(UpdateStage.PREPARING,
                     "正在准备安全更新", null, 0, plan.operations().size()));
             InstallResult installResult = installer.install(
-                    paths, plan, progress, effectiveOverrides,
+                    paths, plan, progress, choices, index,
                     request.cancellationToken());
+            index.save();
             storageMaintenance.cleanObjectCache(paths);
             progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
                     "整合包更新完成", null, 1, 1));
@@ -110,7 +116,8 @@ public final class UpdateEngine {
                     plan.installCount(), plan.deleteCount(), downloaded, plan.unmanagedMods(),
                     installResult.archivedFiles(), installResult.archiveDirectory(),
                     plan.paths(OperationKind.INSTALL), plan.paths(OperationKind.DELETE),
-                    plan.releasedPaths());
+                    plan.releasedPaths(), installResult.archived(),
+                    plan.keptModifiedPaths(), plan.skippedSelfManagedPaths(), plan.resetPaths());
         }
     }
 
@@ -183,35 +190,79 @@ public final class UpdateEngine {
         }
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
                 "更新服务暂时不可用，正在验证上次安装", null, 0, 0));
-        LocalFileOverrides effectiveOverrides = request.localFileOverrides()
-                .withForcedManagement(
-                        local.release().manifest().forcedSyncFiles(),
-                        local.release().manifest().forcedSyncDirectories());
-        if (!localStore.verifyFiles(paths, local, progress, effectiveOverrides,
-                request.cancellationToken())) {
-            throw new UpdateException(UpdateErrorCode.LOCAL_CONTENT_CHANGED,
-                    "The update service is unavailable and managed files were changed locally",
-                    networkFailure);
-        }
+        LocalFileOverrides choices = request.localFileOverrides();
+        LocalFileIndex index = LocalFileIndex.load(paths.fileIndex());
         UpdatePlan localPlan = planner.create(paths, local.release(), local,
-                effectiveOverrides, progress,
+                choices, index, progress,
                 request.cancellationToken());
+        cn.dreamingfish.updater.protocol.MaintenanceModel model =
+                cn.dreamingfish.updater.protocol.MaintenanceModel.of(local.release().manifest());
+        boolean ownerActions = localPlan.operations().stream().anyMatch(operation ->
+                operation.reason() == ArchiveReason.OWNER_REMOVED || operation.reason() == ArchiveReason.WITHDRAWN
+                || (model.simplified() && (operation.reason() == ArchiveReason.CORRECTED
+                || operation.reason() == ArchiveReason.RESET_DEFAULT || operation.reason() == ArchiveReason.CLEANUP
+                || operation.reason() == ArchiveReason.DUPLICATE || model.locked(operation.path()))));
+        ownerActions |= model.simplified() && localPlan.nextState().appliedCorrections().stream()
+                .anyMatch(id -> local.state() == null || !local.state().correctionApplied(id));
+        if (!localPlan.operations().isEmpty() && ownerActions
+                && objectsAvailableOffline(paths, localPlan)) {
+            InstallResult installed = installer.install(paths, localPlan, progress, choices, index, request.cancellationToken());
+            index.save();
+            return new UpdateResult(UpdateOutcome.OFFLINE_ALLOWED, local.release().manifest(),
+                    localPlan.installCount(), localPlan.deleteCount(), 0, localPlan.unmanagedMods(),
+                    installed.archivedFiles(), installed.archiveDirectory(), localPlan.paths(OperationKind.INSTALL),
+                    localPlan.paths(OperationKind.DELETE), localPlan.releasedPaths(), installed.archived(),
+                    localPlan.keptModifiedPaths(), localPlan.skippedSelfManagedPaths(), localPlan.resetPaths());
+        }
+        if (ownerActions) {
+            throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID,
+                    "上次已验证发布要求移除或修复这些文件；完成处理前不能保留它们继续启动", networkFailure);
+        }
+        if (!localStore.verifyFiles(paths, local, progress, choices, index, request.cancellationToken())) {
+            throw new UpdateException(UpdateErrorCode.LOCAL_CONTENT_CHANGED,
+                    "The update service is unavailable and managed files were changed locally", networkFailure);
+        }
         if (!localPlan.operations().isEmpty()) {
             throw new UpdateException(UpdateErrorCode.LOCAL_CONTENT_CHANGED,
                     "The offline installation has managed files that require repair", networkFailure);
         }
-        persistBundledBaseline(paths, local);
+        index.save();
+        persistBundledBaseline(paths, local, localPlan.nextState());
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
                 "已使用上次完整验证的本地版本", null, 1, 1));
         return new UpdateResult(UpdateOutcome.OFFLINE_ALLOWED, local.release().manifest(),
                 0, 0, 0, localPlan.unmanagedMods(), List.of(), null,
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), localPlan.keptModifiedPaths(),
+                localPlan.skippedSelfManagedPaths(), List.of());
     }
 
-    private void persistBundledBaseline(EnginePaths paths, LocalInstallation local) {
-        if (!local.bundledBaseline()) return;
+    private boolean objectsAvailableOffline(EnginePaths paths, UpdatePlan plan) {
         try {
-            localStore.save(paths, local.release());
+            for (var object : plan.requiredObjects().entrySet()) {
+                Path file = paths.cacheObject(object.getKey());
+                cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(file);
+                if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) != object.getValue()
+                        || !cn.dreamingfish.updater.protocol.CryptoSupport.sha256(file).equals(object.getKey())) return false;
+            }
+            return true;
+        } catch (IOException | RuntimeException unavailable) { return false; }
+    }
+
+    /**
+     * Records a bundled baseline as the verified installation, together with
+     * maintenance memory gathered without file changes.
+     */
+    private void persistBundledBaseline(EnginePaths paths, LocalInstallation local,
+                                        MaintenanceState state) {
+        boolean stateChanged = state != null && !state.equals(local.state());
+        if (!local.bundledBaseline() && !stateChanged) return;
+        try {
+            if (local.bundledBaseline()) {
+                localStore.save(paths, local.release(), state);
+            } else {
+                AtomicFileSupport.write(paths.maintenanceState(), new cn.dreamingfish.updater.protocol
+                        .JsonCodec().writePretty(state));
+            }
         } catch (IOException e) {
             throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID,
                     "Unable to activate the verified bundled release baseline", e);

@@ -1,6 +1,8 @@
 import type {
+  ArchiveDto,
   LocalFileEntry,
   LocalModEntry,
+  OptionalGroupView,
   SidecarCommand,
   SidecarMessage,
 } from "./types";
@@ -195,6 +197,8 @@ class MockBridge implements PlayerBridge {
   private timers: number[] = [];
   private mods = mockMods();
   private files = mockFiles();
+  private groups = mockGroups();
+  private archives = mockArchives();
   private working = false;
   private permitted = false;
 
@@ -264,15 +268,15 @@ class MockBridge implements PlayerBridge {
   private playPreview(): void {
     const adminPreview = new URLSearchParams(window.location.search)
       .get("adminPreview") === "1";
-    this.emit({ type: "identity", name: "Hanyu" });
+    this.emit({ type: "identity", name: "Player" });
     this.emit({ type: "branding", branding: {
-      productName: "梦屿",
-      subtitle: "灾变之后，仍有人在这里守望。",
+      productName: "Minecraft 整合包",
+      subtitle: "准备好后，一起进入游戏。",
       serverAddress: "",
       coverObject: null,
       accentColor: "#2ee8df",
       secondaryAccentColor: "#b06cff",
-      brandName: "梦鱼服",
+      brandName: "梦鱼更新器",
       brandEnglishName: "DreamingFish",
       newsArticles: null,
       customPage: null,
@@ -280,7 +284,7 @@ class MockBridge implements PlayerBridge {
     } });
     this.emit({ type: "background", path: null });
     this.emit({ type: "logs", lines: [
-      "2026-08-13 12:08:40.210 | START | 启动 | 玩家端 0.1.38 · 项目 preview",
+      "2026-08-13 12:08:40.210 | START | 启动 | 玩家端 0.2.0 · 项目 preview",
       "2026-08-13 12:08:41.035 | INFO  | 检查更新 | 已连接到整合包更新服务",
       "2026-08-13 12:08:42.184 | INFO  | 下载文件 | 正在下载 mods/dreamingfish-core.jar",
       "2026-08-13 12:08:43.420 | WARN  | 网络 | 当前下载速度较慢，正在继续尝试",
@@ -316,11 +320,11 @@ class MockBridge implements PlayerBridge {
       this.emit({ type: "result", result: {
         releaseId: "r000012",
         sequence: 12,
-        projectId: "dreamhaven",
+        projectId: "preview",
         createdAt: new Date(Date.now() - 86_400_000).toISOString(),
         outcome: "UPDATED",
         displayVersion: "1.20.1-r12",
-        changelog: "新增梦屿群系探索内容",
+        changelog: "更新模组与资源包",
         downloadedBytes: 271 * 1024 * 1024,
         installedPaths: [
           "mods/dreamingfish-core.jar",
@@ -328,18 +332,28 @@ class MockBridge implements PlayerBridge {
           "config/dreamingfish/client.toml",
         ],
         deletedPaths: ["mods/legacy-renderer.jar"],
-        archivedFiles: [],
+        archivedFiles: ["config/dreamingfish/client.toml"],
         releasedPaths: [],
-        archiveDirectory: null,
+        archiveDirectory: "DreamingFishUpdater/backups/archive/preview",
         unmanagedMods: ["mods/embeddium-options-api.jar", "mods/xaeros-minimap.jar"],
         forcedSyncDirectories: [],
+        archived: [{
+          path: "config/dreamingfish/client.toml", reason: "REPLACED_MODIFIED",
+          reasonText: "这个文件由服主同步管理，你的修改已备份并恢复为服主版本",
+          detail: "", size: 2048, componentId: null, version: null, restoredAt: null,
+        }],
+        keptModifiedPaths: ["config/voice.toml"],
+        skippedSelfManagedPaths: [],
+        resetPaths: [],
       } });
+      this.emit({ type: "groups", groups: this.groups });
+      this.emit({ type: "archives", archives: this.archives });
       this.emit({ type: "history", history: {
         schemaVersion: 1,
-        projectId: "dreamhaven",
+        projectId: "preview",
         releases: [
           { releaseId: "r000012", sequence: 12, displayVersion: "1.20.1-r12",
-            createdAt: new Date(Date.now() - 86_400_000).toISOString(), changelog: "新增梦屿群系探索内容" },
+            createdAt: new Date(Date.now() - 86_400_000).toISOString(), changelog: "更新模组与资源包" },
           { releaseId: "r000011", sequence: 11, displayVersion: "1.20.1-r11",
             createdAt: new Date(Date.now() - 172_800_000).toISOString(), changelog: "修复部分任务无法完成的问题" },
         ],
@@ -367,6 +381,46 @@ class MockBridge implements PlayerBridge {
       case "toggle-file": {
         this.files = toggleMockFile(this.files, command.entry, command.managed);
         this.emit({ type: "files", entries: this.files });
+        break;
+      }
+      case "toggle-group": {
+        this.groups = this.groups.map((group) => group.id !== command.groupId ? group : {
+          ...group,
+          enabled: command.enabled ?? group.defaultInstall,
+          explicit: command.enabled != null,
+        });
+        const enabled = new Map(this.groups.map((group) => [group.id, group.enabled]));
+        this.mods = this.mods.map((entry) => entry.group == null ? entry : {
+          ...entry,
+          disabled: !enabled.get(entry.group),
+          active: Boolean(enabled.get(entry.group)),
+        });
+        this.emit({ type: "groups", groups: this.groups });
+        this.emit({ type: "mods", entries: this.mods });
+        break;
+      }
+      case "reset-default": {
+        this.files = this.files.map((entry) =>
+          entry.path === command.entry.path ? { ...entry, resetPending: true } : entry);
+        this.emit({ type: "files", entries: this.files });
+        break;
+      }
+      case "archives": {
+        this.emit({ type: "archives", archives: this.archives });
+        break;
+      }
+      case "restore-archive": {
+        this.archives = this.archives.map((archive) => archive.id !== command.archiveId ? archive : {
+          ...archive,
+          files: archive.files.map((file) => file.path !== command.path ? file
+            : { ...file, restoredAt: new Date().toISOString() }),
+        });
+        this.emit({ type: "archives", archives: this.archives });
+        break;
+      }
+      case "delete-archive": {
+        this.archives = this.archives.filter((archive) => archive.id !== command.archiveId);
+        this.emit({ type: "archives", archives: this.archives });
         break;
       }
       case "restore-files": {
@@ -425,14 +479,21 @@ class MockBridge implements PlayerBridge {
 function mockMods(): LocalModEntry[] {
   return [
     { key: "component:renderer", displayName: "旧版渲染优化", path: "mods/legacy-renderer.jar",
-      componentId: "renderer", managed: true, disabled: true, active: false, forced: false },
+      componentId: "renderer", managed: true, disabled: true, active: false, forced: false,
+      version: "0.9.2", preset: "SYNC" },
     { key: "component:dreamingfish", displayName: "DreamingFish Core", path: "mods/dreamingfish-core.jar",
-      componentId: "dreamingfish", managed: true, disabled: false, active: true, forced: false },
+      componentId: "dreamingfish", managed: true, disabled: false, active: true, forced: true,
+      version: "2.4.0", preset: "REQUIRED", lockReason: "服主设为强制同步，不能在本机停用" },
+    { key: "component:iris", displayName: "Iris Shaders", path: "mods/iris.jar",
+      componentId: "iris", managed: true, disabled: false, active: true, forced: true,
+      version: "1.7.2", preset: "SYNC", group: "visuals", groupTitle: "光影与美化",
+      lockReason: "由可选内容“光影与美化”统一开关" },
     { key: "component:embeddium-options-api", displayName: "Embeddium Options API",
       path: "mods/embeddium-options-api.jar", componentId: "embeddium-options-api",
-      managed: false, disabled: false, active: true, forced: false },
+      managed: false, disabled: false, active: true, forced: false, version: "1.0.3" },
     { key: "component:xaerominimap", displayName: "Xaero's Minimap", path: "mods/xaeros-minimap.jar",
-      componentId: "xaerominimap", managed: false, disabled: false, active: true, forced: false },
+      componentId: "xaerominimap", managed: false, disabled: false, active: true, forced: false,
+      version: "24.2.0", withdrawnReason: "这个版本会导致进入主城时崩溃，请换用 24.3.0" },
   ];
 }
 
@@ -446,26 +507,56 @@ function mockFiles(): LocalFileEntry[] {
       policy: null, managedFileCount: 1 },
     { path: "config/dreamingfish/client.toml", displayName: "client.toml", directory: false,
       directlyExcluded: false, inheritedExclusion: "config/dreamingfish", partiallyExcluded: false,
-      present: true, forced: false, policy: "ENFORCED", managedFileCount: 0 },
+      present: true, forced: false, policy: "ENFORCED", managedFileCount: 0, preset: "SYNC" },
     { path: "config/voice.toml", displayName: "voice.toml", directory: false, directlyExcluded: false,
       inheritedExclusion: null, partiallyExcluded: false, present: true, forced: false,
-      policy: "ENFORCED", managedFileCount: 0 },
+      policy: "ENFORCED", managedFileCount: 0, preset: "DEFAULT_CONFIG", modified: true,
+      resetPending: false },
     { path: "mods", displayName: "mods", directory: true, directlyExcluded: false,
       inheritedExclusion: null, partiallyExcluded: false, present: true, forced: false,
       policy: null, managedFileCount: 2 },
     { path: "mods/dreamingfish-core.jar", displayName: "DreamingFish Core", directory: false,
       directlyExcluded: false, inheritedExclusion: null, partiallyExcluded: false, present: true,
-      forced: false, policy: "ENFORCED", managedFileCount: 0 },
-    { path: "mods/dreamingfish-world.jar", displayName: "DreamingFish World", directory: false,
+      forced: true, policy: "ENFORCED", managedFileCount: 0, componentId: "dreamingfish",
+      preset: "REQUIRED", lockReason: "服主设为强制同步，不能取消管理" },
+    { path: "mods/iris.jar", displayName: "Iris Shaders", directory: false,
       directlyExcluded: false, inheritedExclusion: null, partiallyExcluded: false, present: true,
-      forced: false, policy: "ENFORCED", managedFileCount: 0 },
-    { path: "defaultconfigs", displayName: "defaultconfigs", directory: true, directlyExcluded: false,
-      inheritedExclusion: null, partiallyExcluded: false, present: true, forced: true,
-      policy: null, managedFileCount: 1 },
-    { path: "defaultconfigs/server.toml", displayName: "server.toml", directory: false,
+      forced: true, policy: "ENFORCED", managedFileCount: 0, componentId: "iris",
+      preset: "SYNC", group: "visuals", lockReason: "由可选内容“光影与美化”统一开关" },
+    { path: "options.txt", displayName: "options.txt", directory: false,
       directlyExcluded: false, inheritedExclusion: null, partiallyExcluded: false, present: true,
-      forced: true, policy: "ENFORCED", managedFileCount: 0 },
+      forced: false, policy: "ENFORCED", managedFileCount: 0, preset: "INITIAL" },
   ];
+}
+
+function mockGroups(): OptionalGroupView[] {
+  return [
+    { id: "visuals", title: "光影与美化", description: "光影、粒子和动画效果，显卡较弱或内存小于 8G 建议关闭",
+      defaultInstall: true, enabled: true, explicit: false,
+      members: ["Iris Shaders", "Particle Rain", "Not Enough Animations"] },
+    { id: "minimap", title: "小地图", description: "右上角小地图与路径点", defaultInstall: false,
+      enabled: false, explicit: false, members: ["Xaero's Minimap"] },
+  ];
+}
+
+function mockArchives(): ArchiveDto[] {
+  return [{
+    id: "20260812-120840_r000012_preview",
+    legacy: false,
+    createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+    releaseId: "r000012",
+    displayVersion: "1.20.1-r12",
+    totalBytes: 2048 + 1_843_200,
+    files: [{
+      path: "config/dreamingfish/client.toml", reason: "REPLACED_MODIFIED",
+      reasonText: "这个文件由服主同步管理，你的修改已备份并恢复为服主版本",
+      detail: "", size: 2048, componentId: null, version: null, restoredAt: null,
+    }, {
+      path: "mods/xaeros-minimap-24.1.0.jar", reason: "WITHDRAWN",
+      reasonText: "服主撤回了这个版本", detail: "这个版本会导致进入主城时崩溃",
+      size: 1_843_200, componentId: "xaerominimap", version: "24.1.0", restoredAt: null,
+    }],
+  }];
 }
 
 function toggleMockFile(

@@ -1,5 +1,7 @@
 package cn.dreamingfish.updater.player;
 
+import cn.dreamingfish.updater.engine.ArchiveCatalog;
+import cn.dreamingfish.updater.engine.ArchiveReason;
 import cn.dreamingfish.updater.engine.CancellationToken;
 import cn.dreamingfish.updater.engine.GameUpdateLock;
 import cn.dreamingfish.updater.engine.LocalFileOverrides;
@@ -33,6 +35,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -42,7 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Headless-friendly orchestration shared by the JavaFX window and the Tauri sidecar. */
+/** Headless orchestration shared by the Tauri window and the Java sidecar. */
 public final class PlayerController {
     private static final String PLAYER_PROGRAM_UPDATE_MESSAGE = "正在更新玩家端程序";
     private static final int AUTO_CLOSE_SECONDS = 15;
@@ -75,6 +78,8 @@ public final class PlayerController {
     private Path lastArchiveDirectory;
     private LocalModManager localModManager;
     private LocalFileManager localFileManager;
+    private LocalOptionManager localOptionManager;
+    private ArchiveCatalog archiveCatalog;
     private volatile Branding releaseBranding;
     private volatile Branding presentationBranding;
     private ScheduledFuture<?> autoCloseTask;
@@ -82,11 +87,14 @@ public final class PlayerController {
     private record LocalSettingsSnapshot(
             long modRevision,
             long fileRevision,
+            long optionRevision,
+            Map<String, Boolean> groupChoices,
             LocalFileOverrides overrides
     ) {
         boolean sameRevision(LocalSettingsSnapshot other) {
             return other != null && modRevision == other.modRevision
-                    && fileRevision == other.fileRevision;
+                    && fileRevision == other.fileRevision
+                    && optionRevision == other.optionRevision;
         }
     }
 
@@ -222,6 +230,100 @@ public final class PlayerController {
         }
     }
 
+    /** Switches an optional group; {@code null} returns it to the published default. */
+    public void changeOptionalGroup(String groupId, Boolean enabled) {
+        keepWindowOpen();
+        try {
+            synchronized (localPreferenceLock) {
+                localOptionManager.setChoice(groupId, enabled);
+            }
+            log.info("可选内容", "已" + (enabled == null ? "恢复默认设置" : enabled ? "开启" : "关闭")
+                    + "可选内容：" + groupId);
+            refreshLocalManagementAsync();
+        } catch (IOException e) {
+            log.error("本地设置", "无法保存可选内容设置", e);
+            showFailure("无法保存可选内容设置", e);
+        }
+    }
+
+    /** Asks the next update to restore the published default configuration. */
+    public void requestDefaultReset(LocalFileEntry entry) {
+        keepWindowOpen();
+        if (!viewport.confirmDialog(DialogTone.WARNING, "恢复默认配置", "恢复“" + entry.displayName() + "”？",
+                "下次更新时会换回服主当前提供的默认配置，你现在的这份会先移入备份，"
+                        + "之后可以在“备份与恢复”里找到。",
+                "恢复默认", "取消")) {
+            return;
+        }
+        try {
+            synchronized (localPreferenceLock) {
+                localFileManager.requestReset(entry);
+            }
+            log.info("本地设置", "已请求恢复默认配置：" + entry.path());
+            refreshLocalManagementAsync();
+        } catch (IOException e) {
+            log.error("本地设置", "无法保存恢复默认请求", e);
+            showFailure("无法恢复默认配置", e);
+        }
+    }
+
+    public void refreshArchives() {
+        Thread.ofVirtual().name("player-archives").start(() -> {
+            try {
+                viewport.setArchives(archiveCatalog.list());
+            } catch (RuntimeException e) {
+                log.warn("备份与恢复", "无法读取备份列表：" + e.getMessage());
+            }
+        });
+    }
+
+    /** Puts one backed-up file back into the game after checking the next update would keep it. */
+    public void restoreArchivedFile(String archiveId, String originalPath) {
+        keepWindowOpen();
+        ArchiveCatalog.RestoreCheck check;
+        try (GameUpdateLock ignored = acquireGameUpdateLock()) {
+            synchronized (localPreferenceLock) {
+                ReleaseManifest installed = localModManager.loadInstalledManifest(binding.projectId());
+                LocalFileOverrides overrides = localSettingsSnapshot().overrides();
+                check = archiveCatalog.check(archiveId, originalPath, installed, overrides);
+                if (check.allowed()) archiveCatalog.restore(archiveId, originalPath, installed, overrides);
+            }
+        } catch (IOException | RuntimeException e) {
+            log.error("备份与恢复", "无法恢复备份文件", e);
+            showFailure("无法恢复备份文件", e);
+            return;
+        }
+        if (!check.allowed()) {
+            // Explained after the locks are released so the dialog never holds up an update.
+            viewport.confirmDialog(DialogTone.INFO, "无法恢复", "这个文件暂时不能恢复",
+                    check.reason(), "知道了", "关闭");
+            return;
+        }
+        log.info("备份与恢复", "已从备份恢复：" + originalPath);
+        refreshArchives();
+        refreshLocalManagementAsync();
+    }
+
+    public void deleteArchive(String archiveId) {
+        keepWindowOpen();
+        if (!viewport.confirmDialog(DialogTone.DANGER, "删除备份", "永久删除这份备份？",
+                "删除后无法找回其中的文件。确认不再需要后再删除。", "永久删除", "取消")) {
+            return;
+        }
+        try {
+            archiveCatalog.delete(archiveId);
+            log.info("备份与恢复", "已删除备份：" + archiveId);
+            refreshArchives();
+        } catch (IOException | RuntimeException e) {
+            log.error("备份与恢复", "无法删除备份", e);
+            showFailure("无法删除备份", e);
+        }
+    }
+
+    public void openArchive(String archiveId) {
+        archiveCatalog.find(archiveId).ifPresent(archive -> viewport.openArchiveDirectory(archive.directory()));
+    }
+
     public void openPlayerDirectory() {
         if (playerHome == null) return;
         viewport.openPlayerDirectory(playerHome);
@@ -259,9 +361,11 @@ public final class PlayerController {
         log = new PlayerLog(playerHome);
         log.setListener(viewport::appendLog);
         viewport.setLogs(log.readRecentLines(5000));
-        log.startSession(binding.projectId(), PlayerApplication.VERSION);
+        log.startSession(binding.projectId(), PlayerRuntime.VERSION);
         localModManager = new LocalModManager(arguments.instanceRoot(), playerHome);
-        localFileManager = new LocalFileManager(playerHome);
+        localFileManager = new LocalFileManager(arguments.instanceRoot(), playerHome);
+        localOptionManager = new LocalOptionManager(playerHome);
+        archiveCatalog = new ArchiveCatalog(arguments.instanceRoot(), playerHome);
         viewport.setPlayerIdentity(arguments.playerName());
         releaseBranding = loadInitialBranding();
         presentationBranding = presentationClient.loadCached(binding, playerHome);
@@ -285,7 +389,7 @@ public final class PlayerController {
                 UpdateRequest startupRequest = updateRequest(snapshot, cancellation);
                 PlayerProgramUpdateResult programResult = new PlayerProgramUpdater()
                         .checkAndInstall(startupRequest,
-                                PlayerApplication.BOOTSTRAP_AGENT_VERSION, null,
+                                PlayerRuntime.BOOTSTRAP_AGENT_VERSION, null,
                                 playerProgramProgress(progress));
                 if (programResult.outcome() == PlayerProgramUpdateOutcome.CHECK_UNAVAILABLE) {
                     log.warn("玩家端更新", "暂时无法检查玩家端程序版本，继续检查整合包内容");
@@ -314,13 +418,16 @@ public final class PlayerController {
                     boolean preferencesChanged;
                     try (GameUpdateLock gameLock = acquireGameUpdateLock()) {
                         synchronized (localPreferenceLock) {
-                            localModManager.reconcileDesiredState(result.release());
+                            localModManager.reconcileDesiredState(result.release(), snapshot.groupChoices());
+                            localFileManager.clearResetRequests(pass.resetPaths().stream()
+                                    .map(path -> path.toString().replace('\\', '/')).toList());
                             LocalSettingsSnapshot latest = localSettingsSnapshot();
                             preferencesChanged = !snapshot.sameRevision(latest);
                             if (preferencesChanged) {
                                 snapshot = latest;
                             } else {
-                                localModManager.finalizeSuccessfulUpdate();
+                                localModManager.finalizeSuccessfulUpdate(result.release());
+                                result = mergeStoredArchives(result);
                                 permitClient.allow(gameLock::close);
                                 launchPermitted = true;
                             }
@@ -333,13 +440,23 @@ public final class PlayerController {
                 log.info("启动许可", "已允许 Minecraft 启动 · 整合包发布 "
                         + result.release().releaseId());
                 if (!result.archivedFiles().isEmpty()) {
-                    log.info("强制同步", "管理端要求以下目录保持一致："
-                            + String.join("、", result.release().forcedSyncDirectories()));
-                    log.info("强制同步", "已将 " + result.archivedFiles().size()
+                    log.info("备份与恢复", "已将 " + result.archivedFiles().size()
                             + " 个本地文件移入备份：" + result.archiveDirectory());
-                    result.archivedFiles().forEach(path ->
-                            log.info("强制同步", "已备份本地文件：" + path));
+                    if (result.archived().isEmpty()) {
+                        result.archivedFiles().forEach(path ->
+                                log.info("备份与恢复", "已备份本地文件：" + path));
+                    }
+                    result.archived().forEach(file -> log.info("备份与恢复", file.originalPath()
+                            + "：" + file.reason().description()
+                            + (file.detail().isBlank() || file.reason() == ArchiveReason.CLEANUP
+                            || file.reason() == ArchiveReason.DUPLICATE ? "" : "（" + file.detail() + "）")));
                 }
+                result.keptModifiedPaths().forEach(path -> log.info("默认配置",
+                        "服主更新了默认配置，你修改过的版本已保留：" + path));
+                result.skippedSelfManagedPaths().forEach(path -> log.info("自行管理",
+                        "服主提供了新版本，你自行管理的文件未被更新：" + path));
+                result.resetPaths().forEach(path -> log.info("默认配置",
+                        "已恢复默认配置：" + path));
                 if (!result.releasedPaths().isEmpty()) {
                     log.info("文件管理", "管理端已放弃管理 "
                             + result.releasedPaths().size() + " 个文件，并保留玩家本地副本");
@@ -352,6 +469,9 @@ public final class PlayerController {
                     List<LocalFileEntry> files = localFileManager.scan(completedResult.release());
                     viewport.setLocalMods(mods);
                     viewport.setLocalFiles(files);
+                    viewport.setOptionalGroups(localOptionManager.view(completedResult.release(),
+                            localOptionManager.snapshot().choices()));
+                    viewport.setArchives(archiveCatalog.list());
                 }, error -> log.warn("本地设置",
                         "Minecraft 获得启动许可后无法刷新本地管理界面：" + error));
                 releaseBranding = completedResult.release().branding();
@@ -383,7 +503,9 @@ public final class PlayerController {
         try (GameUpdateLock gameLock = acquireGameUpdateLock()) {
             synchronized (localPreferenceLock) {
                 var installed = localModManager.loadInstalledManifest(binding.projectId());
-                localModManager.reconcileDesiredState(installed);
+                LocalSettingsSnapshot current = localSettingsSnapshot();
+                // Local JSON is only a planning hint; owner actions run after engine signature verification.
+                localModManager.reconcileDesiredState(installed, current.groupChoices(), false);
                 return localSettingsSnapshot();
             }
         }
@@ -392,8 +514,10 @@ public final class PlayerController {
     private LocalSettingsSnapshot localSettingsSnapshot() throws IOException {
         LocalModManager.Snapshot mods = localModManager.snapshot();
         LocalFileManager.Snapshot files = localFileManager.snapshot();
-        return new LocalSettingsSnapshot(mods.revision(), files.revision(),
-                mods.overrides().merge(files.overrides()));
+        LocalOptionManager.Snapshot options = localOptionManager.snapshot();
+        return new LocalSettingsSnapshot(mods.revision(), files.revision(), options.revision(),
+                options.choices(),
+                mods.overrides().merge(files.overrides()).withGroupChoices(options.choices()));
     }
 
     private GameUpdateLock acquireGameUpdateLock() {
@@ -409,10 +533,7 @@ public final class PlayerController {
     private UpdateRequest updateRequest(LocalSettingsSnapshot snapshot,
                                         CancellationToken cancellation) {
         return new UpdateRequest(arguments.instanceRoot(), playerHome, binding,
-                PlayerApplication.VERSION, Set.of(
-                ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC,
-                ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC,
-                ProtocolConstants.CAPABILITY_RELEASED_PATHS),
+                PlayerRuntime.VERSION, ProtocolConstants.RELEASE_CAPABILITIES,
                 null, null, null, cancellation, snapshot.overrides());
     }
 
@@ -422,19 +543,40 @@ public final class PlayerController {
         List<Path> deleted = combinePaths(previous.deletedPaths(), current.deletedPaths());
         List<Path> archived = combinePaths(previous.archivedFiles(), current.archivedFiles());
         List<Path> released = combinePaths(previous.releasedPaths(), current.releasedPaths());
+        List<cn.dreamingfish.updater.engine.ArchivedFile> archivedEntries = new java.util.ArrayList<>(
+                previous.archived());
+        archivedEntries.addAll(current.archived());
         return new UpdateResult(
                 current.outcome(), current.release(), installed.size(), deleted.size(),
                 previous.downloadedBytes() + current.downloadedBytes(),
                 current.unmanagedMods(), archived,
                 current.archiveDirectory() != null
                         ? current.archiveDirectory() : previous.archiveDirectory(),
-                installed, deleted, released);
+                installed, deleted, released, archivedEntries,
+                current.keptModifiedPaths(), current.skippedSelfManagedPaths(),
+                combinePaths(previous.resetPaths(), current.resetPaths()));
     }
 
     private static List<Path> combinePaths(List<Path> first, List<Path> second) {
         java.util.LinkedHashSet<Path> paths = new java.util.LinkedHashSet<>(first);
         paths.addAll(second);
         return List.copyOf(paths);
+    }
+
+    private UpdateResult mergeStoredArchives(UpdateResult result) {
+        List<LocalModManager.StoredArchive> stored = localModManager.drainStoredArchives();
+        if (stored.isEmpty()) return result;
+        List<Path> paths = new java.util.ArrayList<>(result.archivedFiles());
+        List<cn.dreamingfish.updater.engine.ArchivedFile> files = new java.util.ArrayList<>(result.archived());
+        for (var archive : stored) {
+            files.addAll(archive.files());
+            archive.files().forEach(file -> paths.add(Path.of(file.originalPath())));
+        }
+        return new UpdateResult(result.outcome(), result.release(), result.installedFiles(), result.deletedFiles(),
+                result.downloadedBytes(), result.unmanagedMods(), paths,
+                result.archiveDirectory() == null ? stored.getLast().directory() : result.archiveDirectory(),
+                result.installedPaths(), result.deletedPaths(), result.releasedPaths(), files,
+                result.keptModifiedPaths(), result.skippedSelfManagedPaths(), result.resetPaths());
     }
 
     private void refreshLocalManagementAsync() {
@@ -446,6 +588,9 @@ public final class PlayerController {
                 List<LocalFileEntry> files = localFileManager.scan(release);
                 viewport.setLocalMods(mods);
                 viewport.setLocalFiles(files);
+                viewport.setOptionalGroups(localOptionManager.view(release,
+                        localOptionManager.snapshot().choices()));
+                viewport.setArchives(archiveCatalog.list());
             } catch (IOException e) {
                 log.error("本地设置", "无法扫描本地文件和模组设置", e);
             }
@@ -554,7 +699,7 @@ public final class PlayerController {
     }
 
     private boolean handleUnverifiedOfflineLaunch(Exception failure) {
-        if (!PlayerApplication.allowsUnverifiedOfflineLaunch(failure)) return false;
+        if (!PlayerRuntime.allowsUnverifiedOfflineLaunch(failure)) return false;
         try (GameUpdateLock gameLock = acquireGameUpdateLock()) {
             permitClient.allow(gameLock::close);
             launchPermitted = true;
@@ -573,7 +718,7 @@ public final class PlayerController {
         String detail = error.getMessage() == null || error.getMessage().isBlank()
                 ? "请查看日志后重试"
                 : error.getMessage();
-        viewport.showError(title, detail, PlayerApplication.allowsLocalContentOverride(error));
+        viewport.showError(title, detail, PlayerRuntime.allowsLocalContentOverride(error));
     }
 
     private void showInitializationFailure(Exception error) {

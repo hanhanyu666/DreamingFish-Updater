@@ -58,10 +58,14 @@ class StaticDistributionServiceTest {
         assertEquals(0, first.reusedObjectCount());
         assertTrue(Files.isRegularFile(output.resolve("v1/projects/demo/latest")));
         assertTrue(Files.isRegularFile(output.resolve("v1/projects/demo/latest.sig")));
+        assertTrue(Files.isRegularFile(output.resolve("v1/projects/demo/latest.signed")));
+        assertTrue(Files.isRegularFile(output.resolve("v1/projects/demo/presentation.signed")));
         assertTrue(Files.isRegularFile(output.resolve(
                 "v1/projects/demo/releases/" + release.releaseId() + "/manifest")));
         assertTrue(Files.isRegularFile(output.resolve(
                 "v1/projects/demo/player/windows-x64/latest.sig")));
+        assertTrue(Files.isRegularFile(output.resolve(
+                "v1/projects/demo/player/windows-x64/latest.signed")));
         assertTrue(Files.isRegularFile(output.resolve("healthz")));
         assertFalse(Files.exists(output.resolve("keys")));
 
@@ -114,11 +118,52 @@ class StaticDistributionServiceTest {
                     project.id(), server.baseUrl(), project.publicKey(),
                     "DreamingFishUpdater", null, project.branding());
             var result = new UpdateEngine().update(UpdateRequest.defaults(
-                    instance, playerHome, binding, "0.1.0", Set.of()), null);
+                    instance, playerHome, binding, "0.2.0", ManagementFixture.PLAYER_CAPABILITIES), null);
 
             assertEquals(UpdateOutcome.UPDATED, result.outcome());
             assertEquals("static-content",
                     Files.readString(instance.resolve("mods/static.jar")));
+            Files.delete(output.resolve("v1/projects/demo/latest.signed"));
+            assertEquals(UpdateOutcome.UP_TO_DATE, new UpdateEngine().update(UpdateRequest.defaults(
+                    instance, playerHome, binding, "0.2.0", ManagementFixture.PLAYER_CAPABILITIES), null).outcome());
+        }
+    }
+
+    @Test
+    void atomicStaticPayloadSurvivesMixedLegacyPointersAndRejectsTampering() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary.resolve("atomic-management"));
+        ProjectRecord project = fixture.createProject();
+        Path managed = fixture.source.resolve("mods/static.jar");
+        Files.createDirectories(managed.getParent());
+        Files.writeString(managed, "old content");
+        fixture.scanner.createPreview("demo");
+        StoredRelease first = fixture.publisher.publish("demo", "1.0.0", "0.1.0", "first");
+        byte[] oldPayload = Files.readAllBytes(first.manifestPath());
+        Path instance = Files.createDirectories(temporary.resolve("atomic-instance"));
+        Path home = Files.createDirectories(instance.resolve("DreamingFishUpdater"));
+        new BundledReleasePreparer(fixture.paths, fixture.database, fixture.json)
+                .prepare("demo", first.releaseId(), instance, home);
+        Files.writeString(managed, "new content");
+        fixture.scanner.createPreview("demo");
+        fixture.publisher.publish("demo", "2.0.0", "0.1.0", "second");
+        Path output = temporary.resolve("atomic-static");
+        new StaticDistributionService(fixture.paths, fixture.database, fixture.json).exportProject("demo", output);
+        // Mimic an old cached latest payload and a new latest.sig.
+        Files.write(output.resolve("v1/projects/demo/latest"), oldPayload);
+        try (StaticTestServer server = new StaticTestServer(output)) {
+            ProjectBinding binding = new ProjectBinding(ProtocolConstants.BINDING_SCHEMA_VERSION,
+                    "demo", server.baseUrl(), project.publicKey(), "DreamingFishUpdater", null, project.branding());
+            UpdateRequest request = UpdateRequest.defaults(instance, home, binding, "0.2.0", ManagementFixture.PLAYER_CAPABILITIES);
+            var result = new UpdateEngine().update(request, null);
+            assertEquals(2, result.release().sequence());
+            assertEquals("new content", Files.readString(instance.resolve("mods/static.jar")));
+            Path signed = output.resolve("v1/projects/demo/latest.signed");
+            byte[] corrupted = Files.readAllBytes(signed);
+            corrupted[corrupted.length - 2] ^= 1;
+            Files.write(signed, corrupted);
+            var error = assertThrows(cn.dreamingfish.updater.engine.UpdateException.class,
+                    () -> new UpdateEngine().update(request, null));
+            assertEquals(cn.dreamingfish.updater.engine.UpdateErrorCode.INVALID_SIGNATURE, error.code());
         }
     }
 

@@ -3,6 +3,9 @@
 /.tools/
 /dist/
 /deployments/
+/data/
+/management-settings.json
+/management-web-auth.json
 /**/target/
 /.idea/
 /.vscode/
@@ -10,3 +13,10 @@
 *.log
 *.tmp
 *.part
+/.claude/
+/docs/deployments/
+/promo-film-v2/
+/promo-film-v3/
+/tmp_move_step5.ps1
+__pycache__/
+*.pyc

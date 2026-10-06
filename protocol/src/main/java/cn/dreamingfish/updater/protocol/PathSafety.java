@@ -78,18 +78,28 @@ public final class PathSafety {
         if (!candidate.startsWith(absoluteRoot)) {
             throw new ProtocolException("Path escapes the instance directory: " + manifestPath);
         }
-        assertNoSymbolicLinkTraversal(absoluteRoot, candidate);
+        assertSafePathTree(candidate);
         return candidate;
     }
 
-    private static void assertNoSymbolicLinkTraversal(Path root, Path candidate) throws IOException {
-        Path current = root;
-        Path relative = root.relativize(candidate);
-        for (Path segment : relative) {
+    /** Rejects symbolic links and directory aliases, including Windows junctions. */
+    public static void assertSafePathTree(Path path) throws IOException {
+        Path absolute = path.toAbsolutePath().normalize();
+        Path current = absolute.getRoot();
+        for (Path segment : absolute) {
             current = current.resolve(segment);
-            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
-                throw new ProtocolException("Path traverses a symbolic link: " + current);
+            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(current)
+                        || !current.toRealPath(LinkOption.NOFOLLOW_LINKS).equals(current.toRealPath())) {
+                    throw new ProtocolException("Path traverses a symbolic link or directory alias: " + current);
+                }
             }
         }
+    }
+
+    public static void createSafeDirectories(Path directory) throws IOException {
+        assertSafePathTree(directory);
+        Files.createDirectories(directory);
+        assertSafePathTree(directory);
     }
 }

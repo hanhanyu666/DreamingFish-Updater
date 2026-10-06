@@ -1,0 +1,7 @@
+{
+  "arguments": {
+    "jvm": [
+      "-javaagent:${game_directory}/.dreamingfish-bootstrap/bootstrap-agent.jar"
+    ]
+  }
+}

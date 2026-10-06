@@ -46,7 +46,8 @@ final class ProjectFilesCommand implements Runnable {
         }
         if (removePath != null) {
             if (action == null) {
-                throw new ManagementException("--action DELETE or RELEASE is required with --remove");
+                throw new ManagementException(
+                        "--action DELETE (persistent removal with backup) or RELEASE (leave with player) is required with --remove");
             }
             Confirmations.require(root, yes,
                     "Remove " + removePath + " from the source and apply " + action + "?");
@@ -60,11 +61,11 @@ final class ProjectFilesCommand implements Runnable {
             return;
         }
         root.out().println("Managed source files: " + files.size());
-        files.forEach(file -> root.out().printf("  %-12s %10s  %s%n",
-                file.forcedByDirectory() ? "DIR-FORCED"
-                        : file.forcedByFile() ? "FILE-FORCED"
-                        : file.policy().name(),
-                HumanSize.format(file.size()), file.path()));
+        files.forEach(file -> root.out().printf("  %-8s %10s  %s%s%s%n",
+                PolicyText.preset(file.preset().name()),
+                HumanSize.format(file.size()), file.path(),
+                file.optionalGroup() == null ? "" : "  [可选：" + file.optionalGroup() + "]",
+                file.published() ? "" : "  （未发布）"));
     }
 
     private static void printMutation(

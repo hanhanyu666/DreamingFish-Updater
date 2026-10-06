@@ -1,6 +1,6 @@
 # 玩家端示例配置
 
-`dreamhaven-player-pages.json` 是可以直接导入管理端“玩家端个性化内容”的页面配置。
+`server-player-pages.json` 是可以直接导入管理端“玩家端个性化内容”的页面配置。
 
 导入后请依次完成：
 

@@ -10,6 +10,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class PathSafetyTest {
     @TempDir
@@ -50,5 +52,29 @@ class PathSafetyTest {
         }
 
         assertThrows(ProtocolException.class, () -> PathSafety.resolveInside(root, "linked/file.txt"));
+        assertThrows(ProtocolException.class, () -> PathSafety.resolveInside(link, "file.txt"));
+    }
+
+    @Test
+    void rejectsWindowsJunctionsAsBothAncestorsAndRoots() throws Exception {
+        assumeTrue(System.getProperty("os.name").toLowerCase().contains("win"));
+        Path root = Files.createDirectory(tempDirectory.resolve("junction-root"));
+        Path outside = Files.createDirectory(tempDirectory.resolve("junction-outside"));
+        Path link = root.resolve("mods");
+        String command = "New-Item -ItemType Junction -Path '" + link.toString().replace("'", "''")
+                + "' -Target '" + outside.toString().replace("'", "''") + "' | Out-Null";
+        Process process = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command)
+                .redirectErrorStream(true).start();
+        String output = new String(process.getInputStream().readAllBytes());
+        assertEquals(0, process.waitFor(), output);
+        try {
+            assertFalse(Files.isSymbolicLink(link));
+            assertThrows(ProtocolException.class, () -> PathSafety.resolveInside(root, "mods/new/file.jar"));
+            assertThrows(ProtocolException.class, () -> PathSafety.resolveInside(link, "file.jar"));
+            assertThrows(ProtocolException.class, () -> PathSafety.createSafeDirectories(link.resolve("new")));
+            assertFalse(Files.exists(outside.resolve("new")));
+        } finally {
+            Files.delete(link);
+        }
     }
 }

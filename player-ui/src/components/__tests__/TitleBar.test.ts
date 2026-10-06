@@ -32,7 +32,6 @@ describe("custom title bar dragging", () => {
   it("renders both configured title-bar brand names", () => {
     expect(titleBarSource).toContain("store.state.branding.brandName");
     expect(titleBarSource).toContain("store.state.branding.brandEnglishName");
-    expect(titleBarSource).not.toContain(">梦鱼服</span>");
   });
 
   it("truncates long brand names without pushing the navigation", () => {

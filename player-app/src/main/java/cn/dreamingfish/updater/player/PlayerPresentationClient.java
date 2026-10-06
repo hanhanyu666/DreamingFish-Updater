@@ -2,6 +2,7 @@ package cn.dreamingfish.updater.player;
 
 import cn.dreamingfish.updater.engine.UpdateRequest;
 import cn.dreamingfish.updater.engine.SignedPayloadSupport;
+import cn.dreamingfish.updater.engine.HttpTransfer;
 import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.JsonCodec;
@@ -51,8 +52,8 @@ final class PlayerPresentationClient {
         }
 
         try {
-            HttpResponse<InputStream> response = request.httpClient().send(
-                    builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = HttpTransfer.send(request.httpClient(), builder.build(),
+                    REQUEST_TIMEOUT, request.cancellationToken());
             try (InputStream input = response.body()) {
                 if (response.statusCode() == 304 && cached != null) {
                     return cached.presentation().branding();
@@ -62,10 +63,10 @@ final class PlayerPresentationClient {
                             + response.statusCode());
                 }
                 byte[] payload = readLimited(input);
-                String signature = SignedPayloadSupport.resolveSignature(
-                                request.httpClient(), response, endpoint, REQUEST_TIMEOUT)
-                        .orElseThrow(() -> new IOException(
-                                "Player presentation response is not signed"));
+                var document = SignedPayloadSupport.resolvePayload(request.httpClient(), response, endpoint,
+                        REQUEST_TIMEOUT, request.cancellationToken(), payload, MAX_PRESENTATION_BYTES);
+                payload = document.payload();
+                String signature = document.signature();
                 PlayerPresentation presentation = verifyAndDecode(
                         binding, payload, signature);
                 try {
@@ -78,6 +79,9 @@ final class PlayerPresentationClient {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Player presentation request was interrupted", e);
+        } catch (cn.dreamingfish.updater.engine.UpdateException e) {
+            if (e.code() == cn.dreamingfish.updater.engine.UpdateErrorCode.CANCELLED) throw e;
+            throw new IOException("Player presentation could not be verified", e);
         }
     }
 

@@ -1,7 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick } from "vue";
+import { getBridge } from "../../lib/bridge";
+import type { SidecarCommand } from "../../lib/types";
 import DetailsDrawer from "../DetailsDrawer.vue";
 import {
+  handleSidecarMessage,
   hideDrawer,
   openDrawer,
   setDrawerExpanded,
@@ -21,7 +24,71 @@ describe("DetailsDrawer local file management", () => {
     hideDrawer();
     setDrawerExpanded(false);
     setLogs([]);
+    handleSidecarMessage({ type: "groups", groups: [] });
+    handleSidecarMessage({ type: "archives", archives: [] });
     showLocalMode("FILES");
+    vi.restoreAllMocks();
+  });
+
+  function mount(): HTMLDivElement {
+    root = document.createElement("div");
+    document.body.append(root);
+    mountedApp = createApp(DetailsDrawer);
+    mountedApp.mount(root);
+    return root;
+  }
+
+  function captureCommands(): SidecarCommand[] {
+    const sent: SidecarCommand[] = [];
+    vi.spyOn(getBridge(), "sendCommand").mockImplementation((command) => { sent.push(command); });
+    return sent;
+  }
+
+  it("offers optional content first and switches a group", async () => {
+    const sent = captureCommands();
+    handleSidecarMessage({ type: "groups", groups: [{
+      id: "visuals", title: "光影与美化", description: "显卡较弱建议关闭", defaultInstall: true,
+      enabled: true, explicit: false, members: ["Iris Shaders"],
+    }] });
+    openDrawer("FILES");
+    showLocalMode("OPTIONS");
+    const element = mount();
+    await nextTick();
+
+    expect(element.querySelectorAll('[role="tab"]')).toHaveLength(3);
+    expect(element.querySelector("#local-option-panel")).not.toBeNull();
+    expect(element.querySelector(".optional-state")?.textContent).toContain("跟随服主默认");
+    expect(element.querySelector(".optional-member")?.textContent).toBe("Iris Shaders");
+    const toggle = element.querySelector<HTMLInputElement>(".optional-switch input");
+    if (toggle == null) throw new Error("group switch was not rendered");
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event("change"));
+    expect(sent).toContainEqual({ command: "toggle-group", groupId: "visuals", enabled: false });
+  });
+
+  it("lists backups with their reasons and puts a file back", async () => {
+    const sent = captureCommands();
+    openDrawer("BACKUPS");
+    handleSidecarMessage({ type: "archives", archives: [{
+      id: "a1", legacy: false, createdAt: "2026-10-02T08:00:00Z", releaseId: "r2",
+      displayVersion: "1.1", totalBytes: 2048, files: [{
+        path: "mods/old.jar", reason: "WITHDRAWN", reasonText: "服主撤回了这个版本",
+        detail: "进入主城会崩溃", size: 2048, componentId: "old", version: "1.0",
+        restoredAt: null,
+      }],
+    }] });
+    const element = mount();
+    await nextTick();
+
+    expect(sent).toContainEqual({ command: "archives" });
+    expect(element.querySelector(".drawer-tab.selected")?.textContent?.trim()).toBe("备份与恢复");
+    expect(element.querySelector(".backup-heading strong")?.textContent).toBe("更新到版本 1.1 时");
+    const reason = element.querySelector(".backup-file-reason")?.textContent ?? "";
+    expect(reason).toContain("服主撤回了这个版本");
+    expect(reason).toContain("版本 1.0");
+    expect(reason).toContain("进入主城会崩溃");
+    element.querySelector<HTMLButtonElement>(".backup-file .backup-action")?.click();
+    expect(sent).toContainEqual({ command: "restore-archive", archiveId: "a1", path: "mods/old.jar" });
   });
 
   it("explains both local management modes and switches their panels", async () => {

@@ -17,9 +17,9 @@ final class CliOutput {
             root.out().printf("%s  %s%n", project.id(), project.displayName());
             root.out().println("  Source: " + project.sourceDirectory());
             root.out().println("  Public URL: " + project.publicBaseUrl());
-            root.out().println("  Forced sync: " + (project.rules().forcedSyncDirectories().isEmpty()
+            root.out().println("  Forced sync: " + (project.rules().lockedCleanupDirectories().isEmpty()
                     ? "disabled"
-                    : String.join(", ", project.rules().forcedSyncDirectories())));
+                    : String.join(", ", project.rules().lockedCleanupDirectories())));
             root.out().println("  Next sequence: " + project.nextSequence());
             root.out().println("  Public key: " + project.publicKey());
         }

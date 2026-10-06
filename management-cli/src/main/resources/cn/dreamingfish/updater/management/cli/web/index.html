@@ -13,6 +13,7 @@
     }
   </script>
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/workspace.css">
 </head>
 <body>
   <section class="auth-screen" id="auth-screen" aria-live="polite">
@@ -49,14 +50,17 @@
       </div>
 
       <nav class="navigation" aria-label="管理功能">
+        <span class="nav-heading">日常维护</span>
         <button class="nav-button active" data-view="dashboard"><span>⌂</span>概览</button>
+        <button class="nav-button requires-project" data-view="content"><span>▤</span>管理内容</button>
+        <button class="nav-button requires-project" data-view="publish"><span>↑</span>检查并发布<small class="nav-badge" id="publish-nav-badge" hidden></small></button>
         <button class="nav-button requires-project" data-view="project"><span>◫</span>项目设置</button>
         <button class="nav-button requires-project" data-view="personalization"><span>✦</span>玩家端个性化</button>
-        <button class="nav-button requires-project" data-view="publish"><span>↑</span>管理文件</button>
+        <span class="nav-heading">发放与部署</span>
         <button class="nav-button requires-project" data-view="player"><span>▣</span>玩家端程序</button>
         <button class="nav-button requires-project" data-view="distribution"><span>⇄</span>外部托管</button>
         <button class="nav-button requires-project" data-view="instance"><span>◇</span>玩家实例</button>
-        <button class="nav-button" data-view="settings"><span>⚙</span>服务设置</button>
+        <span class="nav-heading">系统</span><button class="nav-button" data-view="settings"><span>⚙</span>系统设置</button>
       </nav>
 
       <div class="sidebar-account">
@@ -86,6 +90,7 @@
         <div>
           <div class="page-kicker">MANAGEMENT CONSOLE</div>
           <h1 id="page-title">运行概览</h1>
+          <span class="workspace-status" id="workspace-status" aria-live="polite"></span>
         </div>
         <div class="topbar-actions">
           <button class="icon-button theme-toggle" id="theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式">☀</button>
@@ -98,7 +103,9 @@
       </header>
 
       <main class="content">
+        <div class="transfer-running" id="transfer-running" hidden><span id="transfer-running-label"></span><button class="table-button" id="show-transfer-task">查看文件任务</button></div>
         <section class="view active" id="view-dashboard">
+          <section class="panel next-action-panel" id="dashboard-next"></section>
           <div class="service-band">
             <div class="service-state">
               <span class="service-indicator" id="service-indicator"></span>
@@ -185,20 +192,16 @@
               </label>
               <label class="field span-2">
                 <span>玩家端更新器访问地址（必填）</span>
-                <input name="publicBaseUrl" type="url" placeholder="例如 http://您的公网IP或域名:公网端口" required>
+                <div class="path-input-row"><input name="publicBaseUrl" type="url" placeholder="例如 https://update.example.com" required><button class="secondary-button" id="check-project-address" type="button">检测地址</button></div><output id="address-check-result" class="field-help" aria-live="polite"></output>
                 <small class="field-help">填写玩家电脑上的更新器实际访问的地址。请先确认公网端口已映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
               </label>
-              <label class="field sync-warning-field span-2">
-                <span>强制同步一级目录（谨慎启用）</span>
-                <input name="forcedSyncDirectories" placeholder="mods, config">
-                <small class="field-help">启用后，整个一级目录会与服务器保持一致：玩家额外添加的文件会被归档移出，而且目录内文件不能被豁免。可以先不填，之后在“管理文件”中随时设置。</small>
-              </label>
+              <p class="notice-line span-2">文件的维护方式、可选内容和问题处理都在“管理内容”页面中设置。</p>
             </div>
           </form>
         </section>
 
         <section class="view" id="view-personalization">
-          <div class="personalization-layout">
+          <div class="personalization-tools"><div class="tab-bar" role="tablist" aria-label="个性化设置类别"><button type="button" role="tab" data-personal-tab="brand" aria-selected="true">标题与品牌</button><button type="button" role="tab" data-personal-tab="appearance" aria-selected="false">外观</button><button type="button" role="tab" data-personal-tab="music" aria-selected="false">音乐</button><button type="button" role="tab" data-personal-tab="pages" aria-selected="false">公告与页面</button></div><button class="secondary-button" id="toggle-player-preview" type="button" aria-pressed="false">查看预览</button></div><div class="personalization-layout">
             <form class="panel form-panel personalization-form" id="personalization-form">
               <div class="panel-header">
                 <div>
@@ -209,7 +212,7 @@
               </div>
               <p class="panel-help"><strong>这里修改的是玩家看到的更新器界面。</strong>标题、配色、公告和自定义页面保存后，玩家下次启动会自动获取，不用扫描或发布整合包；断网时会继续使用上次验证成功的内容。背景图片和音乐属于文件资源，仍要扫描并发布一次。</p>
               <div class="personalization-fields">
-                <section class="personalization-block">
+                <section class="personalization-block" data-personal-pane="brand">
                   <div class="form-section-heading">
                     <strong>窗口品牌</strong>
                     <small>设置玩家端左上角品牌，以及首页最醒目的欢迎文字和标题。</small>
@@ -248,7 +251,7 @@
                   </div>
                 </section>
 
-                <section class="personalization-block">
+                <section class="personalization-block" data-personal-pane="appearance">
                   <div class="form-section-heading">
                     <div class="form-section-heading-row">
                       <strong>外观与背景</strong>
@@ -307,7 +310,7 @@
                         <button class="secondary-button" id="import-cover-server" type="button">导入背景图</button>
                       </div>
                     </div>
-                    <small class="field-help span-2">支持 PNG、JPEG、GIF、BMP 和 WebP，最大 32 MiB。背景图片属于文件资源，修改后还要到“管理文件”扫描并创建一次发布。</small>
+                    <small class="field-help span-2">支持 PNG、JPEG、GIF、BMP 和 WebP，最大 32 MiB。背景图片属于文件资源，修改后还要到“检查并发布”检查内容并发布。</small>
                     <label class="check-field span-2">
                       <input name="removeCover" type="checkbox">
                       <span>移除当前背景，恢复玩家端内置默认背景</span>
@@ -316,7 +319,7 @@
                   </div>
                 </section>
 
-                <section class="personalization-block">
+                <section class="personalization-block" data-personal-pane="music">
                   <div class="form-section-heading">
                     <strong>玩家端音乐</strong>
                     <small>可添加多首 MP3，玩家可以在播放器里选择歌曲。单首不超过 20 MiB。</small>
@@ -342,7 +345,7 @@
                         <button class="secondary-button" id="import-music-server" type="button">导入 MP3</button>
                       </div>
                     </div>
-                    <small class="field-help span-2">音乐属于文件资源，添加或删除后还要到“管理文件”扫描并创建一次发布，玩家更新时才会下载。</small>
+                    <small class="field-help span-2">音乐属于文件资源，添加或删除后还要到“检查并发布”检查内容并发布，玩家更新时才会下载。</small>
                     <div class="music-management span-2" id="music-management">
                       <div class="empty-state visible" id="music-empty">还没有上传音乐</div>
                       <div class="music-track-list" id="music-track-list"></div>
@@ -350,7 +353,7 @@
                   </div>
                 </section>
 
-                <section class="personalization-block player-pages-block">
+                <section class="personalization-block player-pages-block" data-personal-pane="pages">
                   <div class="form-section-heading personalization-section-toolbar player-pages-toolbar">
                     <div>
                       <strong>玩家端页面</strong>
@@ -394,167 +397,144 @@
                   sandbox="allow-scripts allow-same-origin"
                 ></iframe>
               </div>
-              <p class="player-preview-note">这里加载的就是玩家端本地使用的 Vue 界面、字体和样式，只按比例缩小显示。预览不会连接更新服务或修改玩家文件；文字、配色和页面保存后会在玩家下次启动时自动获取。</p>
+              <p class="player-preview-note">保存后，玩家下次在线启动时会获取新的文字、配色和页面内容。</p>
             </section>
           </div>
         </section>
 
+        <section class="view" id="view-content">
+          <details class="maintenance-help"><summary>维护方式说明 · 普通同步 / 强制同步 / 首次提供</summary>
+            <div class="preset-guide"><div class="preset-card preset-sync"><strong>普通同步</strong><span>跟随服主更新，玩家可以停用或自行管理。</span></div><div class="preset-card preset-required"><strong>强制同步</strong><span>与服主保持一致；强制文件夹还会移出额外文件。</span></div><div class="preset-card preset-initial"><strong>首次提供</strong><span>仅在没有时提供一份，之后由玩家管理。</span></div></div>
+          </details>
+          <section class="panel file-workspace" id="file-panel">
+            <div class="panel-header source-file-header"><div><h2>整合包文件</h2><span id="source-file-count"></span></div>
+              <div class="button-row"><input class="table-search" id="source-file-search" type="search" aria-label="搜索全部文件或模组" placeholder="搜索全部文件或模组">
+                <select class="table-filter" id="content-filter" aria-label="筛选文件"><option value="all">全部文件</option><option value="pending">待发布改动</option><option value="REQUIRED">强制同步</option><option value="INITIAL">首次提供</option><option value="optional">可选内容</option><option value="custom">单独设置过的</option><option value="unpublished">尚未发布</option></select>
+                <button class="secondary-button" id="reload-source-files" type="button">刷新</button><button class="primary-button" id="open-source-add" type="button">添加文件</button></div>
+            </div>
+            <div class="file-workspace-layout">
+              <aside class="directory-panel"><div class="directory-heading"><strong>文件夹</strong><button class="table-button" id="open-import-history" type="button">导入记录</button></div><div id="source-directory-tree" aria-label="整合包目录"></div></aside>
+              <div class="file-workspace-main">
+                <div class="directory-context"><button class="secondary-button directory-toggle" id="toggle-directory-panel" type="button" aria-expanded="false">选择文件夹</button><nav class="file-breadcrumbs" id="file-breadcrumbs" aria-label="当前文件夹"></nav><div id="folder-preset"></div></div>
+                <p class="workspace-help" id="folder-context">这里是服务器上要管理的文件目录；保存后需要检查并发布，玩家才会收到改动。</p>
+                <div class="source-file-summary content-summary compact-summary"><div><span>文件</span><strong id="source-managed-count">--</strong></div><div><span>总大小</span><strong id="source-total-size">--</strong></div><div><span>强制同步</span><strong id="summary-required">--</strong></div><div><span>首次提供</span><strong id="summary-soft">--</strong></div><div><span>可选内容</span><strong id="summary-optional">--</strong></div></div>
+                <div class="selection-toolbar content-selection-toolbar" id="source-selection-toolbar" hidden><span class="selection-check">当前范围</span><span id="source-file-selection-count">未选择文件</span><div class="selection-actions"><select id="selection-preset" aria-label="把所选文件设为" disabled><option value="">把所选设为…</option><option value="REQUIRED">强制同步</option><option value="SYNC">普通同步</option><option value="INITIAL">首次提供</option><option value="DEFAULT">跟随文件夹（清除单独设置）</option></select><button class="secondary-button" id="selection-add-group" type="button" disabled>加入可选内容…</button><button class="secondary-button" id="selection-remove-group" type="button" disabled>移出可选内容</button><button class="secondary-button" id="clear-source-selection" type="button">清空选择</button><button class="danger-button" id="remove-selected-source-files" type="button" disabled>移除所选…</button></div></div>
+                <div class="table-wrap content-table"><table><thead><tr><th><input id="source-file-select-all" type="checkbox" aria-label="全选当前范围" title="全选当前范围"></th><th>文件</th><th>维护方式</th><th>可选内容</th><th>大小</th><th>操作</th></tr></thead><tbody id="source-file-table"></tbody></table><div class="empty-state" id="source-file-empty">此目录还没有文件，可以在这里添加文件或新建文件夹。</div></div>
+              </div>
+            </div>
+            <div class="workspace-history-toolbar"><span>文件与维护设置</span><div class="button-row"><button class="secondary-button source-parent-button" id="source-directory-up" type="button" disabled title="当前已在整合包根目录"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5-5 5 5M10 3v14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>返回上一级</span></button><button class="secondary-button" id="open-workspace-history" type="button">操作记录</button><button class="secondary-button" id="restore-published-settings" type="button">恢复版本设置…</button></div></div>
+          </section>
+
+          <div class="content-columns">
+            <section class="panel" id="cleanup-panel" hidden>
+              <div class="panel-header">
+                <div><h2>清理多余文件</h2><span id="cleanup-count">未开启</span></div>
+              </div>
+              <p class="panel-help"><strong>开启后，玩家在这个目录里自己添加的文件会在更新时移入备份</strong>（不会直接删除，玩家可以在更新器的“备份与恢复”里找回）。适合 mods 这类必须和服务器一致的目录；不要对存档、截图等玩家自己的目录开启。</p>
+              <div class="cleanup-list" id="cleanup-list"></div>
+            </section>
+
+            <section class="panel" id="groups-panel">
+              <div class="panel-header">
+                <div><h2>可选内容</h2><span id="group-count">没有可选内容</span></div>
+                <button class="secondary-button" id="create-group" type="button">＋ 新建可选内容</button>
+              </div>
+              <p class="panel-help"><strong>适合光影、美化等不是每台电脑都带得动的内容。</strong>玩家可以在更新器里整组开关；“默认安装”决定没做过选择的玩家是否安装。在上方列表里选择文件后点“加入可选内容”。</p>
+              <div class="group-list" id="group-list"></div>
+            </section>
+          </div>
+
+          <section class="panel" id="directive-panel">
+            <div class="panel-header">
+              <div><h2>历史文件与问题处理</h2><span id="directive-count">没有正在处理的问题</span></div>
+              <div class="button-row">
+                <button class="secondary-button" id="open-file-history" type="button">按发布版本管理…</button>
+                <button class="secondary-button" id="open-correct" type="button">处理问题文件…</button>
+                <button hidden class="danger-button" id="open-withdraw" type="button">撤回问题版本…</button>
+              </div>
+            </div>
+            <p class="panel-help"><strong>以前停止维护、留给玩家的文件，后来出问题，也能在这里处理。</strong>从历史发布中选中坏版本，要求玩家移出或换成正确文件，再检查并发布。即使玩家豁免、停用或改名，匹配的坏版本也会先备份再移出。普通删除自动生效，无需在这里逐条管理。</p>
+            <div class="directive-list" id="directive-list"></div>
+          </section>
+        </section>
+
         <section class="view" id="view-publish">
-          <section class="panel">
-            <div class="panel-header source-file-header">
-              <div>
-                <h2>整合包文件</h2>
-                <span id="source-file-count">尚未读取</span>
-              </div>
-              <div class="button-row">
-                <input class="table-search" id="source-file-search" placeholder="搜索路径">
-                <button class="secondary-button" id="reload-source-files" type="button">↻ 刷新</button>
-                <button class="primary-button" id="open-source-add" type="button">＋ 添加文件</button>
-              </div>
-            </div>
-            <p class="panel-help"><strong>这里展示管理服务器“要管理的文件目录”中的真实内容。</strong>添加或移除会直接修改该目录，但只有扫描并发布新版本后才会影响玩家。文件夹勾选会递归选择其下全部文件。</p>
-            <div class="source-file-summary">
-              <div><span>托管文件</span><strong id="source-managed-count">--</strong></div>
-              <div><span>总大小</span><strong id="source-total-size">--</strong></div>
-              <div><span>强制同步</span><strong id="source-forced-count">--</strong></div>
-            </div>
-            <div class="selection-toolbar">
-              <label class="selection-check">
-                <input id="source-file-select-all" type="checkbox">
-                <span>全选当前列表</span>
-              </label>
-              <span id="source-file-selection-count">未选择文件</span>
-              <button class="secondary-button" id="clear-source-selection" type="button">清空选择</button>
-              <button class="danger-button" id="remove-selected-source-files" type="button" disabled>移除所选</button>
-            </div>
-            <div class="table-wrap source-file-table">
-              <table>
-                <thead><tr><th>选择</th><th>状态</th><th>文件或文件夹</th><th>大小</th><th>修改时间</th><th></th></tr></thead>
-                <tbody id="source-file-table"></tbody>
-              </table>
-              <div class="empty-state" id="source-file-empty">要管理的文件目录中没有文件</div>
-            </div>
-          </section>
-
-          <section class="panel sync-warning-panel">
-            <div class="panel-header forced-directory-header">
-              <div>
-                <h2>管理强制同步目录（谨慎启用）</h2>
-                <span id="forced-directory-count">未设置强制同步目录</span>
-              </div>
-              <div class="button-row">
-                <button class="secondary-button" id="clear-forced-directories" type="button">清空选择</button>
-                <button class="primary-button" id="save-forced-directories" type="button">保存目录设置</button>
-              </div>
-            </div>
-            <p class="panel-help"><strong>适合 mods、config 等需要与服务器完全一致的整个一级目录。</strong>启用后，目录内文件不能被玩家豁免，玩家额外添加的文件也会被归档移出。这里只列出“要管理的文件目录”中实际存在的一级目录。</p>
-            <div class="selection-toolbar">
-              <label class="selection-check">
-                <input id="forced-directory-select-all" type="checkbox">
-                <span>全选现有一级目录</span>
-              </label>
-              <span id="forced-directory-visible-count">等待读取目录</span>
-            </div>
-            <div class="table-wrap forced-directory-table">
-              <table>
-                <thead><tr><th>强制</th><th>一级目录</th><th>同步效果</th><th>文件数</th></tr></thead>
-                <tbody id="forced-directory-table"></tbody>
-              </table>
-              <div class="empty-state" id="forced-directory-empty">当前没有可管理的一级目录</div>
-            </div>
-            <p class="notice-line">强制同步目录会持续包含以后新增到该目录的文件；修改后还需要重新扫描并发布新版本，才会对玩家生效。</p>
-          </section>
-
-          <section class="panel sync-warning-panel">
-            <div class="panel-header forced-file-header">
-              <div>
-                <h2>单文件强制同步（谨慎启用）</h2>
-                <span id="forced-file-count">只锁定少数指定文件，不影响同目录其它内容</span>
-              </div>
-              <div class="button-row">
-                <input class="table-search" id="forced-file-search" placeholder="搜索文件">
-                <button class="secondary-button" id="clear-forced-files" type="button">清空选择</button>
-                <button class="primary-button" id="save-forced-files" type="button">保存设置</button>
-              </div>
-            </div>
-            <p class="panel-help"><strong>普通托管文件本来就会随发布更新；这里的额外作用是禁止玩家豁免选中的文件。</strong>它不会清理同目录的其它文件。即使全选，也只会记录当前已有文件，以后新增的文件不会自动加入；需要整个目录保持一致时，请使用上方“管理强制同步目录”。</p>
-            <div class="selection-toolbar">
-              <label class="selection-check">
-                <input id="forced-file-select-all" type="checkbox">
-                <span>全选当前列表</span>
-              </label>
-              <span id="forced-file-visible-count">等待读取文件</span>
-            </div>
-            <div class="table-wrap forced-file-table">
-              <table>
-                <thead><tr><th>强制</th><th>文件或文件夹</th><th>策略</th><th>大小</th></tr></thead>
-                <tbody id="forced-file-table"></tbody>
-              </table>
-              <div class="empty-state" id="forced-file-empty">请先读取或扫描整合包目录</div>
-            </div>
-            <p class="notice-line forced-file-notice">单文件强制同步只影响选中的具体文件，主要用于禁止玩家豁免；不会归档同目录的额外文件，也不等同于强制同步整个目录。</p>
-          </section>
-
-          <section class="panel">
+          <section class="panel check-panel">
             <div class="panel-header">
               <div>
-                <h2>发布预览</h2>
-                <span id="preview-time">尚未扫描</span>
+                <h2>发布前检查</h2>
+                <span id="preview-time">尚未检查</span>
               </div>
               <div class="button-row">
-                <button class="secondary-button" id="release-all-button" type="button">全部保留</button>
-                <button class="secondary-button" id="delete-all-button" type="button">全部删除</button>
-                <button class="secondary-button" id="scan-button" type="button">↻ 扫描整合包目录</button>
+                <button class="primary-button" id="scan-button" type="button">↻ 检查整合包内容</button>
               </div>
             </div>
-            <p class="panel-help"><strong>每次调整文件或策略后都应重新扫描。</strong>重点检查“移除后的处理”：从玩家端删除会清理旧文件，放弃管理并保留则让玩家继续保有现有副本。</p>
-            <div class="preview-summary" id="preview-summary">
-              <div><span>托管文件</span><strong>--</strong></div>
-              <div><span>变更</span><strong>--</strong></div>
-              <div><span>整合包大小</span><strong>--</strong></div>
-              <div><span>预计下载</span><strong>--</strong></div>
+            <div class="stale-banner" id="preview-stale" hidden>
+              <strong>检查结果已过期</strong>
+              <span>检查之后修改过文件、维护规则或项目设置，发布前需要重新检查。</span>
+            </div>
+            <div class="warning-list" id="preview-warnings" hidden></div>
+            <div class="preview-summary check-summary" id="preview-summary">
+              <div><span>新增</span><strong>--</strong></div>
+              <div><span>更新</span><strong>--</strong></div>
+              <div><span>移除</span><strong>--</strong></div>
+              <div><span>规则变化</span><strong>--</strong></div>
+              <div><span>玩家预计下载</span><strong>--</strong></div>
+            </div>
+            <div class="removal-bulk" id="removal-bulk" hidden>
+              <span id="removal-bulk-label">移除的文件</span>
+              <div class="button-row">
+                <button class="secondary-button" id="delete-all-button" type="button">全部从玩家端删除</button>
+                <button hidden class="secondary-button" id="keep-self-managed-all-button" type="button">全部删除，保留自行管理的副本</button>
+                <button class="secondary-button" id="release-all-button" type="button">全部停止维护，玩家保留</button>
+              </div>
             </div>
             <div class="table-wrap preview-table">
               <table>
-                <thead><tr><th>变更</th><th>文件</th><th>下载量</th><th>移除后的处理</th></tr></thead>
+                <thead><tr><th>变化</th><th>文件</th><th>维护方式</th><th>下载量</th><th>移除后怎么处理</th></tr></thead>
                 <tbody id="preview-table"></tbody>
               </table>
-              <div class="empty-state" id="preview-empty">扫描后显示文件变更</div>
+              <div class="empty-state" id="preview-empty">点击“检查整合包内容”，查看这次发布会给玩家带来哪些变化</div>
             </div>
+            <div class="policy-change-list" id="policy-change-list" hidden></div>
           </section>
 
           <form class="panel form-panel" id="publish-form">
             <div class="panel-header">
               <div>
-                <h2>创建不可变发布</h2>
-                <span>发布前必须先完成扫描</span>
+                <h2>发布新版本</h2>
+                <span>发布后内容不可修改；玩家下次启动时更新</span>
               </div>
-              <button class="primary-button" type="submit">发布整合包</button>
+              <span class="form-action-hint">确认下方版本与更新记录后发布</span>
             </div>
-            <p class="panel-help"><strong>版本号用于玩家界面和发布历史，发布后不能复用。</strong>最低玩家端版本只在确实依赖新更新器能力时提高；更新记录会直接展示给玩家。</p>
             <div class="form-grid">
               <label class="field">
                 <span>本次显示版本（必填）</span>
                 <input name="displayVersion" placeholder="1.0.1" required>
                 <small class="field-help">建议使用清晰递增的版本，例如 1.0.1、2026.08.01；同一项目内不要重复。</small>
               </label>
-              <label class="field">
+              <details class="advanced-controls span-2"><summary>高级兼容设置 · 默认自动计算最低版本</summary><label class="field">
                 <span>最低玩家端程序版本（必填）</span>
-                <input name="minimumPlayerVersion" value="0.1.14" required>
-                <small class="field-help">低于此版本的玩家端会先更新程序；不确定时保留当前默认值。</small>
-              </label>
+                <input name="minimumPlayerVersion" value="0.2.0" required>
+                <small class="field-help">低于此版本的玩家端会先更新程序。新的文件维护规则至少需要 0.2.0，填写更低的版本会被自动提高。</small>
+              </label></details>
               <label class="field span-2">
                 <span>更新记录</span>
-                <textarea name="changelog" rows="5"></textarea>
+                <textarea name="changelog" rows="5" placeholder="写给玩家看的更新说明，例如新增了哪些模组、修复了什么问题"></textarea>
+              </label>
+              <label class="check-field span-2 upgrade-ack" id="publish-ack-field" hidden>
+                <input name="acknowledgePlayerUpgrade" type="checkbox">
+                <span>我已确认玩家会获得 0.2.0 或更新版本的玩家端（已在“玩家端程序”中发布新版，或会重新分发整合包下载包）</span>
               </label>
             </div>
+            <div class="form-footer"><span>已保存的文件和规则会在这次发布后到达玩家。</span><button class="primary-button" id="publish-submit" type="submit">发布整合包</button></div>
           </form>
 
           <section class="panel">
             <div class="panel-header">
               <div><h2>发布历史</h2><span id="release-count-label">0 条记录</span></div>
             </div>
-            <p class="panel-help"><strong>历史发布是签名后的只读记录。</strong>“回滚”不会覆盖旧版本，而是以所选历史内容创建一个新的、更高序号发布。</p>
+            <p class="panel-help"><strong>历史发布是签名后的只读记录。</strong>“回滚”不会覆盖旧版本，而是以所选历史内容创建一个新的、更高序号的发布。</p>
             <div class="table-wrap">
               <table>
                 <thead><tr><th>序号</th><th>显示版本</th><th>发布时间</th><th>更新记录</th><th></th></tr></thead>
@@ -566,23 +546,24 @@
         </section>
 
         <section class="view" id="view-player">
-          <form class="panel form-panel" id="program-form">
+          <section class="panel program-package-panel"><div class="panel-header"><div><h2>上传玩家端发行包</h2><span>上传 ZIP 后自动读取版本、平台和程序目录；确认后再签名发布。</span></div></div><div class="package-drop"><label class="field"><span>玩家端 ZIP</span><input id="program-package-input" type="file" accept=".zip"></label><button class="secondary-button" id="check-program-package" type="button" disabled>上传并检查发行包</button><progress id="program-package-progress" max="100" value="0" hidden></progress><div id="program-package-result" aria-live="polite"></div><details class="advanced-controls"><summary>高级兼容设置</summary><label class="field"><span>最低 Bootstrap Agent 版本</span><input id="package-agent-version" value="0.1.2"></label></details><button class="primary-button" id="publish-program-package" type="button" disabled>确认发布玩家端</button></div></section>
+          <details class="advanced-controls server-program-source"><summary>从服务器解压目录发布（高级）</summary>          <form class="panel form-panel" id="program-form">
             <div class="panel-header">
-              <div><h2>发布玩家端程序</h2><span>自动读取版本并定位 app-image</span></div>
+              <div><h2>发布玩家端程序</h2><span>从服务器已有解压目录发布</span></div>
               <button class="primary-button" type="submit">发布玩家端</button>
             </div>
             <p class="panel-help"><strong>发布过程会自动读取程序版本、定位 app-image、生成清单并签名。</strong>不要选择 ZIP 文件本身，也不要选择 app、runtime 或版本子目录；应选择发行包解压后的最外层目录。</p>
             <div class="form-grid">
               <label class="field">
                 <span>平台（必填）</span>
-                <input name="platform" value="windows-x64" required>
+                <select name="platform" required><option value="windows-x64">Windows x64</option><option value="linux-x64">Linux x64</option></select>
                 <small class="field-help">必须与玩家实际使用的平台一致；目前 Windows 玩家保持 windows-x64。</small>
               </label>
-              <label class="field">
+              <details class="advanced-controls"><summary>高级兼容设置</summary><label class="field">
                 <span>最低 Bootstrap Agent 版本（必填）</span>
                 <input name="minimumBootstrapVersion" value="0.1.2" required>
                 <small class="field-help">整合包内 Java Agent 的最低兼容版本。只有重新分发了更高版本 Agent 时才提高。</small>
-              </label>
+              </label></details>
               <label class="field span-2">
                 <span>玩家端发行包解压根目录（必填）</span>
                 <div class="path-input-row">
@@ -592,13 +573,13 @@
                 <small class="field-help">这是管理服务器上的路径，例如 /srv/minecraft/updater/player-package；不是玩家电脑上的路径。</small>
               </label>
             </div>
-          </form>
+          </form></details>
 
           <section class="panel">
             <div class="panel-header">
               <div><h2>玩家端程序历史</h2><span id="program-count-label">0 个版本</span></div>
             </div>
-            <p class="panel-help"><strong>同一平台的最高版本会用于新生成的部署包和实例。</strong>已发布程序保持可验证历史，玩家可以从旧版安全切换到新版并在启动失败时回退。</p>
+            <p class="panel-help"><strong>同一平台当前选中的已发布程序会用于新生成的部署包和实例。</strong>已发布程序保持可验证历史，玩家可以从旧版安全切换到新版并在启动失败时回退。</p>
             <div class="table-wrap">
               <table>
                 <thead><tr><th>版本</th><th>平台</th><th>发布时间</th><th>清单哈希</th></tr></thead>
@@ -609,7 +590,7 @@
           </section>
         </section>
 
-        <section class="view" id="view-distribution">
+        <section class="view" id="view-distribution"><label class="hosting-choice field"><span>选择分发方式</span><select id="hosting-method"><option value="export">仅导出静态目录</option><option value="webdav">WebDAV / HTTP PUT</option><option value="s3">对象存储 OSS / S3 / R2</option></select></label>
           <form class="panel form-panel" id="distribution-form">
             <div class="panel-header">
               <div><h2>导出外部托管目录</h2><span>适用于普通 HTTP、对象存储（OSS）和 CDN</span></div>
@@ -644,7 +625,7 @@
                   <input name="outputDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="outputDirectory" data-path-title="选择静态分发目录">浏览</button>
                 </div>
-                <small class="field-help">与上方导出使用同一个目录。首次使用时可以填写尚不存在的新目录。</small>
+                <small class="field-help">用于增量导出的静态目录，不同分发方式可复用。首次可填写尚不存在的新目录。</small>
               </label>
               <label class="field span-2">
                 <span>WebDAV / HTTP PUT 根地址（必填）</span>
@@ -740,21 +721,24 @@
           <form class="panel form-panel recommended-panel" id="deployment-form">
             <div class="panel-header">
               <div><div class="panel-title-line"><h2>生成首次部署包</h2><small class="panel-tag recommended">推荐</small></div><span>适用于远程 Linux 管理端和绝大多数整合包发布流程</span></div>
-              <button class="primary-button" type="submit">生成部署包</button>
+              <div class="button-row">
+                <button class="primary-button" id="download-deployment-button" type="button">下载部署 ZIP</button>
+                <button class="secondary-button" type="submit">写入服务器目录</button>
+              </div>
             </div>
             <p class="panel-help"><strong>部署包是轻量接入模板，不包含 Minecraft、Forge、mods 或 config。</strong>玩家首次在线启动时会根据已发布清单补齐缺失托管文件；服主只需维护一份可正常启动的基础 Forge 实例。</p>
             <div class="form-grid">
               <label class="field span-2">
-                <span>输出父目录（必填）</span>
+                <span>输出父目录（写入服务器时必填）</span>
                 <div class="path-input-row">
                   <input name="outputDirectory" required>
                   <button class="secondary-button path-picker-button" type="button" data-path-kind="directory" data-path-name="outputDirectory" data-path-title="选择首次部署包输出目录">浏览</button>
                 </div>
-                <small class="field-help">管理服务器上的父目录。系统会在其中新建带项目和版本名称的部署目录，不会写入玩家电脑。</small>
+                <small class="field-help">管理服务器上的父目录。点击“下载部署 ZIP”时无需填写；点击“写入服务器目录”时，系统会在这里新建带项目和版本名称的部署目录。</small>
               </label>
               <label class="field">
                 <span>平台（必填）</span>
-                <input name="platform" value="windows-x64" required>
+                <select name="platform" required><option value="windows-x64">Windows x64</option><option value="linux-x64">Linux x64</option></select>
                 <small class="field-help">应与前面发布的玩家端程序平台一致；Windows 整合包保持 windows-x64。</small>
               </label>
               <label class="field">
@@ -763,10 +747,10 @@
                 <small class="field-help">已有完整整合包时选择它实际包含的历史版本；全新最小 Forge 实例通常选择当前最新发布。</small>
               </label>
             </div>
-            <div class="notice-line">生成后下载整个输出目录，把目录中的全部内容合并到 Minecraft 版本隔离实例根目录。不要把管理端 data、management-settings.json 或项目私钥发给玩家。</div>
+            <div class="notice-line">“写入服务器目录”会写入管理服务器上方填写的输出目录；“下载部署 ZIP”会临时生成并直接下载 ZIP，适合远程管理端，不会把管理端 data、management-settings.json 或项目私钥发给玩家。</div>
           </form>
 
-          <form class="panel form-panel advanced-panel" id="instance-form">
+<details class="advanced-controls"><summary>直接制作玩家实例（高级）</summary>          <form class="panel form-panel advanced-panel" id="instance-form">
             <div class="panel-header">
               <div><div class="panel-title-line"><h2>直接制作玩家实例</h2><small class="panel-tag advanced">高级方式</small></div><span>仅适用于管理端能够直接访问实例目录的场景</span></div>
               <button class="primary-button" type="submit">制作实例</button>
@@ -783,7 +767,7 @@
               </label>
               <label class="field">
                 <span>平台（必填）</span>
-                <input name="platform" value="windows-x64" required>
+                <select name="platform" required><option value="windows-x64">Windows x64</option><option value="linux-x64">Linux x64</option></select>
                 <small class="field-help">必须存在同平台的已发布玩家端程序。</small>
               </label>
               <label class="field">
@@ -802,7 +786,7 @@
                 <small class="field-help">可留空使用项目封面；填写时必须是实例目录内的安全相对路径。</small>
               </label>
             </div>
-          </form>
+          </form></details>
         </section>
 
         <section class="view" id="view-settings">
@@ -902,15 +886,6 @@
           <small class="field-help">填写玩家电脑上的更新器实际访问地址。请确认公网端口已经映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
         </label>
         <div class="form-section-heading span-2">
-          <strong>同步策略（可选）</strong>
-          <small>不确定时请保持为空，创建后仍可在“管理文件”中设置。</small>
-        </div>
-        <label class="field sync-warning-field span-2">
-          <span>强制同步一级目录（可选，谨慎启用）</span>
-          <input name="forcedSyncDirectories" placeholder="mods, config">
-          <small class="field-help">启用后，整个一级目录会与服务器保持一致，目录内文件不能被玩家豁免，额外文件会被归档移出。首次创建可以留空，之后可在“管理文件”中设置。</small>
-        </label>
-        <div class="form-section-heading span-2">
           <strong>玩家端个性化</strong>
           <small>以下内容只影响玩家端显示，已经提供默认值。创建后可随时修改；玩家下次启动会自动获取，不需要重新发布整合包。</small>
         </div>
@@ -926,7 +901,7 @@
         </label>
         <label class="field">
           <span>左上角中文品牌名</span>
-          <input name="brandName" maxlength="32" value="梦鱼服" required>
+          <input name="brandName" maxlength="32" value="梦鱼更新器" required>
           <small class="field-help">显示在玩家端窗口左上角，通常填写服务器简称。</small>
         </label>
         <label class="field">
@@ -1024,6 +999,7 @@
         <label class="field"><span>目标版本</span><input name="targetLabel" readonly></label>
         <label class="field"><span>新的显示版本（必填）</span><input name="displayVersion" required></label>
         <label class="field"><span>更新记录</span><textarea name="changelog" rows="4"></textarea></label>
+        <label class="check-field upgrade-ack" id="rollback-ack-field" hidden><input name="acknowledgePlayerUpgrade" type="checkbox"><span>我已确认玩家会获得 0.2.0 或更新版本的玩家端</span></label>
       </div>
       <div class="modal-actions">
         <button class="secondary-button" value="cancel" formnovalidate>取消</button>
@@ -1032,83 +1008,137 @@
     </form>
   </dialog>
 
-  <dialog class="modal" id="source-add-dialog">
-    <form method="dialog" id="source-add-form">
+  <dialog class="modal transfer-modal" id="source-add-dialog"><form method="dialog" id="source-add-form">
+    <div class="modal-header"><div><span>FILE TRANSFER</span><h2>添加文件</h2><p>先检查文件与冲突，再确认导入。导入后仍需发布整合包。</p></div><button class="icon-button" value="cancel" formnovalidate aria-label="关闭添加文件">×</button></div>
+    <details class="source-target-picker"><summary class="source-target-heading">新选文件位置：<strong id="source-target-selection"></strong> · 更改位置 / 新建文件夹</summary><div class="source-create-folder"><input id="source-new-folder-name" aria-label="新文件夹名称" maxlength="120" placeholder="新文件夹名称"><button class="secondary-button" id="create-source-folder" type="button">新建文件夹</button></div><small class="source-create-folder-help">空文件夹不会单独发送给玩家；加入文件并发布后同步。</small><div class="source-target-tree" id="source-target-tree" role="tree" aria-label="选择文件保存位置"></div></details>
+    <div class="tab-bar" role="tablist" aria-label="文件来源"><button type="button" role="tab" data-source-tab="local" aria-selected="true">从本机上传</button><button type="button" role="tab" data-source-tab="server" aria-selected="false">从服务器导入</button></div>
+    <section data-source-pane="local"><div class="upload-dropzone" id="source-dropzone" tabindex="0" role="button" aria-label="选择或拖入要上传的文件"><strong>拖入文件，或选择整个文件夹</strong><span id="source-upload-selection">所选文件先进入下方清单</span><div class="button-row"><button class="secondary-button" id="choose-source-upload" type="button">选择文件</button><button class="secondary-button" id="choose-source-folder" type="button">选择文件夹</button></div><input id="source-upload-input" type="file" multiple hidden><input id="source-folder-input" type="file" webkitdirectory multiple hidden></div></section>
+    <section data-source-pane="server" hidden><label class="field"><span>服务器文件路径</span><div class="path-input-row"><input name="serverSourcePath" placeholder="管理服务器上的文件路径"><button class="secondary-button path-picker-button" type="button" data-path-kind="file" data-path-name="serverSourcePath" data-path-title="选择要导入的服务器文件" aria-label="浏览服务器文件">浏览</button></div></label><button class="secondary-button" id="import-server-source" type="button" disabled>加入清单并检查</button><p class="field-help">浏览的是管理端所在电脑的文件。本机上传和服务器导入使用相同的冲突检查。</p></section>
+    <label class="check-field"><input id="source-keep-folder" type="checkbox"><span>保留所选文件夹名称（子目录结构始终保留，清单会显示具体保存路径）</span></label>
+    <div class="queue-heading"><strong>文件清单</strong><span id="transfer-summary" aria-live="polite">还没有选择文件</span><button class="table-button" id="clear-completed-transfers" type="button">清除已完成</button></div><div class="transfer-queue" id="transfer-queue"></div>
+    <div class="upload-progress" id="source-upload-progress" hidden><div><span id="source-upload-label"></span><strong id="source-upload-percent"></strong></div><progress id="source-upload-meter" max="100" value="0"></progress></div>
+    <p class="transfer-result" id="transfer-result" aria-live="polite"></p><div class="modal-actions source-add-actions"><button class="secondary-button" type="button" id="pause-source-transfer" hidden>暂停后续任务</button><button class="secondary-button" value="cancel" formnovalidate>关闭</button><button class="secondary-button" id="check-source-files" type="button" disabled>暂存并检查清单</button><button class="primary-button" id="upload-source-files" type="button" disabled>确认导入</button></div>
+  </form></dialog>
+  <dialog class="modal file-detail-modal" id="file-detail-dialog"><form method="dialog"><div class="modal-header"><div><span>FILE DETAILS</span><h2>文件详情</h2></div><button class="icon-button" aria-label="关闭文件详情" value="cancel">×</button></div><div id="file-detail-body"></div><div class="modal-actions"><button class="secondary-button" type="button" id="detail-history">查看历史 / 处理问题</button><button class="primary-button" type="button" id="detail-replace">上传新版本</button></div></form></dialog>
+  <dialog class="modal" id="import-history-dialog"><form method="dialog"><div class="modal-header"><div><span>IMPORT HISTORY</span><h2>最近导入记录</h2></div><button class="icon-button" aria-label="关闭导入记录" value="cancel">×</button></div><p class="modal-lead">查看本项目最近 40 次网页或桌面导入。恢复前会校验后续修改；已发布项目恢复后还需再发布一次。</p><div id="import-history-list"></div><div class="modal-actions"><button class="secondary-button" value="cancel">关闭</button></div></form></dialog>
+
+  <dialog class="modal removal-modal" id="removal-dialog">
+    <form method="dialog" id="removal-form">
+      <div class="modal-accent warning"></div>
+      <span class="modal-kicker">REMOVE FROM MODPACK</span>
+      <h2 id="removal-title">从整合包移除</h2>
+      <p id="removal-message"></p>
+      <div class="choice-list" role="radiogroup" aria-label="玩家那边怎么处理">
+        <label class="choice"><input type="radio" name="removalAction" value="DELETE" checked><span><strong>移除玩家副本</strong><small>先备份再移出，豁免、停用和首次提供也会处理；以后手动装回仍会移出。</small></span></label>
+
+        <label class="choice"><input type="radio" name="removalAction" value="RELEASE"><span><strong>停止维护，留给玩家</strong><small>玩家已有的文件留在原处，从此由玩家自己处理，更新器不再管它。</small></span></label>
+
+      </div>
+      <p class="notice-line" id="removal-cleanup-note" hidden>所选文件里有位于“清理多余文件”目录中的：玩家留下的副本也会被当作多余文件移入备份，请移除玩家副本；要留给玩家，请先取消目录强制同步。</p>
+      <div class="modal-actions">
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
+        <button class="danger-button" id="removal-confirm" value="confirm">确认移除</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal compact-modal" id="group-dialog">
+    <form method="dialog" id="group-form">
       <div class="modal-header">
-        <div><span>SOURCE FILE</span><h2>添加托管文件</h2></div>
+        <div><span>OPTIONAL CONTENT</span><h2 id="group-dialog-title">新建可选内容</h2></div>
         <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
       </div>
-      <div class="form-grid one-column source-add-grid">
-        <div class="source-target-picker">
-          <div class="source-target-heading">
-            <div>
-              <strong>选择文件保存位置</strong>
-              <span>点击根目录或文件夹后，再上传或导入文件</span>
-            </div>
-            <span id="source-target-selection">尚未选择</span>
-          </div>
-          <div class="source-create-folder">
-            <input id="source-new-folder-name" maxlength="120" placeholder="在所选位置新建文件夹，例如 resourcepacks">
-            <button class="secondary-button" id="create-source-folder" type="button" disabled>＋ 新建文件夹</button>
-          </div>
-          <small class="source-create-folder-help">空文件夹不会单独发送给玩家；在里面添加文件后，会随下一次整合包发布一起同步。</small>
-          <div class="source-target-tree" id="source-target-tree" role="tree" aria-label="选择文件保存位置"></div>
-        </div>
-        <label class="check-field">
-          <input name="overwrite" type="checkbox">
-          <span>同名文件存在时归档并覆盖</span>
-        </label>
-        <div class="upload-dropzone" id="source-dropzone" tabindex="0" role="button">
-          <strong>拖入文件</strong>
-          <span id="source-upload-selection">或从当前电脑选择</span>
-          <button class="secondary-button" id="choose-source-upload" type="button">选择文件</button>
-          <input id="source-upload-input" type="file" multiple hidden>
-        </div>
-        <div class="upload-progress" id="source-upload-progress" hidden>
-          <div><span id="source-upload-label">准备上传</span><strong id="source-upload-percent">0%</strong></div>
-          <progress id="source-upload-meter" max="100" value="0"></progress>
-        </div>
-        <div class="source-divider"><span>或者从管理端所在的服务器本身导入</span></div>
-        <label class="field">
-          <span>服务器文件路径</span>
-          <div class="path-input-row">
-            <input name="serverSourcePath">
-            <button class="secondary-button path-picker-button ellipsis-button" type="button" data-path-kind="file" data-path-name="serverSourcePath" data-path-title="选择要导入的服务器文件" aria-label="浏览服务器文件">…</button>
-          </div>
-        </label>
+      <input name="id" type="hidden">
+      <div class="form-grid one-column">
+        <label class="field"><span>名称（玩家会看到）</span><input name="title" maxlength="80" placeholder="例如：光影与美化" required></label>
+        <label class="field"><span>说明（可选）</span><textarea name="description" rows="3" maxlength="300" placeholder="例如：显卡较弱或内存小于 8G 的电脑建议关闭"></textarea></label>
+        <label class="check-field"><input name="defaultInstall" type="checkbox" checked><span>默认安装（没做过选择的玩家会安装这组内容）</span></label>
       </div>
-      <div class="modal-actions source-add-actions">
+      <div class="modal-actions">
         <button class="secondary-button" value="cancel" formnovalidate>取消</button>
-        <button class="secondary-button" id="import-server-source" type="button" disabled>导入服务器文件</button>
-        <button class="primary-button" id="upload-source-files" type="button" disabled>上传所选文件</button>
+        <button class="primary-button" value="confirm">保存</button>
       </div>
     </form>
   </dialog>
 
-  <dialog class="modal compact-modal" id="source-remove-dialog">
-    <form method="dialog">
-      <div class="modal-accent warning"></div>
-      <span class="modal-kicker">REMOVE SOURCE</span>
-      <h2>移除托管文件</h2>
-      <p id="source-remove-message"></p>
-      <div class="modal-actions source-remove-actions">
+  <dialog class="modal compact-modal" id="group-pick-dialog">
+    <form method="dialog" id="group-pick-form">
+      <div class="modal-header">
+        <div><span>OPTIONAL CONTENT</span><h2>加入哪组可选内容？</h2></div>
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
+      </div>
+      <p id="group-pick-message"></p>
+      <div class="choice-list" id="group-pick-list" role="radiogroup" aria-label="可选内容"></div>
+      <div class="form-grid one-column group-pick-new" id="group-pick-new" hidden>
+        <label class="field"><span>新可选内容的名称</span><input name="title" maxlength="80" placeholder="例如：光影与美化"></label>
+        <label class="field"><span>说明（可选）</span><input name="description" maxlength="300" placeholder="例如：显卡较弱的电脑建议关闭"></label>
+        <label class="check-field"><input name="defaultInstall" type="checkbox" checked><span>默认安装</span></label>
+      </div>
+      <div class="modal-actions">
         <button class="secondary-button" value="cancel" formnovalidate>取消</button>
-        <button class="secondary-button" id="source-release-action" value="RELEASE">放弃管理并保留</button>
-        <button class="danger-button" value="DELETE">从玩家端删除</button>
+        <button class="primary-button" value="confirm">确定</button>
       </div>
     </form>
   </dialog>
 
-  <dialog class="modal compact-modal" id="source-bulk-remove-dialog">
-    <form method="dialog">
-      <div class="modal-accent warning"></div>
-      <span class="modal-kicker">BULK REMOVE</span>
-      <h2>批量移除整合包文件</h2>
-      <p id="source-bulk-remove-message"></p>
-      <div class="modal-actions source-remove-actions">
+  <dialog class="modal directive-modal" id="withdraw-dialog">
+    <form method="dialog" id="withdraw-form">
+      <div class="modal-header">
+        <div><span>WITHDRAW VERSION</span><h2>撤回问题版本</h2></div>
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
+      </div>
+      <p class="modal-lead">选择曾经发布过、现在出了问题的版本。玩家那里只要还有这个版本（不论是否停用或自行管理），都会在下一次更新时被移入备份；模组还会按 modid 和版本号识别改过名的副本。仍在当前发布中的版本不能撤回，请先在文件列表里替换或移除它。</p>
+      <input class="table-search" id="withdraw-search" placeholder="搜索文件或模组">
+      <div class="version-picker" id="withdraw-versions"></div>
+      <label class="field"><span>原因（玩家会在更新器里看到）</span><textarea name="reason" rows="2" maxlength="500" placeholder="例如：这个版本会导致进入主城时崩溃"></textarea></label>
+      <div class="modal-actions">
+        <span class="modal-actions-note" id="withdraw-selection">未选择版本</span>
         <button class="secondary-button" value="cancel" formnovalidate>取消</button>
-        <button class="secondary-button" id="source-bulk-release-action" value="RELEASE">放弃管理并保留</button>
-        <button class="danger-button" value="DELETE">从玩家端删除</button>
+        <button class="danger-button" value="confirm">撤回所选版本</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal directive-modal file-history-modal" id="file-history-dialog">
+    <form method="dialog" id="file-history-form">
+      <div class="modal-header">
+        <div><span>RELEASE FILE HISTORY</span><h2>按发布版本管理历史文件</h2></div>
+        <button class="icon-button" id="close-file-history" type="button" aria-label="关闭历史文件">×</button>
+      </div>
+      <p class="modal-lead">选择整合包发布版本，查看它当时提供的文件。即使文件后来已经停止维护、留给玩家，也能从这里选中坏版本进行处理。</p>
+      <div class="history-toolbar">
+        <label class="field"><span>整合包发布版本</span><select id="file-history-release"></select></label>
+        <label class="field"><span>搜索历史文件</span><input id="file-history-search" type="search" placeholder="文件名、模组 ID 或文件版本"></label>
+      </div>
+      <p class="panel-help" id="file-history-count"></p>
+      <div class="release-history-files" id="file-history-list"></div>
+      <div class="modal-actions"><button class="secondary-button" id="finish-file-history" type="button">关闭</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal directive-modal" id="correct-dialog">
+    <form method="dialog" id="correct-form">
+      <div class="modal-header">
+        <div><span>PROBLEM FILES</span><h2>处理问题文件</h2></div>
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
+      </div>
+      <p class="modal-lead"><strong>例如：以前把 B 设为“停止维护，留给玩家”，后来发现 B 1.0 会崩溃。</strong>在下面选中 B 1.0，保存“移出问题版本”，再检查并发布。玩家手里的匹配坏版本会先备份再移出，豁免、停用或改名也会检查；未匹配的正常版本保持原维护方式。</p>
+      <label class="field"><span>按整合包发布版本筛选</span><select id="correct-release"></select><small class="field-help">这是整合包的发布版本；下面勾选的是问题文件自身的版本。</small></label>
+      <div class="choice-list" role="radiogroup" aria-label="问题处理动作">
+        <label class="choice"><input type="radio" name="action" value="REMOVE" checked><span><strong>移出问题版本</strong><small>已停止维护或玩家已豁免也照样处理；要求持续有效，后来装回这个坏版本仍会备份移出。</small></span></label>
+        <label class="choice"><input type="radio" name="action" value="REPLACE"><span><strong>换成正确文件</strong><small>先把正确文件放入整合包文件列表；匹配选中坏版本的副本会先备份，再替换。</small></span></label>
+      </div>
+      <label class="field"><span>问题文件</span><select name="path" id="correct-path"></select></label>
+      <div id="problem-replacement" hidden><label class="field"><span>本次准备的正确文件</span><select id="correct-target" name="target"></select></label>
+      <details><summary>更多替换选项</summary><div class="choice-list" role="radiogroup" aria-label="修正方式">
+        <label class="choice"><input type="radio" name="mode" value="KNOWN_BAD" checked><span><strong>只替换有问题的旧版本（推荐）</strong><small>按内容指纹或模组 ID 与版本识别所选坏版本，再换成正确文件。</small></span></label>
+        <label class="choice"><input type="radio" name="mode" value="ONCE"><span><strong>所有玩家各覆盖一次</strong><small>每位玩家都会被覆盖一次（包括自己改过的），之后玩家再修改不会被反复覆盖。</small></span></label>
+      </div>
+      </details></div><div class="version-picker" id="correct-versions"></div>
+      <label class="field"><span>原因（玩家会在更新器里看到）</span><textarea name="reason" rows="2" maxlength="500" placeholder="例如：旧版配置会导致小地图崩溃"></textarea></label>
+      <div class="modal-actions">
+        <button class="secondary-button" value="cancel" formnovalidate>取消</button>
+        <button class="primary-button" value="confirm">保存，等待发布</button>
       </div>
     </form>
   </dialog>
@@ -1117,8 +1147,23 @@
     <div class="busy-spinner"></div>
     <span id="busy-label">正在处理</span>
   </div>
+  <dialog class="modal operation-history-modal" id="workspace-history-dialog"><form method="dialog">
+    <div class="modal-header"><div><span>ACTIVITY</span><h2>操作记录</h2></div><button class="icon-button" aria-label="关闭操作记录" value="cancel">×</button></div>
+    <div class="operation-history-controls"><input id="operation-history-search" type="search" placeholder="搜索文件、设置或版本" aria-label="搜索操作记录"><select id="operation-history-filter" aria-label="筛选操作记录"><option value="all">全部记录</option><option value="FILES">文件操作</option><option value="SETTINGS">设置修改</option><option value="PUBLISH">整合包发布</option></select></div>
+    <div id="workspace-history-list" class="operation-history-list"></div>
+    <div class="modal-actions"><span id="workspace-history-count"></span><button class="secondary-button" value="cancel">关闭</button></div>
+  </form></dialog>
+  <dialog class="modal operation-restore-modal" id="operation-restore-dialog"><form method="dialog" id="operation-restore-form">
+    <div class="modal-header"><div><span>RESTORE</span><h2 id="operation-restore-title">恢复预览</h2></div><button class="icon-button" aria-label="关闭恢复预览" value="cancel" formnovalidate>×</button></div>
+    <p class="modal-lead" id="operation-restore-description"></p><div id="operation-restore-changes" class="operation-change-list"></div>
+    <div class="modal-actions"><button class="secondary-button" type="button" id="refresh-operation-preview">重新检查</button><button class="secondary-button" value="cancel" formnovalidate>取消</button><button class="primary-button" type="submit" id="confirm-operation-restore">确认恢复</button></div>
+  </form></dialog>
   <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
   <script src="/app.js"></script>
+  <script src="/file-workspace.js"></script>
+  <script src="/file-transfer.js"></script>
+  <script src="/operation-history.js"></script>
+  <script src="/admin-workflow.js"></script>
 </body>
 </html>

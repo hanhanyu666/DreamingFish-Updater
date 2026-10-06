@@ -1,8 +1,8 @@
 package cn.dreamingfish.updater.engine;
 
 import cn.dreamingfish.updater.protocol.CryptoSupport;
-import cn.dreamingfish.updater.protocol.FilePolicy;
 import cn.dreamingfish.updater.protocol.JsonCodec;
+import cn.dreamingfish.updater.protocol.MaintenanceModel;
 import cn.dreamingfish.updater.protocol.ManifestFile;
 import cn.dreamingfish.updater.protocol.PathSafety;
 import cn.dreamingfish.updater.protocol.ProtocolException;
@@ -28,7 +28,8 @@ final class TransactionInstaller {
             DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss-SSS").withZone(ZoneId.systemDefault());
     private static final List<String> METADATA_NAMES = List.of(
             "verified-installation.json", "trust-state.json",
-            "release-manifest.json", "release-manifest.sig"
+            "release-manifest.json", "release-manifest.sig",
+            EnginePaths.MAINTENANCE_STATE_FILE
     );
 
     private final JsonCodec json = new JsonCodec();
@@ -71,6 +72,13 @@ final class TransactionInstaller {
 
     InstallResult install(EnginePaths paths, UpdatePlan plan, ProgressListener listener,
                           LocalFileOverrides overrides, CancellationToken cancellationToken) {
+        return install(paths, plan, listener, overrides, LocalFileIndex.transientIndex(),
+                cancellationToken);
+    }
+
+    InstallResult install(EnginePaths paths, UpdatePlan plan, ProgressListener listener,
+                          LocalFileOverrides overrides, LocalFileIndex index,
+                          CancellationToken cancellationToken) {
         String id = UUID.randomUUID().toString();
         Path directory = paths.transactions().resolve(id);
         Path backupRoot = directory.resolve("backup");
@@ -97,33 +105,36 @@ final class TransactionInstaller {
             journal = journal.withPhase(TransactionPhase.COMMITTING);
             writeJournal(journalPath, journal);
             faultInjector.afterPhase(TransactionPhase.COMMITTING);
+            List<ArchivedFile> archived = new ArrayList<>();
             for (int i = 0; i < plan.operations().size(); i++) {
                 cancellationToken.throwIfCancelled();
                 FileOperation operation = plan.operations().get(i);
                 listener.onProgress(new ProgressEvent(UpdateStage.INSTALLING,
                         switch (operation.kind()) {
-                            case INSTALL -> "正在安装文件";
+                            case INSTALL -> operation.archiveExisting()
+                                    ? "正在备份本地副本并安装文件" : "正在安装文件";
                             case DELETE -> "正在移除旧文件";
-                            case ARCHIVE -> "正在备份强制同步目录中的本地文件";
+                            case ARCHIVE -> "正在把本地文件移入备份";
                         },
                         operation.path(), i, plan.operations().size()));
-                apply(paths, operation, pendingArchiveRoot);
+                ArchivedFile entry = apply(paths, operation, pendingArchiveRoot);
+                if (entry != null) archived.add(entry);
                 faultInjector.afterOperation(i);
             }
 
-            verifyTarget(paths, plan.release(), overrides, listener, cancellationToken);
-            localStore.save(paths, plan.release());
-            Path finalArchive = finalizeArchive(paths, plan, pendingArchiveRoot, archiveDirectory);
+            verifyTarget(paths, plan.release(), overrides, index, listener, cancellationToken);
+            localStore.save(paths, plan.release(), plan.nextState());
+            Path finalArchive = finalizeArchive(paths, plan, pendingArchiveRoot, archiveDirectory,
+                    archived);
             faultInjector.beforeCommit();
             journal = journal.withPhase(TransactionPhase.COMMITTED);
             writeJournal(journalPath, journal);
             faultInjector.afterPhase(TransactionPhase.COMMITTED);
             deleteTree(directory);
-            List<Path> archivedFiles = plan.operations().stream()
-                    .filter(operation -> operation.kind() == OperationKind.ARCHIVE)
-                    .map(operation -> Path.of(operation.path()))
+            List<Path> archivedFiles = archived.stream()
+                    .map(file -> Path.of(file.originalPath()))
                     .toList();
-            return new InstallResult(archivedFiles, finalArchive);
+            return new InstallResult(archivedFiles, finalArchive, archived);
         } catch (Exception e) {
             if (journal != null && journal.phase() == TransactionPhase.COMMITTING) {
                 try {
@@ -224,52 +235,80 @@ final class TransactionInstaller {
         return present;
     }
 
-    private void apply(EnginePaths paths, FileOperation operation, Path pendingArchiveRoot) throws IOException {
+    private ArchivedFile apply(EnginePaths paths, FileOperation operation, Path pendingArchiveRoot)
+            throws IOException {
         Path target = resolve(paths.instanceRoot(), operation.path());
         if (operation.kind() == OperationKind.DELETE) {
             Files.deleteIfExists(target);
             AtomicFileSupport.forceDirectory(target.getParent());
-            return;
+            return null;
         }
         if (operation.kind() == OperationKind.ARCHIVE) {
             if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
                     || Files.isSymbolicLink(target)) {
                 throw new UpdateException(UpdateErrorCode.PATH_UNSAFE,
-                        "Forced sync archive source is missing or unsafe: " + operation.path());
+                        "Archive source is missing or unsafe: " + operation.path());
             }
-            Path pending = resolve(pendingArchiveRoot, operation.path());
-            AtomicFileSupport.copyReplace(target, pending);
+            ArchivedFile entry = archiveCopy(target, operation, pendingArchiveRoot);
             Files.delete(target);
             AtomicFileSupport.forceDirectory(target.getParent());
-            return;
+            return entry;
         }
         Path source = paths.cacheObject(operation.sha256());
         if (!isValid(source, operation.sha256(), operation.size())) {
             throw new UpdateException(UpdateErrorCode.HASH_MISMATCH,
                     "Cached object changed before installation: " + operation.sha256());
         }
+        ArchivedFile entry = null;
+        if (operation.archiveExisting() && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+                throw new UpdateException(UpdateErrorCode.PATH_UNSAFE,
+                        "Managed path is not a regular file: " + operation.path());
+            }
+            entry = archiveCopy(target, operation, pendingArchiveRoot);
+        }
         AtomicFileSupport.copyReplace(source, target);
         setExecutable(target, operation.executable());
+        return entry;
+    }
+
+    private ArchivedFile archiveCopy(Path target, FileOperation operation, Path pendingArchiveRoot)
+            throws IOException {
+        Path pending = resolve(pendingArchiveRoot, operation.path());
+        AtomicFileSupport.copyReplace(target, pending);
+        String hash = operation.localSha256() != null ? operation.localSha256()
+                : CryptoSupport.sha256(pending);
+        ArchiveReason reason = operation.reason() == null ? ArchiveReason.CLEANUP : operation.reason();
+        return new ArchivedFile(operation.path(), operation.path(), hash, Files.size(pending),
+                reason, operation.detail(), operation.componentId(), operation.version(), null);
     }
 
     private void verifyTarget(EnginePaths paths, SignedRelease release,
-                              LocalFileOverrides overrides, ProgressListener listener,
-                              CancellationToken cancellationToken) {
-        long total = release.manifest().files().stream()
-                .filter(file -> file.policy() == FilePolicy.ENFORCED)
-                .filter(file -> !overrides.excludes(file))
+                              LocalFileOverrides overrides, LocalFileIndex index,
+                              ProgressListener listener, CancellationToken cancellationToken) {
+        MaintenanceModel model = MaintenanceModel.of(release.manifest());
+        List<ManifestFile> checked = release.manifest().files().stream()
+                .filter(file -> verification(model, overrides, file) != Verification.NONE)
+                .toList();
+        long total = checked.stream()
+                .filter(file -> verification(model, overrides, file) == Verification.CONTENT)
                 .mapToLong(ManifestFile::size).sum();
         long complete = 0;
-        for (ManifestFile file : release.manifest().files()) {
+        for (ManifestFile file : checked) {
             cancellationToken.throwIfCancelled();
-            if (overrides.excludes(file)) continue;
             Path target = resolve(paths.instanceRoot(), file.path());
             if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
                 throw new UpdateException(UpdateErrorCode.TRANSACTION_FAILED,
                         "Installed file is missing: " + file.path());
             }
-            if (file.policy() == FilePolicy.ENFORCED) {
-                if (!isValid(target, file.sha256(), file.size())) {
+            if (verification(model, overrides, file) == Verification.CONTENT) {
+                boolean valid;
+                try {
+                    valid = index.matches(target, file.path(), file.sha256(), file.size());
+                } catch (IOException e) {
+                    valid = false;
+                }
+                if (!valid) {
                     throw new UpdateException(UpdateErrorCode.HASH_MISMATCH,
                             "Installed file failed verification: " + file.path());
                 }
@@ -278,6 +317,23 @@ final class TransactionInstaller {
                         "正在校验已安装文件", file.path(), complete, total));
             }
         }
+    }
+
+    enum Verification { NONE, PRESENCE, CONTENT }
+
+    /**
+     * What a completed installation guarantees for a published file. Files the
+     * player keeps out of maintenance and "首次提供" files are not checked;
+     * default configurations only have to exist because the player may change them.
+     */
+    static Verification verification(MaintenanceModel model, LocalFileOverrides overrides,
+                                     ManifestFile file) {
+        if (overrides.excludes(file, model)) return Verification.NONE;
+        return switch (model.behaviorOf(file)) {
+            case REQUIRED, SYNC -> Verification.CONTENT;
+            case DEFAULT_CONFIG, LEGACY_MISSING_ONLY -> Verification.PRESENCE;
+            case INITIAL -> Verification.NONE;
+        };
     }
 
     private void restore(EnginePaths paths, Path directory, TransactionJournal journal) throws IOException {
@@ -319,25 +375,30 @@ final class TransactionInstaller {
     }
 
     private Path finalizeArchive(EnginePaths paths, UpdatePlan plan, Path pendingArchiveRoot,
-                                 String archiveDirectory) throws IOException {
+                                 String archiveDirectory, List<ArchivedFile> archived)
+            throws IOException {
         if (archiveDirectory == null) return null;
-        requireSafeDirectory(pendingArchiveRoot, "Unsafe pending forced sync archive");
-        List<String> archived = plan.operations().stream()
-                .filter(operation -> operation.kind() == OperationKind.ARCHIVE)
-                .map(FileOperation::path)
-                .toList();
-        String index = "DreamingFish forced sync archive\n"
-                + "Release: " + plan.release().manifest().displayVersion() + " ("
-                + plan.release().manifest().releaseId() + ")\n"
-                + "Remote management forced directories: "
-                + String.join(", ", plan.release().manifest().forcedSyncDirectories()) + "\n"
-                + "Archived files: " + archived.size() + "\n\n"
-                + String.join("\n", archived) + "\n";
+        requireSafeDirectory(pendingArchiveRoot, "Unsafe pending player backup archive");
+        String archiveId = archiveDirectory.substring(archiveDirectory.lastIndexOf('/') + 1);
+        ArchiveIndex archiveIndex = new ArchiveIndex(ArchiveIndex.SCHEMA_VERSION, archiveId,
+                plan.release().manifest().releaseId(), plan.release().manifest().displayVersion(),
+                java.time.Instant.now(), archived);
+        AtomicFileSupport.write(pendingArchiveRoot.resolve(ArchiveIndex.FILE_NAME),
+                json.writePretty(archiveIndex));
+        StringBuilder text = new StringBuilder("DreamingFish player backup\n")
+                .append("Release: ").append(plan.release().manifest().displayVersion())
+                .append(" (").append(plan.release().manifest().releaseId()).append(")\n")
+                .append("Archived files: ").append(archived.size()).append("\n\n");
+        for (ArchivedFile file : archived) {
+            text.append(file.originalPath()).append("  —  ").append(file.reason().description());
+            if (!file.detail().isBlank()) text.append("：").append(file.detail());
+            text.append('\n');
+        }
         AtomicFileSupport.write(pendingArchiveRoot.resolve("archived-files.txt"),
-                index.getBytes(StandardCharsets.UTF_8));
+                text.toString().getBytes(StandardCharsets.UTF_8));
         Path target = resolveArchiveDirectory(paths, archiveDirectory);
         if (target == null || Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("Forced sync archive destination already exists or is invalid");
+            throw new IOException("Player backup archive destination already exists or is invalid");
         }
         Files.createDirectories(target.getParent());
         AtomicFileSupport.moveReplace(pendingArchiveRoot, target);
@@ -349,18 +410,25 @@ final class TransactionInstaller {
         String name = ARCHIVE_TIME.format(java.time.Instant.now()) + "_"
                 + plan.release().manifest().releaseId() + "_"
                 + transactionId.substring(0, 8);
-        return "backups/forced-sync/" + name;
+        return EnginePaths.ARCHIVE_ROOT + "/" + name;
     }
 
     private Path resolveArchiveDirectory(EnginePaths paths, String archiveDirectory) throws IOException {
         if (archiveDirectory == null) return null;
         String normalized = PathSafety.normalizeManifestPath(archiveDirectory);
-        if (!normalized.toLowerCase(java.util.Locale.ROOT).startsWith("backups/forced-sync/")) {
-            throw new IOException("Transaction archive path is outside the forced sync backup root");
+        String folded = normalized.toLowerCase(java.util.Locale.ROOT);
+        Path root;
+        if (folded.startsWith(EnginePaths.ARCHIVE_ROOT + "/")) {
+            root = paths.archiveBackups();
+        } else if (folded.startsWith(EnginePaths.LEGACY_ARCHIVE_ROOT + "/")) {
+            // Journals written by earlier player versions.
+            root = paths.forcedSyncBackups();
+        } else {
+            throw new IOException("Transaction archive path is outside the player backup roots");
         }
         Path target = PathSafety.resolveInside(paths.playerHome(), normalized);
-        if (!target.startsWith(paths.forcedSyncBackups())) {
-            throw new IOException("Transaction archive path escapes the forced sync backup root");
+        if (!target.startsWith(root)) {
+            throw new IOException("Transaction archive path escapes the player backup root");
         }
         return target;
     }
@@ -398,9 +466,11 @@ final class TransactionInstaller {
     }
 
     private static void deleteTree(Path root) throws IOException {
+        PathSafety.assertSafePathTree(root);
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return;
         try (var stream = Files.walk(root)) {
             for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
+                PathSafety.assertSafePathTree(path);
                 Files.deleteIfExists(path);
             }
         }

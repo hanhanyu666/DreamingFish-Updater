@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.40",
-    [string]$AdminVersion = "0.1.26",
+    [string]$Version = "0.2.0",
+    [string]$AdminVersion = "0.2.0",
     [string]$DistDirectory = "",
     [string]$JdkHome = "",
     [switch]$KeepWork
@@ -89,6 +89,24 @@ function Copy-PlayerTemplate([string]$Destination) {
     }
 }
 
+function New-TestMod([string]$Path, [string]$ModId, [string]$Payload) {
+    $archive = [System.IO.Compression.ZipFile]::Open($Path,
+            [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        $metadata = $archive.CreateEntry("fabric.mod.json")
+        $writer = [System.IO.StreamWriter]::new($metadata.Open(),
+                [System.Text.UTF8Encoding]::new($false))
+        try {
+            $writer.Write((@{ schemaVersion=1; id=$ModId; name=$ModId; version="1.0" } |
+                    ConvertTo-Json -Compress))
+        } finally { $writer.Dispose() }
+        $entry = $archive.CreateEntry("sample-data.txt")
+        $input = [System.IO.File]::OpenRead($Payload)
+        $output = $entry.Open()
+        try { $input.CopyTo($output) } finally { $input.Dispose(); $output.Dispose() }
+    } finally { $archive.Dispose() }
+}
+
 function Read-ActivePlayer([string]$Instance) {
     $path = Join-Path $Instance "DreamingFishUpdater\state\active-player.properties"
     return ConvertFrom-StringData (Get-Content -Raw -LiteralPath $path)
@@ -160,8 +178,7 @@ try {
     $smallAsset = Join-Path $repoRoot "README.md"
     $largeAsset = Join-Path $repoRoot "docs\V1-DESIGN.md"
     for ($index = 0; $index -lt 10; $index++) {
-        Copy-Item -Force -LiteralPath $smallAsset `
-            -Destination (Join-Path $mods "original-$index.jar")
+        New-TestMod (Join-Path $mods "original-$index.jar") "smoke_original_$index" $smallAsset
     }
     Copy-Item -Force -LiteralPath $largeAsset `
         -Destination (Join-Path $config "server-settings.toml")
@@ -212,8 +229,7 @@ try {
     ) | Out-Null
 
     for ($index = 0; $index -lt 5; $index++) {
-        Copy-Item -Force -LiteralPath $largeAsset `
-            -Destination (Join-Path $mods "addition-$index.jar")
+        New-TestMod (Join-Path $mods "addition-$index.jar") "smoke_addition_$index" $largeAsset
     }
     $releaseTwo = Publish-Release "1.2.0" "Add five mods"
     $instanceTwo = Join-Path $workRoot "instance-from-1.2"
@@ -249,12 +265,11 @@ try {
 
     Verify-PlayerProgram $instanceOne $true
     $programRoot = Join-Path $instanceOne "DreamingFishUpdater\app\$Version"
-    $programFile = @(
-        (Join-Path $programRoot "player-sidecar.jar"),
-        (Join-Path $programRoot "app\player-app.jar")
-    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-    Assert-True (-not [string]::IsNullOrWhiteSpace($programFile)) `
-        "Player distribution contains neither the Tauri sidecar nor the legacy player JAR"
+    $programFile = Join-Path $programRoot "player-sidecar.jar"
+    Assert-True (Test-Path -LiteralPath $programFile -PathType Leaf) `
+        "Player distribution is missing the Java sidecar"
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $programRoot "app\player-app.jar"))) `
+        "Player distribution still contains the removed legacy player JAR"
     $savedProgramFile = Join-Path $workRoot (Split-Path -Leaf $programFile)
     Copy-Item -Force -LiteralPath $programFile -Destination $savedProgramFile
     try {
@@ -276,7 +291,7 @@ try {
     for ($attempt = 0; $attempt -lt 50 -and $null -eq $health; $attempt++) {
         try {
             $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/healthz" `
-                -TimeoutSec 1
+                -TimeoutSec 1 -NoProxy
         } catch {
             Start-Sleep -Milliseconds 100
         }
@@ -285,15 +300,17 @@ try {
         "Packaged HTTP service did not become healthy"
     $latestResponse = Invoke-WebRequest `
         -Uri "http://127.0.0.1:$port/v1/projects/smoke-pack/latest" `
-        -TimeoutSec 5
+        -TimeoutSec 5 -NoProxy
     $latest = $latestResponse.Content | ConvertFrom-Json
     $signature = $latestResponse.Headers["X-Dfs-Signature"]
     Assert-True ($latest.releaseId -eq $releaseThree) `
         "The HTTP endpoint did not return release 1.3"
     Assert-True ($latest.displayVersion -eq "1.3.0") `
         "The HTTP endpoint returned the wrong display version"
-    Assert-True ($latest.forcedSyncDirectories -contains "mods") `
+    Assert-True ($latest.cleanupDirectories -contains "mods") `
         "The HTTP manifest omitted forced mods synchronization"
+    Assert-True ($latest.requiredCapabilities -contains "simplified-maintenance-v1") `
+        "The packaged admin did not publish the simplified protocol"
     Assert-True (-not [string]::IsNullOrWhiteSpace($signature)) `
         "The HTTP manifest response is missing its signature"
     $latestModCount = @($latest.files | Where-Object { $_.path -like "mods/*" }).Count
@@ -301,7 +318,7 @@ try {
         "Release 1.3 should contain two retained and five added mods"
     $history = Invoke-RestMethod `
         -Uri "http://127.0.0.1:$port/v1/projects/smoke-pack/history" `
-        -TimeoutSec 5
+        -TimeoutSec 5 -NoProxy
     Assert-True (@($history.releases).Count -eq 3) `
         "The packaged history endpoint did not return all three releases"
     Assert-True ($history.releases[0].releaseId -eq $releaseThree) `
@@ -325,7 +342,7 @@ try {
         )
         ThinDeploymentVerified = $true
         PlayerProgramVerification = "valid accepted; modified rejected; restored accepted"
-        ForcedSyncDirectories = $latest.forcedSyncDirectories -join ","
+        ForcedSyncDirectories = $latest.cleanupDirectories -join ","
         HttpHealth = $health.status
         HttpLatestVersion = $latest.displayVersion
         HttpHistoryReleases = @($history.releases).Count

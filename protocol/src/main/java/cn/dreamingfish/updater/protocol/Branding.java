@@ -21,7 +21,7 @@ public record Branding(
         Double topBarOpacity,
         String titleColor
 ) {
-    public static final String DEFAULT_BRAND_NAME = "梦鱼服";
+    public static final String DEFAULT_BRAND_NAME = "梦鱼更新器";
     public static final String DEFAULT_BRAND_ENGLISH_NAME = "DreamingFish";
     public static final String DEFAULT_WELCOME_TEXT = "欢迎来到";
     public static final String DEFAULT_TOP_BAR_COLOR = "#030708";
@@ -87,7 +87,7 @@ public record Branding(
     }
 
     public static Branding empty() {
-        return new Branding("梦屿", "灾变之后，仍有人在这里守望。", "", null,
+        return new Branding("Minecraft 整合包", "准备好后，一起进入游戏。", "", null,
                 "#2ee8df", "#b06cff");
     }
 

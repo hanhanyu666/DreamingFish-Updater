@@ -73,6 +73,14 @@ public final class ProjectService {
 
     public ProjectRecord configure(String id, String displayName, Path sourceDirectory,
                                    String publicBaseUrl, Branding branding, ProjectRules rules) {
+        validateProjectId(id);
+        try (ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(id + ".lock"))) {
+            return configureLocked(id, displayName, sourceDirectory, publicBaseUrl, branding, rules);
+        } catch (IOException error) { throw new ManagementException("Unable to lock project configuration", error); }
+    }
+
+    private ProjectRecord configureLocked(String id, String displayName, Path sourceDirectory,
+                                          String publicBaseUrl, Branding branding, ProjectRules rules) {
         ProjectRecord current = database.requireProject(id);
         String name = displayName == null
                 ? current.displayName() : normalizeDisplayName(displayName);
@@ -107,6 +115,13 @@ public final class ProjectService {
     }
 
     public ProjectRecord setCover(String id, Path coverFile) {
+        validateProjectId(id);
+        try (ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(id + ".lock"))) {
+            return setCoverLocked(id, coverFile);
+        } catch (IOException error) { throw new ManagementException("Unable to lock project cover", error); }
+    }
+
+    private ProjectRecord setCoverLocked(String id, Path coverFile) {
         if (!Files.isRegularFile(coverFile)) {
             throw new ManagementException("Cover image does not exist: " + coverFile);
         }
@@ -265,6 +280,10 @@ public final class ProjectService {
             throw new ManagementException("A standard modpack source directory is required");
         }
         Path source = sourceDirectory.toAbsolutePath().normalize();
+        try { PathSafety.assertSafePathTree(source); }
+        catch (IOException | cn.dreamingfish.updater.protocol.ProtocolException unsafe) {
+            throw new ManagementException("Standard modpack source path traverses a directory alias", unsafe);
+        }
         if (!Files.isDirectory(source)) {
             throw new ManagementException("Standard modpack source directory does not exist: " + source);
         }

@@ -5,6 +5,7 @@ import cn.dreamingfish.updater.management.ManagementDatabase;
 import cn.dreamingfish.updater.management.ManagementException;
 import cn.dreamingfish.updater.management.ManagementPaths;
 import cn.dreamingfish.updater.management.ObjectStore;
+import cn.dreamingfish.updater.management.ProjectPolicyService;
 import cn.dreamingfish.updater.management.ProjectService;
 import cn.dreamingfish.updater.management.PlayerProgramService;
 import cn.dreamingfish.updater.management.PlayerDeploymentService;
@@ -24,7 +25,7 @@ import java.nio.file.Path;
 @CommandLine.Command(
         name = "dfs-admin",
         mixinStandardHelpOptions = true,
-        version = "DreamingFish Update System 0.1.26",
+        version = "DreamingFish Update System 0.2.0",
         description = "Self-hosted Minecraft modpack update management",
         subcommands = {
                 InitCommand.class,
@@ -37,7 +38,7 @@ import java.nio.file.Path;
         }
 )
 public final class ManagementCli implements Runnable {
-    static final String VERSION = "0.1.26";
+    static final String VERSION = "0.2.0";
     private static final Charset CONSOLE_OUTPUT_CHARSET =
             WindowsConsoleEncoding.outputCharset();
 
@@ -140,7 +141,8 @@ public final class ManagementCli implements Runnable {
                 playerPrograms, deployments, sourceFiles, new ObjectStore(paths),
                 new BackupService(paths, database, json),
                 new StaticDistributionService(paths, database, json),
-                new StaticDistributionUploader(json));
+                new StaticDistributionUploader(json),
+                new ProjectPolicyService(paths, database));
     }
 
     void printJson(Object value) {
@@ -195,8 +197,12 @@ public final class ManagementCli implements Runnable {
             ObjectStore objects,
             BackupService backups,
             StaticDistributionService staticDistribution,
-            StaticDistributionUploader distributionUploader
+            StaticDistributionUploader distributionUploader,
+            ProjectPolicyService policies
     ) {
+        cn.dreamingfish.updater.management.WorkspaceOperationService operations() {
+            return new cn.dreamingfish.updater.management.WorkspaceOperationService(paths, database, json);
+        }
     }
 
     Path bootstrapAgentPath() {

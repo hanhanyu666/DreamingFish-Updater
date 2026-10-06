@@ -286,7 +286,12 @@ final class TestUpdateServer implements AutoCloseable {
     }
 
     record TestFile(String path, byte[] bytes, String sha256, FilePolicy policy,
-                    String componentId, String displayName) {
+                    String componentId, String displayName, String version) {
+        TestFile(String path, byte[] bytes, String sha256, FilePolicy policy,
+                 String componentId, String displayName) {
+            this(path, bytes, sha256, policy, componentId, displayName, null);
+        }
+
         TestFile {
             bytes = bytes.clone();
         }
@@ -294,6 +299,129 @@ final class TestUpdateServer implements AutoCloseable {
         @Override
         public byte[] bytes() {
             return bytes.clone();
+        }
+    }
+
+    /** A real mod jar carrying fabric.mod.json, so local inspection reads its mod ID and version. */
+    TestFile jarMod(String path, String id, String version, String marker) {
+        byte[] bytes = jarBytes(id, version, marker);
+        String hash = CryptoSupport.sha256(bytes);
+        objects.put(hash, bytes);
+        return new TestFile(path, bytes, hash, FilePolicy.ENFORCED, id, id, version);
+    }
+
+    static byte[] jarBytes(String id, String version, String marker) {
+        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(output)) {
+            java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("fabric.mod.json");
+            entry.setTime(0);
+            zip.putNextEntry(entry);
+            zip.write(("{\"schemaVersion\":1,\"id\":\"" + id + "\",\"name\":\"" + id
+                    + "\",\"version\":\"" + version + "\"}").getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            java.util.zip.ZipEntry content = new java.util.zip.ZipEntry("marker.txt");
+            content.setTime(0);
+            zip.putNextEntry(content);
+            zip.write(marker.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+        return output.toByteArray();
+    }
+
+    /** Builds a release using the preset-based maintenance model. */
+    PolicyRelease policy(long sequence, String id) {
+        return new PolicyRelease(sequence, id);
+    }
+
+    final class PolicyRelease {
+        private final long sequence;
+        private final String id;
+        private final List<ManifestFile> files = new ArrayList<>();
+        private final List<String> cleanup = new ArrayList<>();
+        private final List<cn.dreamingfish.updater.protocol.OptionalGroup> groups = new ArrayList<>();
+        private final List<String> released = new ArrayList<>();
+        private final List<String> retained = new ArrayList<>();
+        private final List<cn.dreamingfish.updater.protocol.Withdrawal> withdrawals = new ArrayList<>();
+        private final List<cn.dreamingfish.updater.protocol.Correction> corrections = new ArrayList<>();
+
+        private PolicyRelease(long sequence, String id) {
+            this.sequence = sequence;
+            this.id = id;
+        }
+
+        PolicyRelease file(TestFile file, cn.dreamingfish.updater.protocol.MaintenancePreset preset) {
+            return file(file, preset, null);
+        }
+
+        PolicyRelease file(TestFile file, cn.dreamingfish.updater.protocol.MaintenancePreset preset,
+                           String group) {
+            files.add(new ManifestFile(file.path(), file.sha256(), file.bytes().length,
+                    FilePolicy.ENFORCED, false, file.componentId(), file.displayName(),
+                    preset, group, file.version()));
+            return this;
+        }
+
+        PolicyRelease cleanup(String directory) {
+            cleanup.add(directory);
+            return this;
+        }
+
+        PolicyRelease group(String groupId, String title, boolean defaultInstall) {
+            groups.add(new cn.dreamingfish.updater.protocol.OptionalGroup(
+                    groupId, title, "", defaultInstall));
+            return this;
+        }
+
+        PolicyRelease released(String path) {
+            released.add(path);
+            return this;
+        }
+
+        PolicyRelease retained(String path) {
+            retained.add(path);
+            return this;
+        }
+
+        PolicyRelease withdraw(String withdrawalId, String reason, TestFile... versions) {
+            List<cn.dreamingfish.updater.protocol.WithdrawalItem> items = new ArrayList<>();
+            for (TestFile version : versions) {
+                items.add(new cn.dreamingfish.updater.protocol.WithdrawalItem(version.sha256(),
+                        version.bytes().length, version.path(), version.componentId(),
+                        version.version()));
+            }
+            withdrawals.add(new cn.dreamingfish.updater.protocol.Withdrawal(
+                    withdrawalId, reason, Instant.now(), items));
+            return this;
+        }
+
+        PolicyRelease correct(String correctionId, String path,
+                              cn.dreamingfish.updater.protocol.CorrectionMode mode,
+                              String reason, TestFile... badVersions) {
+            List<String> bad = new ArrayList<>();
+            for (TestFile version : badVersions) bad.add(version.sha256());
+            corrections.add(new cn.dreamingfish.updater.protocol.Correction(
+                    correctionId, path, mode, bad, reason, Instant.now()));
+            return this;
+        }
+
+        ReleaseManifest build() {
+            List<ManifestFile> sorted = new ArrayList<>(files);
+            sorted.sort(Comparator.comparing(ManifestFile::path));
+            Set<String> capabilities = new java.util.HashSet<>();
+            capabilities.add(ProtocolConstants.CAPABILITY_MAINTENANCE_POLICY);
+            if (!released.isEmpty()) capabilities.add(ProtocolConstants.CAPABILITY_RELEASED_PATHS);
+            ReleaseManifest manifest = new ReleaseManifest(ProtocolConstants.RELEASE_SCHEMA_VERSION,
+                    "demo", id, sequence, Instant.now(), "2.0." + sequence, "0.1.0",
+                    "release " + sequence, capabilities, List.of(), List.of(),
+                    released.stream().sorted().toList(), Branding.empty(), sorted,
+                    cleanup.stream().sorted().toList(), groups, retained.stream().sorted().toList(),
+                    withdrawals, corrections);
+            cn.dreamingfish.updater.protocol.ManifestValidator.validateRelease(manifest, Set.of(
+                    ProtocolConstants.CAPABILITY_MAINTENANCE_POLICY,
+                    ProtocolConstants.CAPABILITY_RELEASED_PATHS));
+            return manifest;
         }
     }
 }

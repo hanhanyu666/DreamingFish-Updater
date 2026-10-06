@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BackupServiceTest {
     @TempDir
@@ -79,5 +80,54 @@ class BackupServiceTest {
         assertThrows(ManagementException.class,
                 () -> restore.restore(archive, "strong-password-two".toCharArray(), false));
         assertFalse(Files.exists(destination.database()));
+    }
+
+    @Test
+    void preservesBothRecoveryCandidatesWhenInstallAndRollbackFail() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary.resolve("double-failure"));
+        fixture.createProject();
+        Path marker = fixture.paths.root().resolve("original-marker.txt");
+        Files.writeString(marker, "sole old data");
+        Path archive = temporary.resolve("failure.dfs-backup");
+        char[] password = "strong-password-for-recovery".toCharArray();
+        new BackupService(fixture.paths, fixture.database, fixture.json).create(archive, password);
+        Path[] retained = new Path[2];
+        BackupRestoreFaultInjector faults = new BackupRestoreFaultInjector() {
+            @Override public void beforeInstall(Path restored, Path destination) throws java.io.IOException {
+                retained[0] = restored;
+                throw new java.io.IOException("Injected install failure");
+            }
+            @Override public void beforeRollback(Path previous, Path destination) throws java.io.IOException {
+                retained[1] = previous;
+                throw new java.io.IOException("Injected rollback failure");
+            }
+        };
+        ManagementException error = assertThrows(ManagementException.class, () ->
+                new BackupService(fixture.paths, fixture.database, fixture.json, faults)
+                        .restore(archive, password, true));
+        assertEquals("sole old data", Files.readString(retained[1].resolve("original-marker.txt")));
+        assertTrue(Files.isRegularFile(retained[0].resolve("management.db")));
+        assertTrue(error.getMessage().contains(retained[0].toString()));
+        assertTrue(error.getMessage().contains(retained[1].toString()));
+    }
+
+    @Test
+    void restoresOriginalDirectoryWhenInstallingTheBackupFails() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary.resolve("single-failure"));
+        fixture.createProject();
+        Files.writeString(fixture.paths.root().resolve("original-marker.txt"), "old data");
+        Path archive = temporary.resolve("single-failure.dfs-backup");
+        char[] password = "strong-password-for-recovery".toCharArray();
+        new BackupService(fixture.paths, fixture.database, fixture.json).create(archive, password);
+        BackupRestoreFaultInjector faults = new BackupRestoreFaultInjector() {
+            @Override public void beforeInstall(Path restored, Path destination) throws java.io.IOException {
+                throw new java.io.IOException("Injected install failure");
+            }
+        };
+        assertThrows(ManagementException.class, () ->
+                new BackupService(fixture.paths, fixture.database, fixture.json, faults)
+                        .restore(archive, password, true));
+        assertEquals("old data", Files.readString(fixture.paths.root().resolve("original-marker.txt")));
+        assertEquals(1, fixture.database.listProjects().size());
     }
 }

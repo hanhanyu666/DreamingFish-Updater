@@ -38,6 +38,9 @@ const summaryCounts = computed(() => {
   if (result.value.archivedFiles.length > 0) {
     counts.push("备份 " + result.value.archivedFiles.length + " 项");
   }
+  if ((result.value.resetPaths ?? []).length > 0) {
+    counts.push("恢复默认 " + (result.value.resetPaths ?? []).length + " 项");
+  }
   if (result.value.releasedPaths.length > 0) {
     counts.push("保留并放弃管理 " + result.value.releasedPaths.length + " 项");
   }
@@ -76,7 +79,20 @@ const tooltipText = computed(() => {
 
 const percentText = computed(() => store.state.percent);
 
+/** A finished check fills the bar; a stopped one (error or offline start) leaves it still. */
+const progressFinished = computed(() =>
+  store.state.result != null && !store.state.working && store.state.error == null);
+const progressStopped = computed(() =>
+  !store.state.working && (store.state.error != null || store.state.launchPermitted));
+const progressIndeterminate = computed(() => {
+  if (progressFinished.value || progressStopped.value) return false;
+  const event = store.state.progress;
+  return event == null || event.totalBytes <= 0;
+});
+
 const progressStyle = computed(() => {
+  if (progressFinished.value) return { width: "100%" };
+  if (progressStopped.value) return { width: "0%" };
   const event = store.state.progress;
   if (event == null || event.totalBytes <= 0) return {};
   return { width: Math.round(event.fraction * 100) + "%" };
@@ -99,8 +115,8 @@ function openDirectory(): void {
   store.sendCommand({ command: "open-directory" });
 }
 
-function openArchive(): void {
-  store.sendCommand({ command: "open-archive" });
+function openBackups(): void {
+  store.openDrawer("BACKUPS");
 }
 </script>
 
@@ -134,7 +150,7 @@ function openArchive(): void {
       <div class="update-progress-track">
         <div
           class="update-progress-bar"
-          :class="{ indeterminate: !store.state.progress || store.state.progress.totalBytes <= 0 }"
+          :class="{ indeterminate: progressIndeterminate }"
           :style="progressStyle"
         ></div>
       </div>
@@ -183,9 +199,9 @@ function openArchive(): void {
         v-if="store.state.result != null && store.state.result.archivedFiles.length > 0"
         type="button"
         class="archive-button"
-        @click="openArchive"
+        @click="openBackups"
       >
-        打开备份目录
+        查看备份与恢复
       </button>
       <div v-if="store.state.error != null" class="action-row">
         <button type="button" class="secondary-button" @click="openDirectory">打开目录</button>

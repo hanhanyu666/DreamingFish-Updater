@@ -29,7 +29,7 @@ class SourceFileServiceTest {
         Files.createDirectories(render.getParent());
         Files.writeString(render, "render-v1");
         fixture.projects.configure("demo", null, null, null,
-                project.rules().withForcedSyncFiles(List.of("mods/render.jar")));
+                project.rules().withLegacyForcedSyncFiles(List.of("mods/render.jar")));
         fixture.scanner.createPreview("demo");
         fixture.publisher.publish("demo", "1.0", "0.1.13", "First");
 
@@ -49,7 +49,7 @@ class SourceFileServiceTest {
                 .filter(change -> change.path().equals("mods/render.jar"))
                 .findFirst().orElseThrow().removalAction());
         assertTrue(fixture.database.requireProject("demo")
-                .rules().forcedSyncFiles().isEmpty());
+                .rules().requiredFiles().isEmpty());
 
         Path external = temporary.resolve("new-config.toml");
         Files.writeString(external, "from-server");
@@ -135,7 +135,7 @@ class SourceFileServiceTest {
         Files.createDirectories(mod.getParent());
         Files.writeString(mod, "required");
         fixture.projects.configure("demo", null, null, null,
-                project.rules().withForcedSyncDirectories(List.of("mods")));
+                project.rules().withLegacyForcedSyncDirectories(List.of("mods")));
         fixture.scanner.createPreview("demo");
         fixture.publisher.publish("demo", "1.0", "0.1.13", "First");
 
@@ -159,7 +159,7 @@ class SourceFileServiceTest {
         Files.writeString(first, "first");
         Files.writeString(second, "second");
         fixture.projects.configure("demo", null, null, null,
-                project.rules().withForcedSyncFiles(List.of(
+                project.rules().withLegacyForcedSyncFiles(List.of(
                         "mods/first.jar", "config/second.toml")));
         fixture.scanner.createPreview("demo");
         fixture.publisher.publish("demo", "1.0", "0.1.13", "First");
@@ -182,7 +182,7 @@ class SourceFileServiceTest {
                 .filter(change -> change.removalAction() == RemovalAction.DELETE)
                 .count());
         assertTrue(fixture.database.requireProject("demo")
-                .rules().forcedSyncFiles().isEmpty());
+                .rules().requiredFiles().isEmpty());
     }
 
     private static InputStream interrupted(byte[] content, int failAfter) {

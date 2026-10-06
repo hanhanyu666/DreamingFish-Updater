@@ -83,7 +83,45 @@ class EndToEndUpdateTest {
         return instance.resolve("mods/managed.jar");
     }
 
+    @Test
+    void staleAndAlreadyReleasedClientsBothKeepTheirCopyAfterRollback() throws Exception {
+        ManagementFixture fixture = new ManagementFixture(temporary.resolve("rollback-management"));
+        ProjectRecord project = fixture.createProject();
+        fixture.scanner.createPreview("demo");
+        StoredRelease empty = fixture.publisher.publish("demo", "1.0.0", "0.1.0", "empty");
+        Path source = fixture.source.resolve("mods/retired.jar");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "player-owned after release");
+        fixture.scanner.createPreview("demo");
+        StoredRelease original = fixture.publisher.publish("demo", "2.0.0", "0.1.0", "managed");
+        Path stale = Files.createDirectories(temporary.resolve("stale-client"));
+        Path released = Files.createDirectories(temporary.resolve("released-client"));
+        for (Path instance : java.util.List.of(stale, released)) {
+            Path home = Files.createDirectories(instance.resolve("DreamingFishUpdater"));
+            new BundledReleasePreparer(fixture.paths, fixture.database, fixture.json).prepare("demo", original.releaseId(), instance, home);
+        }
+        Files.delete(source);
+        fixture.scanner.createPreview("demo");
+        fixture.scanner.decideRemovals("demo", java.util.List.of(new RemovalDecision("mods/retired.jar", RemovalAction.RELEASE)));
+        fixture.publisher.publish("demo", "3.0.0", "0.1.0", "released");
+        try (PublicFileServer server = new PublicFileServer(fixture.database, fixture.objects, new InetSocketAddress("127.0.0.1", 0))) {
+            server.start();
+            ProjectBinding binding = new ProjectBinding(1, "demo", "http://127.0.0.1:" + server.address().getPort(),
+                    project.publicKey(), "DreamingFishUpdater", null, project.branding());
+            java.util.function.Function<Path, UpdateRequest> requests = instance -> UpdateRequest.defaults(instance,
+                    instance.resolve("DreamingFishUpdater"), binding, "0.2.0", ManagementFixture.PLAYER_CAPABILITIES);
+            UpdateEngine engine = new UpdateEngine();
+            engine.update(requests.apply(released), null);
+            fixture.publisher.rollback("demo", empty.releaseId(), "4.0.0", "rollback");
+            engine.update(requests.apply(stale), null);
+            engine.update(requests.apply(released), null);
+            for (Path instance : java.util.List.of(stale, released)) {
+                assertEquals("player-owned after release", Files.readString(instance.resolve("mods/retired.jar")));
+            }
+        }
+    }
+
     private static UpdateRequest request(Path instance, Path playerHome, ProjectBinding binding) {
-        return UpdateRequest.defaults(instance, playerHome, binding, "0.1.0", Set.of());
+        return UpdateRequest.defaults(instance, playerHome, binding, "0.2.0", ManagementFixture.PLAYER_CAPABILITIES);
     }
 }

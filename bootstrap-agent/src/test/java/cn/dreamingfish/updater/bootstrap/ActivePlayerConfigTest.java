@@ -32,7 +32,7 @@ class ActivePlayerConfigTest {
         Path instance = temporary.resolve("instance");
         Path binding = instance.resolve(".dreamingfish-bootstrap/project-binding.json");
         MinecraftLaunchContext launchContext = new MinecraftLaunchContext(
-                "Hanyu", "8667ba71b85a4004af54457a9734eed7", "PCL2", "2.9.4");
+                "Player", "00000000000000000000000000000000", "PCL2", "2.9.4");
         List<String> command = config.command(12345, "token", instance, binding, launchContext);
 
         assertEquals(launcher.toAbsolutePath().normalize().toString(), command.get(0));
@@ -40,7 +40,7 @@ class ActivePlayerConfigTest {
         assertEquals("--bootstrap-port", command.get(2));
         assertEquals("12345", command.get(3));
         assertEquals("token", command.get(5));
-        assertEquals("Hanyu", command.get(command.indexOf("--player-name") + 1));
+        assertEquals("Player", command.get(command.indexOf("--player-name") + 1));
         assertEquals("PCL2", command.get(command.indexOf("--launcher-brand") + 1));
         assertEquals(90_000L, config.timeoutMillis());
     }

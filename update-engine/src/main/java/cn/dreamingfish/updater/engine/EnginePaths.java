@@ -22,6 +22,13 @@ record EnginePaths(
         Path instanceLock,
         Path gameLock
 ) {
+    /** Player backups written by this version, relative to the player home. */
+    static final String ARCHIVE_ROOT = "backups/archive";
+    /** Forced sync archives written by earlier player versions. */
+    static final String LEGACY_ARCHIVE_ROOT = "backups/forced-sync";
+    static final String MAINTENANCE_STATE_FILE = "maintenance-state.json";
+    static final String FILE_INDEX_FILE = "file-index.json";
+
     static EnginePaths of(Path instanceRoot, Path playerHome) {
         Path normalizedInstance = instanceRoot.toAbsolutePath().normalize();
         Path normalizedHome = playerHome.toAbsolutePath().normalize();
@@ -52,7 +59,20 @@ record EnginePaths(
         createSafeDirectory(playerHome, transactions);
         createSafeDirectory(playerHome, downloads);
         createSafeDirectory(playerHome, forcedSyncBackups);
+        createSafeDirectory(playerHome, archiveBackups());
         createSafeDirectory(instanceRoot, gameLock.getParent());
+    }
+
+    Path archiveBackups() {
+        return playerHome.resolve(ARCHIVE_ROOT);
+    }
+
+    Path maintenanceState() {
+        return state.resolve(MAINTENANCE_STATE_FILE);
+    }
+
+    Path fileIndex() {
+        return state.resolve(FILE_INDEX_FILE);
     }
 
     Path cacheObject(String sha256) {
@@ -83,13 +103,14 @@ record EnginePaths(
         if (!normalizedDirectory.startsWith(normalizedRoot)) {
             throw new IOException("Updater directory escapes its local root: " + directory);
         }
-        Files.createDirectories(normalizedRoot);
+        cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(normalizedRoot);
         Path current = normalizedRoot;
         if (!Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(current)) {
             throw new IOException("Updater root is not a safe local directory: " + current);
         }
         for (Path segment : normalizedRoot.relativize(normalizedDirectory)) {
             current = current.resolve(segment);
+            cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(current);
             if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
                 Files.createDirectory(current);
             }

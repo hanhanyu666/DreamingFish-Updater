@@ -14,7 +14,8 @@ final class AtomicFileSupport {
     }
 
     static void write(Path target, byte[] bytes) throws IOException {
-        Files.createDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(target);
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp-" + UUID.randomUUID());
         try {
             Files.write(temporary, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
@@ -27,7 +28,9 @@ final class AtomicFileSupport {
     }
 
     static void copyReplace(Path source, Path target) throws IOException {
-        Files.createDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(source);
+        cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(target);
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp-" + UUID.randomUUID());
         try {
             Files.copy(source, temporary, StandardCopyOption.COPY_ATTRIBUTES);
@@ -40,6 +43,8 @@ final class AtomicFileSupport {
     }
 
     static void moveReplace(Path source, Path target) throws IOException {
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(source);
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(target);
         try {
             Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (AtomicMoveNotSupportedException e) {

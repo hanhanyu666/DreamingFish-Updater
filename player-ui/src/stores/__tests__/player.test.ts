@@ -77,7 +77,7 @@ describe("player store", () => {
       secondaryAccentColor: "#654321",
     } as unknown as Parameters<typeof displayBranding>[0];
     expect(displayBranding(legacy)).toMatchObject({
-      brandName: "梦鱼服",
+      brandName: "梦鱼更新器",
       brandEnglishName: "DreamingFish",
       welcomeText: "欢迎来到",
       titleColor: "#fff8dc",

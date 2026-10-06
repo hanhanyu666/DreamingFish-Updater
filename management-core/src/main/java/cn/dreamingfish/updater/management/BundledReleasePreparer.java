@@ -2,6 +2,7 @@ package cn.dreamingfish.updater.management;
 
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.JsonCodec;
+import cn.dreamingfish.updater.protocol.MaintenanceModel;
 import cn.dreamingfish.updater.protocol.ManifestFile;
 import cn.dreamingfish.updater.protocol.ManifestValidator;
 import cn.dreamingfish.updater.protocol.PathSafety;
@@ -36,6 +37,9 @@ public final class BundledReleasePreparer {
             "local-mod-preferences.json",
             "local-file-preferences.json",
             "release-history.json",
+            "maintenance-state.json",
+            "file-index.json",
+            "local-option-preferences.json",
             "instance.lock",
             "background-music-muted"
     );
@@ -80,14 +84,15 @@ public final class BundledReleasePreparer {
         verifyMusicObjects(signed.manifest());
 
         List<PreparedFile> files = preflightFiles(instance, signed.manifest());
+        MaintenanceModel model = MaintenanceModel.of(signed.manifest());
         if (materializeManagedFiles) {
             rejectFilesManagedByOtherReleases(instance, signed.manifest());
-            rejectForcedDirectoryExtras(instance, signed.manifest());
+            rejectForcedDirectoryExtras(instance, model);
         }
         clearRuntimeState(instance, home);
-        int materialized = materializeManagedFiles ? materializeFiles(files) : 0;
+        int materialized = materializeManagedFiles ? materializeFiles(files, model) : 0;
         if (materializeManagedFiles) {
-            createForcedDirectories(instance, signed.manifest());
+            createForcedDirectories(instance, model);
         }
         writeBaseline(instance, signed);
         return new PreparedBundledRelease(stored.releaseId(), stored.displayVersion(),
@@ -113,10 +118,7 @@ public final class BundledReleasePreparer {
             }
             ReleaseManifest manifest = json.read(bytes, ReleaseManifest.class);
             ManifestValidator.validateRelease(manifest,
-                    Set.of(
-                            ProtocolConstants.CAPABILITY_FORCED_DIRECTORY_SYNC,
-                            ProtocolConstants.CAPABILITY_FORCED_FILE_SYNC,
-                            ProtocolConstants.CAPABILITY_RELEASED_PATHS));
+                    ProtocolConstants.RELEASE_CAPABILITIES);
             if (!manifest.projectId().equals(project.id())
                     || !manifest.releaseId().equals(stored.releaseId())
                     || manifest.sequence() != stored.sequence()) {
@@ -192,12 +194,13 @@ public final class BundledReleasePreparer {
         }
     }
 
-    private void rejectForcedDirectoryExtras(Path instance, ReleaseManifest selected) {
+    private void rejectForcedDirectoryExtras(Path instance, MaintenanceModel model) {
+        ReleaseManifest selected = model.manifest();
         Set<String> expected = selected.files().stream()
                 .map(ManifestFile::path)
                 .map(BundledReleasePreparer::fold)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        for (String directory : selected.forcedSyncDirectories()) {
+        for (String directory : model.cleanupDirectories()) {
             try {
                 Path root = PathSafety.resolveInside(instance, directory);
                 if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) continue;
@@ -225,10 +228,14 @@ public final class BundledReleasePreparer {
         }
     }
 
-    private int materializeFiles(List<PreparedFile> files) {
+    private int materializeFiles(List<PreparedFile> files, MaintenanceModel model) {
         int materialized = 0;
         for (PreparedFile prepared : files) {
             if (prepared.existed()) continue;
+            // New players follow each optional group's default; switched-off content is not shipped.
+            if (model.groupOf(prepared.file().path()).map(group -> !group.defaultInstall()).orElse(false)) {
+                continue;
+            }
             try {
                 AtomicFiles.copyReplace(prepared.object(), prepared.target());
                 setExecutable(prepared.target(), prepared.file().executable());
@@ -241,8 +248,8 @@ public final class BundledReleasePreparer {
         return materialized;
     }
 
-    private void createForcedDirectories(Path instance, ReleaseManifest manifest) {
-        for (String directory : manifest.forcedSyncDirectories()) {
+    private void createForcedDirectories(Path instance, MaintenanceModel model) {
+        for (String directory : model.cleanupDirectories()) {
             try {
                 Path target = PathSafety.resolveInside(instance, directory);
                 Files.createDirectories(target);
@@ -305,7 +312,7 @@ public final class BundledReleasePreparer {
         for (ManifestFile file : manifest.files()) {
             requireUnprotected(file.path(), relativeHome);
         }
-        for (String directory : manifest.forcedSyncDirectories()) {
+        for (String directory : MaintenanceModel.of(manifest).cleanupDirectories()) {
             requireUnprotected(directory, relativeHome);
         }
     }

@@ -128,6 +128,14 @@ class PlayerSidecarProtocolTest {
             assertEquals("result", result.path("type").asText());
             assertEquals("UPDATED", result.path("result").path("outcome").asText());
             assertEquals("1.20.1-r12", result.path("result").path("displayVersion").asText());
+            assertEquals("REPLACED_MODIFIED",
+                    result.path("result").path("archived").get(0).path("reason").asText());
+            JsonNode groups = findType(snapshot, "groups").path("groups");
+            assertEquals("visuals", groups.get(0).path("id").asText());
+            assertTrue(groups.get(0).path("enabled").asBoolean());
+            JsonNode archive = findType(snapshot, "archives").path("archives").get(0);
+            assertEquals("config/dreamingfish/client.toml",
+                    archive.path("files").get(0).path("path").asText());
             JsonNode keptOpen = findType(snapshot, "launch-kept-open");
             assertEquals("launch-kept-open", keptOpen.path("type").asText());
         } finally {

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "description": "玩家端页面配置示例。把服务器介绍和公告改成自己的内容，在管理端“玩家端个性化”中导入并保存。",
+  "pages": [
+    {
+      "id": "server-guide",
+      "navigationLabel": "服务器介绍",
+      "title": "欢迎来到我的服务器",
+      "lead": "第一次加入的话，先看看这里。",
+      "markdown": "## 如何加入\n\n使用服主提供的整合包，启动前等待更新完成，再进入多人游戏。\n\n## 服务器规则\n\n在这里填写你的玩法介绍、规则和联系方式。",
+      "articles": [],
+      "announcementPage": false,
+      "eyebrow": "SERVER GUIDE"
+    },
+    {
+      "id": "news",
+      "navigationLabel": "公告",
+      "title": "服务器公告",
+      "lead": "维护与活动消息。",
+      "markdown": "",
+      "articles": [
+        {
+          "id": "welcome",
+          "title": "服务器开放啦",
+          "summary": "欢迎大家加入，先阅读服务器规则。",
+          "publishedOn": "2026-10-04",
+          "coverUrl": "",
+          "markdown": "欢迎加入！请使用当前整合包版本。服务器地址和玩法说明由服主在这里填写。"
+        }
+      ],
+      "announcementPage": true,
+      "eyebrow": "SERVER NEWS"
+    }
+  ]
+}

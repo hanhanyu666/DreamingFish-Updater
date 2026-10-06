@@ -226,7 +226,8 @@ fn read_startup_music_from_root(instance_root: &Path) -> Result<Option<String>, 
         .canonicalize()
         .map_err(|error| format!("无法读取 Minecraft 实例目录: {error}"))?;
     // Keep the persistent path first. The legacy names are accepted so a music
-    // file from the former JavaFX player can be reused without renaming it.
+    // The bundled cover is read from the signed player instance without
+    // granting the webview arbitrary filesystem access.
     let candidates = [
         "DreamingFishUpdater/startup-music.mp3",
         "DreamingFishUpdater/bg_music.mp3",

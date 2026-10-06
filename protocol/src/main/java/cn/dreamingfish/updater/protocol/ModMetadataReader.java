@@ -14,14 +14,20 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 public final class ModMetadataReader {
     private static final int MAX_METADATA_BYTES = 1024 * 1024;
-    private static final Set<String> FORGE_METADATA = Set.of(
-            "META-INF/mods.toml", "META-INF/neoforge.mods.toml");
+    /**
+     * Keep the metadata precedence stable across JVM processes.  A Set has no
+     * iteration-order contract, and jars containing both files could therefore
+     * produce a different display name during the publish preview and its
+     * final verification scan.
+     */
+    private static final List<String> FORGE_METADATA = List.of(
+            "META-INF/neoforge.mods.toml", "META-INF/mods.toml");
 
     private ModMetadataReader() {
     }
@@ -54,22 +60,42 @@ public final class ModMetadataReader {
         TomlArray mods = result.getArray("mods");
         if (mods == null || mods.size() == 0) return Optional.empty();
         TomlTable first = mods.getTable(0);
-        return metadata(text(first.get("modId")), text(first.get("displayName")));
+        String version = text(first.get("version"));
+        if (version != null && version.contains("${")) {
+            // Forge build scripts commonly substitute ${file.jarVersion} from the jar manifest.
+            version = manifestVersion(zip);
+        }
+        return metadata(text(first.get("modId")), text(first.get("displayName")), version);
     }
 
     @SuppressWarnings("unchecked")
     private static Optional<ModMetadata> readFabric(ZipFile zip, ZipEntry entry) throws IOException {
         Map<String, Object> values = new JsonCodec().read(readLimited(zip, entry), Map.class);
-        return metadata(text(values.get("id")), text(values.get("name")));
+        return metadata(text(values.get("id")), text(values.get("name")), text(values.get("version")));
     }
 
-    private static Optional<ModMetadata> metadata(String id, String name) {
+    private static String manifestVersion(ZipFile zip) throws IOException {
+        ZipEntry manifest = zip.getEntry("META-INF/MANIFEST.MF");
+        if (manifest == null) return null;
+        String text = new String(readLimited(zip, manifest), StandardCharsets.UTF_8);
+        for (String line : text.split("\\R")) {
+            if (line.regionMatches(true, 0, "Implementation-Version:", 0, 23)) {
+                return line.substring(23).strip();
+            }
+        }
+        return null;
+    }
+
+    private static Optional<ModMetadata> metadata(String id, String name, String version) {
         if (id == null || !id.matches("[A-Za-z0-9_.-]{1,128}")) return Optional.empty();
         String display = name == null || name.isBlank() ? id : name.strip();
         if (display.length() > 256 || display.chars().anyMatch(Character::isISOControl)) {
             display = id;
         }
-        return Optional.of(new ModMetadata(id, display));
+        String safeVersion = version == null || version.isBlank() || version.length() > 128
+                || version.contains("${")
+                || version.chars().anyMatch(Character::isISOControl) ? null : version.strip();
+        return Optional.of(new ModMetadata(id, display, safeVersion));
     }
 
     private static String text(Object value) {

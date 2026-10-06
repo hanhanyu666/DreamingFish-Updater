@@ -11,6 +11,8 @@ import picocli.CommandLine;
                 ProjectShowCommand.class,
                 ProjectConfigureCommand.class,
                 ProjectFilesCommand.class,
+                ProjectOperationsCommand.class,
+                ProjectPolicyCommand.class,
                 ProjectCoverCommand.class,
                 ProjectDeploymentCommand.class,
                 ProjectStaticExportCommand.class,

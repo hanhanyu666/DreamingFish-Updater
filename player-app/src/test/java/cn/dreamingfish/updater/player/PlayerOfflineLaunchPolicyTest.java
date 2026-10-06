@@ -10,25 +10,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PlayerOfflineLaunchPolicyTest {
     @Test
     void allowsOnlyDirectNetworkUnavailability() {
-        assertTrue(PlayerApplication.allowsUnverifiedOfflineLaunch(
+        assertTrue(PlayerRuntime.allowsUnverifiedOfflineLaunch(
                 new UpdateException(UpdateErrorCode.NETWORK_UNAVAILABLE, "offline")));
 
-        assertFalse(PlayerApplication.allowsUnverifiedOfflineLaunch(
+        assertFalse(PlayerRuntime.allowsUnverifiedOfflineLaunch(
                 new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID, "damaged")));
-        assertFalse(PlayerApplication.allowsUnverifiedOfflineLaunch(
+        assertFalse(PlayerRuntime.allowsUnverifiedOfflineLaunch(
                 new UpdateException(UpdateErrorCode.INVALID_SIGNATURE, "invalid")));
-        assertFalse(PlayerApplication.allowsUnverifiedOfflineLaunch(
+        assertFalse(PlayerRuntime.allowsUnverifiedOfflineLaunch(
                 new RuntimeException(new UpdateException(
                         UpdateErrorCode.NETWORK_UNAVAILABLE, "wrapped"))));
     }
 
     @Test
     void allowsManualOverrideOnlyForChangedManagedContent() {
-        assertTrue(PlayerApplication.allowsLocalContentOverride(
+        assertTrue(PlayerRuntime.allowsLocalContentOverride(
                 new UpdateException(UpdateErrorCode.LOCAL_CONTENT_CHANGED, "changed")));
-        assertFalse(PlayerApplication.allowsLocalContentOverride(
+        assertFalse(PlayerRuntime.allowsLocalContentOverride(
                 new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID, "metadata")));
-        assertFalse(PlayerApplication.allowsLocalContentOverride(
+        assertFalse(PlayerRuntime.allowsLocalContentOverride(
                 new UpdateException(UpdateErrorCode.INVALID_SIGNATURE, "invalid")));
     }
 }

@@ -73,6 +73,7 @@ public final class ManifestValidator {
                 throw new ProtocolException("Invalid component ID for " + path);
             }
             requireLength(file.displayName(), "component display name", 256);
+            requirePlainText(file.version(), "component version", 128);
             if (insideForcedDirectory(path, manifest.forcedSyncDirectories())
                     && file.policy() != FilePolicy.ENFORCED) {
                 throw new ProtocolException(
@@ -81,7 +82,212 @@ public final class ManifestValidator {
         }
         PathSafety.validateDistinctPaths(paths);
         validateForcedSyncFiles(manifest, filesByFoldedPath);
+        validateMaintenancePolicy(manifest, filesByFoldedPath);
         validateReleasedPaths(manifest, paths);
+    }
+
+    private static final Pattern GROUP_ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
+    private static final Pattern DIRECTIVE_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
+    private static final int MAX_DIRECTIVE_ITEMS = 2_000;
+
+    private static void validateMaintenancePolicy(
+            ReleaseManifest manifest, Map<String, ManifestFile> filesByFoldedPath) {
+        boolean usesPolicyFields = manifest.files().stream().anyMatch(file ->
+                file.preset() != null || file.optionalGroup() != null)
+                || !manifest.cleanupDirectories().isEmpty()
+                || !manifest.optionalGroups().isEmpty()
+                || !manifest.retainedSelfManagedPaths().isEmpty()
+                || !manifest.withdrawals().isEmpty()
+                || !manifest.corrections().isEmpty();
+        if (!manifest.usesMaintenancePolicy()) {
+            if (manifest.requiredCapabilities().contains(ProtocolConstants.CAPABILITY_SIMPLIFIED_MAINTENANCE)) {
+                throw new ProtocolException("Simplified maintenance requires maintenance-policy-v2");
+            }
+            if (usesPolicyFields) {
+                throw new ProtocolException("Maintenance policy fields are missing their required capability");
+            }
+            return;
+        }
+        if (!manifest.forcedSyncDirectories().isEmpty() || !manifest.forcedSyncFiles().isEmpty()) {
+            throw new ProtocolException("Maintenance policy releases describe forced content with presets");
+        }
+        if (manifest.requiredCapabilities().contains(ProtocolConstants.CAPABILITY_SIMPLIFIED_MAINTENANCE)) {
+            for (ManifestFile file : manifest.files()) {
+                if (file.preset() == MaintenancePreset.DEFAULT_CONFIG) {
+                    throw new ProtocolException("New simplified releases use INITIAL instead of DEFAULT_CONFIG");
+                }
+                if (file.optionalGroup() != null && file.preset() != MaintenancePreset.SYNC) {
+                    throw new ProtocolException("Optional packages require ordinary sync: " + file.path());
+                }
+                if (manifest.cleanupDirectories().stream().anyMatch(dir -> ManagedPaths.isBelow(file.path(), dir))
+                        && file.preset() != MaintenancePreset.REQUIRED) {
+                    throw new ProtocolException("A fully forced directory cannot contain softer or optional content: " + file.path());
+                }
+            }
+        }
+        validateCleanupDirectories(manifest.cleanupDirectories());
+
+        Map<String, OptionalGroup> groups = new HashMap<>();
+        for (OptionalGroup group : manifest.optionalGroups()) {
+            if (group == null || group.id() == null || !GROUP_ID.matcher(group.id()).matches()
+                    || groups.putIfAbsent(group.id(), group) != null) {
+                throw new ProtocolException("Invalid or duplicate optional group ID");
+            }
+            requireText(group.title(), "optional group title", 60);
+            requirePlainText(group.title(), "optional group title", 60);
+            requireLength(group.description(), "optional group description", 300);
+        }
+        java.util.Set<String> usedGroups = new java.util.HashSet<>();
+        for (ManifestFile file : manifest.files()) {
+            if (file.policy() == FilePolicy.LEGACY_MISSING_ONLY) {
+                throw new ProtocolException("Maintenance policy releases cannot use the DEFAULT token: "
+                        + file.path());
+            }
+            if (file.preset() == null) {
+                throw new ProtocolException("Missing maintenance preset for " + file.path());
+            }
+            if (file.optionalGroup() != null) {
+                if (!groups.containsKey(file.optionalGroup())) {
+                    throw new ProtocolException("Unknown optional group for " + file.path());
+                }
+                if (file.preset() == MaintenancePreset.REQUIRED) {
+                    throw new ProtocolException("Required files cannot be optional: " + file.path());
+                }
+                usedGroups.add(file.optionalGroup());
+            }
+        }
+        for (String group : groups.keySet()) {
+            if (!usedGroups.contains(group)) {
+                throw new ProtocolException("Optional group has no files: " + group);
+            }
+        }
+
+        String previous = null;
+        List<String> retained = new ArrayList<>();
+        for (String path : manifest.retainedSelfManagedPaths()) {
+            String normalized = PathSafety.normalizeManifestPath(path);
+            if (previous != null && previous.compareTo(normalized) >= 0) {
+                throw new ProtocolException("Retained self-managed paths must be sorted and unique: " + path);
+            }
+            previous = normalized;
+            if (filesByFoldedPath.containsKey(normalized.toLowerCase(Locale.ROOT))) {
+                throw new ProtocolException("A published path cannot also be retained: " + path);
+            }
+            if (manifest.releasedPaths().stream().anyMatch(released -> released.equalsIgnoreCase(normalized))) {
+                throw new ProtocolException("A released path cannot also be retained: " + path);
+            }
+            if (insideForcedDirectory(normalized, manifest.cleanupDirectories())) {
+                throw new ProtocolException("A cleanup directory cannot retain removed files: " + path);
+            }
+            retained.add(normalized);
+        }
+        PathSafety.validateDistinctPaths(retained);
+
+        validateWithdrawals(manifest);
+        validateCorrections(manifest, filesByFoldedPath);
+    }
+
+    private static void validateCleanupDirectories(List<String> directories) {
+        String previous = null;
+        List<String> paths = new ArrayList<>();
+        for (String directory : directories) {
+            String normalized = PathSafety.normalizeManifestPath(directory);
+            if (normalized.equalsIgnoreCase(".dreamingfish-bootstrap")
+                    || normalized.toLowerCase(Locale.ROOT).startsWith(".dreamingfish-bootstrap/")) {
+                throw new ProtocolException("The bootstrap directory cannot be cleaned");
+            }
+            if (previous != null && previous.compareTo(normalized) >= 0) {
+                throw new ProtocolException("Cleanup directories must be sorted and unique: " + directory);
+            }
+            previous = normalized;
+            paths.add(normalized);
+        }
+        PathSafety.validateDistinctPaths(paths);
+    }
+
+    private static void validateWithdrawals(ReleaseManifest manifest) {
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        int items = 0;
+        MaintenanceModel model = MaintenanceModel.of(manifest);
+        for (Withdrawal withdrawal : manifest.withdrawals()) {
+            if (withdrawal == null || withdrawal.id() == null
+                    || !DIRECTIVE_ID.matcher(withdrawal.id()).matches() || !ids.add(withdrawal.id())) {
+                throw new ProtocolException("Invalid or duplicate withdrawal ID");
+            }
+            if (withdrawal.createdAt() == null) {
+                throw new ProtocolException("Withdrawal creation time is missing: " + withdrawal.id());
+            }
+            if (withdrawal.removal() && !model.simplified()) {
+                throw new ProtocolException("Persistent removals require simplified-maintenance-v1");
+            }
+            requireLength(withdrawal.reason(), "withdrawal reason", 500);
+            if (withdrawal.items().isEmpty()) {
+                throw new ProtocolException("Withdrawal has no file versions: " + withdrawal.id());
+            }
+            for (WithdrawalItem item : withdrawal.items()) {
+                items++;
+                if (item == null || !Hex.isSha256(item.sha256()) || item.size() < 0) {
+                    throw new ProtocolException("Invalid withdrawn file version in " + withdrawal.id());
+                }
+                PathSafety.normalizeManifestPath(item.path());
+                if (item.componentId() != null && !COMPONENT_ID.matcher(item.componentId()).matches()) {
+                    throw new ProtocolException("Invalid withdrawn mod ID in " + withdrawal.id());
+                }
+                requirePlainText(item.version(), "withdrawn version", 128);
+            }
+        }
+        if (items > MAX_DIRECTIVE_ITEMS) {
+            throw new ProtocolException("Too many withdrawn file versions");
+        }
+        for (ManifestFile file : manifest.files()) {
+            if (model.withdrawalFor(file.path(), file.sha256(), file.componentId(), file.version()).isPresent()) {
+                throw new ProtocolException("A withdrawn version is still published: " + file.path());
+            }
+        }
+    }
+
+    private static void validateCorrections(ReleaseManifest manifest,
+                                            Map<String, ManifestFile> filesByFoldedPath) {
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        java.util.Set<String> paths = new java.util.HashSet<>();
+        for (Correction correction : manifest.corrections()) {
+            if (correction == null || correction.id() == null
+                    || !DIRECTIVE_ID.matcher(correction.id()).matches() || !ids.add(correction.id())) {
+                throw new ProtocolException("Invalid or duplicate correction ID");
+            }
+            if (correction.createdAt() == null || correction.mode() == null) {
+                throw new ProtocolException("Correction is incomplete: " + correction.id());
+            }
+            requireLength(correction.reason(), "correction reason", 500);
+            String normalized = PathSafety.normalizeManifestPath(correction.path());
+            ManifestFile file = filesByFoldedPath.get(normalized.toLowerCase(Locale.ROOT));
+            if (file == null || !file.path().equals(normalized)) {
+                throw new ProtocolException("Correction target is not published: " + correction.path());
+            }
+            if (!paths.add(normalized.toLowerCase(Locale.ROOT))) {
+                throw new ProtocolException("Only one correction can target a file: " + correction.path());
+            }
+            if (correction.mode() == CorrectionMode.KNOWN_BAD) {
+                if (correction.badSha256().isEmpty() || correction.badSha256().size() > 200) {
+                    throw new ProtocolException("Known-bad correction needs bad versions: " + correction.id());
+                }
+                for (String bad : correction.badSha256()) {
+                    if (!Hex.isSha256(bad) || bad.equals(file.sha256())) {
+                        throw new ProtocolException("Invalid known-bad version in " + correction.id());
+                    }
+                }
+            } else if (!correction.badSha256().isEmpty()) {
+                throw new ProtocolException("One-time corrections do not list bad versions: " + correction.id());
+            }
+        }
+    }
+
+    private static void requirePlainText(String value, String label, int maxLength) {
+        if (value == null) return;
+        requireLength(value, label, maxLength);
+        if (value.chars().anyMatch(Character::isISOControl)) {
+            throw new ProtocolException(label + " contains control characters");
+        }
     }
 
     private static void validateForcedSyncDirectories(ReleaseManifest manifest) {
@@ -156,6 +362,7 @@ public final class ManifestValidator {
             }
             previous = normalized;
             if (insideForcedDirectory(normalized, manifest.forcedSyncDirectories())
+                    || insideForcedDirectory(normalized, manifest.cleanupDirectories())
                     || manifest.forcedSyncFiles().stream()
                     .anyMatch(path -> path.equalsIgnoreCase(normalized))) {
                 throw new ProtocolException(

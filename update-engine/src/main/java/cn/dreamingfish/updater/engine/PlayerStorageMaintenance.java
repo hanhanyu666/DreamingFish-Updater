@@ -143,15 +143,26 @@ final class PlayerStorageMaintenance {
     }
 
     private void deleteTree(Path root) throws IOException {
+        safeCleanupPath(root.getParent());
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return;
         if (Files.isSymbolicLink(root) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
             Files.deleteIfExists(root);
             return;
         }
+        safeCleanupPath(root);
         try (var paths = Files.walk(root)) {
             for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                safeCleanupPath(path.getParent());
+                if (!Files.isSymbolicLink(path)) safeCleanupPath(path);
                 Files.deleteIfExists(path);
             }
+        }
+    }
+
+    private static void safeCleanupPath(Path path) throws IOException {
+        try { PathSafety.assertSafePathTree(path); }
+        catch (cn.dreamingfish.updater.protocol.ProtocolException unsafe) {
+            throw new IOException("Cleanup path traverses a directory alias", unsafe);
         }
     }
 

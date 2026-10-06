@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { getBridge } from "../lib/bridge";
+import { modSourceText, modToggleLabel } from "../lib/maintenance";
 import { usePlayerStore } from "../stores/player";
 import type { LocalModEntry } from "../lib/types";
 
@@ -8,17 +9,15 @@ const props = defineProps<{ entry: LocalModEntry }>();
 const store = usePlayerStore();
 const bridge = getBridge();
 
-const detail = computed(() => {
-  let source = props.entry.forced
-    ? "服务器强制同步"
-    : props.entry.managed
-      ? "整合包管理"
-      : "玩家添加";
-  if (props.entry.disabled && !props.entry.forced) {
-    source += props.entry.active ? " · 等待停用" : " · 已停用";
-  }
-  return source + "  ·  " + props.entry.path;
-});
+const locked = computed(() => props.entry.forced && props.entry.lockReason != null);
+const detail = computed(() =>
+  [modSourceText(props.entry, !locked.value), props.entry.path]
+    .filter((part) => part.length > 0).join("  ·  "));
+const lockTitle = computed(() =>
+  props.entry.forced
+    ? props.entry.lockReason ?? "服主设为强制同步，不能在本机停用"
+    : "",
+);
 
 async function onToggle(event: Event): Promise<void> {
   const checked = (event.target as HTMLInputElement).checked;
@@ -34,23 +33,23 @@ async function onToggle(event: Event): Promise<void> {
 </script>
 
 <template>
-  <div class="mod-row">
+  <div class="mod-row" :class="{ withdrawn: entry.withdrawnReason }">
     <div class="mod-labels" :title="entry.displayName">
       <div class="mod-name">{{ entry.displayName }}</div>
       <div class="mod-detail">{{ detail }}</div>
+      <div v-if="entry.withdrawnReason" class="mod-withdrawn">
+        服主撤回了这个版本：{{ entry.withdrawnReason }}
+      </div>
+      <div v-else-if="entry.forced && entry.lockReason" class="mod-lock">{{ entry.lockReason }}</div>
     </div>
-    <label
-      class="mod-toggle"
-      :class="{ disabled: entry.forced }"
-      :title="entry.forced ? '管理端强制同步目录中的模组不能在本机停用' : ''"
-    >
+    <label class="mod-toggle" :class="{ disabled: entry.forced }" :title="lockTitle">
       <input
         type="checkbox"
-        :checked="entry.forced || !entry.disabled"
+        :checked="!entry.disabled"
         :disabled="entry.forced"
         @change="onToggle"
       />
-      <span>{{ entry.forced ? "强制启用" : "启用" }}</span>
+      <span>{{ modToggleLabel(entry) }}</span>
     </label>
   </div>
 </template>

@@ -33,7 +33,7 @@ const latestNewsVisible = computed(
   () => homeVisible.value && latestNews.value != null && windowHeight.value >= 640,
 );
 const backgroundUrl = computed(
-  () => store.state.backgroundUrl ?? `${import.meta.env.BASE_URL}images/hero-dreamhaven.png`,
+  () => store.state.backgroundUrl ?? `${import.meta.env.BASE_URL}images/hero-default.webp`,
 );
 
 function onPreviewMessage(event: MessageEvent): void {
@@ -217,7 +217,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.1.40" }}
+        DreamingFish Updater {{ "0.2.0" }}
       </div>
 
       <ContentPages />

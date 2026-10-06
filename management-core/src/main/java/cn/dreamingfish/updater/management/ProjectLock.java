@@ -8,16 +8,27 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
 final class ProjectLock implements Closeable {
-    private final FileChannel channel;
-    private final FileLock lock;
+    private static final ThreadLocal<java.util.Map<Path, Held>> HELD = ThreadLocal.withInitial(java.util.HashMap::new);
+    private final Path path;
+    private final Held held;
+    private final Thread owner;
+    private boolean closed;
 
-    private ProjectLock(FileChannel channel, FileLock lock) {
-        this.channel = channel;
-        this.lock = lock;
+    private ProjectLock(Path path, Held held) {
+        this.path = path;
+        this.held = held;
+        this.owner = Thread.currentThread();
     }
 
     static ProjectLock acquire(Path lockFile) throws IOException {
-        java.nio.file.Files.createDirectories(lockFile.getParent());
+        lockFile = lockFile.toAbsolutePath().normalize();
+        cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(lockFile.getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(lockFile);
+        Held existing = HELD.get().get(lockFile);
+        if (existing != null) {
+            existing.references++;
+            return new ProjectLock(lockFile, existing);
+        }
         FileChannel channel = FileChannel.open(lockFile,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE);
         try {
@@ -26,19 +37,37 @@ final class ProjectLock implements Closeable {
                 channel.close();
                 throw new ManagementException("Another operation is already changing this project");
             }
-            return new ProjectLock(channel, lock);
+            Held held = new Held(channel, lock);
+            HELD.get().put(lockFile, held);
+            return new ProjectLock(lockFile, held);
         } catch (java.nio.channels.OverlappingFileLockException e) {
             channel.close();
             throw new ManagementException("Another operation is already changing this project", e);
+        } catch (IOException | RuntimeException failure) {
+            channel.close();
+            throw failure;
         }
     }
 
     @Override
     public void close() throws IOException {
+        if (closed) return;
+        if (Thread.currentThread() != owner) throw new IllegalStateException("Project lock must be released by its owning thread");
+        closed = true;
+        if (--held.references > 0) return;
+        HELD.get().remove(path);
+        if (HELD.get().isEmpty()) HELD.remove();
         try {
-            lock.release();
+            held.lock.release();
         } finally {
-            channel.close();
+            held.channel.close();
         }
+    }
+
+    private static final class Held {
+        final FileChannel channel;
+        final FileLock lock;
+        int references = 1;
+        Held(FileChannel channel, FileLock lock) { this.channel = channel; this.lock = lock; }
     }
 }

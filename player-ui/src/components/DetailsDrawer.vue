@@ -2,10 +2,11 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { formatHistoryTime, playerAddedMods } from "../lib/format";
 import { groupPlayerLogs, logLevelLabel } from "../lib/playerLogs";
-import { usePlayerStore } from "../stores/player";
-import type { LocalModEntry } from "../lib/types";
+import { DRAWER_LABELS, usePlayerStore, type DrawerMode } from "../stores/player";
+import BackupList from "./BackupList.vue";
 import LocalFileTree from "./LocalFileTree.vue";
 import ModRow from "./ModRow.vue";
+import OptionalGroups from "./OptionalGroups.vue";
 
 const store = usePlayerStore();
 const modSearch = ref("");
@@ -19,36 +20,46 @@ interface UpdateDetailRow {
   operation: string;
   operationClass: string;
   path: string;
+  note: string | null;
 }
 
 const updateRows = computed<UpdateDetailRow[]>(() => {
   const rows: UpdateDetailRow[] = [];
   const resultValue = result.value;
   if (resultValue == null) return rows;
-  appendRows(rows, "安装 / 更新", resultValue.installedPaths);
-  appendRows(rows, "删除", resultValue.deletedPaths);
-  appendRows(rows, "移入备份", resultValue.archivedFiles);
-  appendRows(rows, "放弃管理", resultValue.releasedPaths);
+  const reasons = new Map((resultValue.archived ?? []).map((file) =>
+    [file.path.replace(/\\/g, "/").toLowerCase(), file.reasonText]));
+  appendRows(rows, "安装 / 更新", "update-operation-install", resultValue.installedPaths);
+  appendRows(rows, "删除", "update-operation-delete", resultValue.deletedPaths);
+  appendRows(rows, "移入备份", "update-operation-archive", resultValue.archivedFiles, reasons);
+  appendRows(rows, "恢复默认", "update-operation-install", resultValue.resetPaths ?? []);
+  appendRows(rows, "保留你的修改", "update-operation-release", resultValue.keptModifiedPaths ?? [],
+    null, "服主更新了默认配置，你改过的版本没有被覆盖");
+  appendRows(rows, "自行管理", "update-operation-release",
+    resultValue.skippedSelfManagedPaths ?? [], null, "服主提供了新版本，你自行管理的文件没有更新");
+  appendRows(rows, "放弃管理", "update-operation-release", resultValue.releasedPaths,
+    null, "服主不再管理，本地文件已保留");
   return rows;
 });
 
 function appendRows(
   rows: UpdateDetailRow[],
   operation: string,
+  operationClass: string,
   paths: readonly string[],
+  notes: ReadonlyMap<string, string> | null = null,
+  note: string | null = null,
 ): void {
-  const operationClass =
-    operation === "删除"
-      ? "update-operation-delete"
-      : operation === "移入备份"
-        ? "update-operation-archive"
-        : operation === "放弃管理"
-          ? "update-operation-release"
-          : "update-operation-install";
   for (const path of [...paths].sort((left, right) =>
     left.localeCompare(right, undefined, { sensitivity: "base" }),
   )) {
-    rows.push({ operation, operationClass, path: path.replace(/\\/g, "/") });
+    const normalized = path.replace(/\\/g, "/");
+    rows.push({
+      operation,
+      operationClass,
+      path: normalized,
+      note: notes?.get(normalized.toLowerCase()) ?? note,
+    });
   }
 }
 
@@ -56,20 +67,25 @@ const updateCounts = computed(() => {
   const resultValue = result.value;
   if (resultValue == null) return "本次没有修改本地文件";
   const counts: string[] = [];
-  if (resultValue.installedPaths.length > 0) {
-    counts.push("安装 / 更新 " + resultValue.installedPaths.length + " 项");
-  }
-  if (resultValue.deletedPaths.length > 0) {
-    counts.push("删除 " + resultValue.deletedPaths.length + " 项");
-  }
-  if (resultValue.archivedFiles.length > 0) {
-    counts.push("移入备份 " + resultValue.archivedFiles.length + " 项");
-  }
-  if (resultValue.releasedPaths.length > 0) {
-    counts.push("放弃管理 " + resultValue.releasedPaths.length + " 项");
-  }
+  const add = (label: string, values: readonly string[] | undefined) => {
+    if (values != null && values.length > 0) counts.push(label + " " + values.length + " 项");
+  };
+  add("安装 / 更新", resultValue.installedPaths);
+  add("删除", resultValue.deletedPaths);
+  add("移入备份", resultValue.archivedFiles);
+  add("恢复默认", resultValue.resetPaths);
+  add("保留你的修改", resultValue.keptModifiedPaths);
+  add("自行管理未更新", resultValue.skippedSelfManagedPaths);
+  add("放弃管理", resultValue.releasedPaths);
   return counts.length === 0 ? "本次没有修改本地文件" : counts.join("  ·  ");
 });
+
+const drawerTabs = computed(() =>
+  (["UPDATE", "HISTORY", "LOGS", "FILES", "BACKUPS", "PLAYER_MODS"] as DrawerMode[])
+    .filter((mode) => mode !== "PLAYER_MODS" || playerMods.value.length > 0)
+    .map((mode) => ({ mode, label: DRAWER_LABELS[mode] })),
+);
+const hasGroups = computed(() => store.state.groups.length > 0);
 
 const updateChangelog = computed(() => {
   const changelog = result.value?.changelog;
@@ -182,21 +198,14 @@ function expand(): void {
     </div>
     <div class="drawer-tabs">
       <button
-        v-for="(label, mode) in {
-          UPDATE: '本次更新',
-          HISTORY: '更新记录',
-          LOGS: '运行记录',
-          FILES: '本地文件',
-          PLAYER_MODS: '自选模组',
-        }"
-        :key="mode"
+        v-for="tab in drawerTabs"
+        :key="tab.mode"
         type="button"
         class="drawer-tab"
-        :class="{ selected: store.state.drawerMode === mode }"
-        :style="mode === 'PLAYER_MODS' && playerMods.length === 0 ? { display: 'none' } : {}"
-        @click="store.openDrawer(mode as 'UPDATE' | 'HISTORY' | 'LOGS' | 'FILES' | 'PLAYER_MODS')"
+        :class="{ selected: store.state.drawerMode === tab.mode }"
+        @click="store.openDrawer(tab.mode)"
       >
-        {{ label }}
+        {{ tab.label }}
       </button>
     </div>
     <div class="drawer-content">
@@ -217,7 +226,10 @@ function expand(): void {
         <div v-if="updateRows.length > 0" class="update-detail-list">
           <div v-for="row in updateRows" :key="row.operation + row.path" class="update-detail-row">
             <span class="update-operation" :class="row.operationClass">{{ row.operation }}</span>
-            <span class="update-detail-path">{{ row.path }}</span>
+            <span class="update-detail-labels">
+              <span class="update-detail-path">{{ row.path }}</span>
+              <span v-if="row.note" class="update-detail-note">{{ row.note }}</span>
+            </span>
           </div>
         </div>
         <div v-else class="drawer-empty">本次没有修改本地文件</div>
@@ -289,7 +301,25 @@ function expand(): void {
       </div>
 
       <div v-if="store.state.drawerMode === 'FILES'" class="local-management-page">
-        <div class="local-mode-bar" role="tablist" aria-label="本地文件管理方式">
+        <div
+          class="local-mode-bar"
+          :class="{ 'with-options': hasGroups }"
+          role="tablist"
+          aria-label="本地文件管理方式"
+        >
+          <button
+            v-if="hasGroups"
+            type="button"
+            class="local-mode-button"
+            :class="{ selected: store.state.localMode === 'OPTIONS' }"
+            role="tab"
+            :aria-selected="store.state.localMode === 'OPTIONS'"
+            aria-controls="local-option-panel"
+            @click="store.showLocalMode('OPTIONS')"
+          >
+            <span class="local-mode-label">可选内容</span>
+            <span class="local-mode-description">按电脑配置开关光影、美化等</span>
+          </button>
           <button
             type="button"
             class="local-mode-button"
@@ -315,8 +345,13 @@ function expand(): void {
             <span class="local-mode-description">启用或停用整合包内模组</span>
           </button>
         </div>
+        <OptionalGroups
+          v-if="store.state.localMode === 'OPTIONS' && hasGroups"
+          id="local-option-panel"
+          role="tabpanel"
+        />
         <LocalFileTree
-          v-if="store.state.localMode === 'FILES'"
+          v-else-if="store.state.localMode === 'FILES'"
           id="local-file-management-panel"
           role="tabpanel"
         />
@@ -328,7 +363,7 @@ function expand(): void {
             </button>
           </div>
           <div class="mod-warning">
-            停用必要模组可能导致游戏崩溃或无法连接服务器。更改会在本次更新完成前重新校验；游戏已经启动时则从下次启动生效。
+            停用必要模组可能导致游戏崩溃或无法连接服务器。服主设为必需的模组、以及由可选内容统一开关的模组不能在这里单独切换。更改会在本次更新完成前重新校验；游戏已经启动时则从下次启动生效。
           </div>
           <div v-if="visibleMods.length === 0" class="drawer-empty">{{ modEmptyText }}</div>
           <div v-else class="mod-list">
@@ -339,6 +374,8 @@ function expand(): void {
           </div>
         </div>
       </div>
+
+      <BackupList v-if="store.state.drawerMode === 'BACKUPS'" />
 
       <div v-if="store.state.drawerMode === 'PLAYER_MODS'" class="player-mod-page">
         <div class="file-tools">

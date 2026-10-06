@@ -25,7 +25,7 @@ const emptyText = computed(() =>
       </button>
     </div>
     <div class="mod-warning">
-      关闭管理后，普通更新不会再安装、覆盖或删除该文件。服务器强制同步目录不能在本机关闭。
+      取消勾选“管理”后改为自行管理：更新不再安装、覆盖或删除它。服主设为强制同步的文件不能取消；首次提供的文件之后由你维护，也可以主动恢复默认；服主明确移除或处理问题版本时会先备份再移出。
     </div>
     <div class="local-file-tree-pane">
       <div v-if="visibleEntries.length === 0" class="drawer-empty local-file-empty">

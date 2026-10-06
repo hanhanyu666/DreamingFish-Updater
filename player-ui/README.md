@@ -11,7 +11,7 @@ player-ui/
 │  ├─ components/       标题栏、更新区域、抽屉、文件树、对话框等
 │  ├─ lib/              类型、格式化、新闻、Markdown、桥接协议
 │  ├─ stores/           player 全局状态
-│  └─ styles/           player.css（从 JavaFX 样式移植）
+│  └─ styles/           玩家端主题与布局样式
 ├─ public/              字体、封面、新闻资源
 └─ src-tauri/           Rust 外壳（窗口控制 + sidecar 进程管理）
 ```
@@ -60,6 +60,6 @@ npm run build        # vue-tsc 类型检查 + Vite 构建
 npm run tauri build -- --no-bundle
 ```
 
-完整发行包由仓库根目录的 `packaging/build-distributions.ps1 -TauriPlayer` 生成：
+完整发行包由仓库根目录的 `packaging/build-distributions.ps1` 生成：
 打包脚本会构建 Tauri 窗口、Java sidecar 和私有 Java 21 运行时，
 并组装成与旧版相同的 `DreamingFishUpdater/app/<版本>/` 目录结构。

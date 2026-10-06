@@ -21,6 +21,7 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class LocalModManagerTest {
     @TempDir
@@ -111,8 +112,135 @@ class LocalModManagerTest {
         LocalModEntry entry = manager.scan(forced).getFirst();
         assertTrue(entry.forced());
         assertTrue(entry.active());
-        assertFalse(manager.snapshot().overrides().withForcedDirectories(List.of("mods"))
-                .excludes(managed));
+        assertFalse(manager.snapshot().overrides().excludes(managed,
+                cn.dreamingfish.updater.protocol.MaintenanceModel.of(forced)));
+    }
+
+    @Test
+    void restoresAReleasedManagedModInsteadOfDeletingItsOnlyCopy() throws Exception {
+        Path instance = Files.createDirectories(temporary.resolve("released-instance"));
+        Path home = instance.resolve("DreamingFishUpdater");
+        Path jar = fabricJar(instance.resolve("mods/retired.jar"), "retired", "Retired", "player copy");
+        byte[] original = Files.readAllBytes(jar);
+        ReleaseManifest managed = release("r1", 1, manifestFile(jar, "mods/retired.jar", "retired", "Retired"));
+        ReleaseManifest released = released("r2", 2, List.of("mods/retired.jar"));
+        LocalModManager manager = new LocalModManager(instance, home);
+        manager.setDisabled(manager.scan(managed).getFirst(), true);
+        manager.reconcileDesiredState(managed);
+        manager.reconcileDesiredState(released);
+        manager.setDisabled(manager.scan(released).getFirst(), false);
+        manager.reconcileDesiredState(released);
+        manager.finalizeSuccessfulUpdate(released);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, Files.readAllBytes(jar));
+        assertTrue(manager.snapshot().overrides().isEmpty());
+    }
+
+    @Test
+    void keepsAReleasedHistoricalCopyWhenTheComponentHasANewManagedFilename() throws Exception {
+        Path instance = Files.createDirectories(temporary.resolve("renamed-release-instance"));
+        Path home = instance.resolve("DreamingFishUpdater");
+        Path oldJar = fabricJar(instance.resolve("mods/old.jar"), "renderer", "Renderer", "old");
+        LocalModManager manager = new LocalModManager(instance, home);
+        ReleaseManifest first = release("r1", 1, manifestFile(oldJar, "mods/old.jar", "renderer", "Renderer"));
+        manager.setDisabled(manager.scan(first).getFirst(), true);
+        manager.reconcileDesiredState(first);
+        Path newJar = fabricJar(instance.resolve("mods/new.jar"), "renderer", "Renderer", "new");
+        ReleaseManifest next = released("r2", 2, List.of("mods/old.jar"),
+                manifestFile(newJar, "mods/new.jar", "renderer", "Renderer"));
+        manager.setDisabled(manager.scan(next).getFirst(), false);
+        manager.reconcileDesiredState(next);
+        manager.finalizeSuccessfulUpdate(next);
+        assertTrue(Files.isRegularFile(newJar));
+        LocalModPreferences preferences = new cn.dreamingfish.updater.protocol.JsonCodec()
+                .read(home.resolve("state/local-mod-preferences.json"), LocalModPreferences.class);
+        StoredLocalMod kept = preferences.mods().getFirst().storedFiles().getFirst();
+        assertTrue(kept.playerOwned());
+        assertTrue(Files.isRegularFile(home.resolve(kept.storedPath())));
+        assertFalse(Files.exists(oldJar));
+    }
+
+    @Test
+    void rollsBackFileMovesAndIndexesWhenALocalMoveFails() throws Exception {
+        Path instance = Files.createDirectories(temporary.resolve("failed-move-instance"));
+        Path home = instance.resolve("DreamingFishUpdater");
+        Path first = fabricJar(instance.resolve("mods/a.jar"), "first", "First", "first");
+        Path second = fabricJar(instance.resolve("mods/b.jar"), "second", "Second", "second");
+        LocalModManager manager = new LocalModManager(instance, home, new LocalModTransaction.Faults() {
+            @Override public void afterMove(int index) throws java.io.IOException {
+                if (index == 0) throw new java.io.IOException("Injected file move failure");
+            }
+        });
+        for (LocalModEntry entry : manager.scan(null)) manager.setDisabled(entry, true);
+        assertThrows(java.io.IOException.class, manager::reconcileDesiredState);
+        assertTrue(Files.isRegularFile(first));
+        assertTrue(Files.isRegularFile(second));
+        LocalModPreferences preferences = new cn.dreamingfish.updater.protocol.JsonCodec()
+                .read(home.resolve("state/local-mod-preferences.json"), LocalModPreferences.class);
+        assertTrue(preferences.mods().stream().allMatch(p -> p.storedFiles().isEmpty()));
+        assertFalse(Files.exists(home.resolve("state/local-mod-transaction/journal.json")));
+    }
+
+    @Test
+    void recoversAfterACrashBetweenPreferenceWriteAndCommit() throws Exception {
+        Path instance = Files.createDirectories(temporary.resolve("crashed-move-instance"));
+        Path home = instance.resolve("DreamingFishUpdater");
+        Path jar = fabricJar(instance.resolve("mods/custom.jar"), "custom", "Custom", "original");
+        byte[] original = Files.readAllBytes(jar);
+        LocalModManager crashing = new LocalModManager(instance, home, new LocalModTransaction.Faults() {
+            @Override public void afterPreferences() { throw new SimulatedCrash(); }
+        });
+        crashing.setDisabled(crashing.scan(null).getFirst(), true);
+        assertThrows(SimulatedCrash.class, crashing::reconcileDesiredState);
+        assertFalse(Files.exists(jar));
+        var keys = CryptoSupport.generateEd25519KeyPair();
+        var binding = new cn.dreamingfish.updater.protocol.ProjectBinding(1, "demo", "http://127.0.0.1:1",
+                CryptoSupport.encodePublicKey(keys.getPublic()), "DreamingFishUpdater", null, Branding.empty());
+        var request = cn.dreamingfish.updater.engine.UpdateRequest.defaults(instance, home, binding, "0.1.41", Set.of());
+        var blocked = assertThrows(cn.dreamingfish.updater.engine.UpdateException.class,
+                () -> new cn.dreamingfish.updater.engine.UpdateEngine().update(request, null));
+        assertEquals(cn.dreamingfish.updater.engine.UpdateErrorCode.RECOVERY_FAILED, blocked.code());
+        LocalModManager restarted = new LocalModManager(instance, home);
+        restarted.recoverPendingTransaction();
+        assertFalse(Files.exists(home.resolve("state/transactions/local-mods/journal.json")));
+        restarted.recoverPendingTransaction();
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, Files.readAllBytes(jar));
+        assertTrue(restarted.scan(null).getFirst().disabled());
+        restarted.reconcileDesiredState();
+        assertFalse(Files.exists(jar));
+        restarted.restoreDefaults();
+        restarted.reconcileDesiredState();
+        assertTrue(Files.isRegularFile(jar));
+    }
+
+    private static final class SimulatedCrash extends Error { }
+
+    @Test
+    void preservesReadOnlyPlayerModsWhenDisablingAndRestoring() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("os.name").toLowerCase().contains("win"));
+        Path instance = Files.createDirectories(temporary.resolve("readonly-instance"));
+        Path home = instance.resolve("DreamingFishUpdater");
+        Path jar = fabricJar(instance.resolve("mods/readonly.jar"), "readonly", "Read Only", "original");
+        Files.setAttribute(jar, "dos:readonly", true);
+        LocalModManager manager = new LocalModManager(instance, home);
+        try {
+            manager.setDisabled(manager.scan(null).getFirst(), true);
+            manager.reconcileDesiredState();
+            manager.restoreDefaults();
+            manager.reconcileDesiredState();
+            assertTrue(Files.isRegularFile(jar));
+            assertTrue((boolean) Files.getAttribute(jar, "dos:readonly"));
+        } finally {
+            try (var files = Files.walk(instance)) {
+                for (Path path : files.filter(Files::isRegularFile).toList()) Files.setAttribute(path, "dos:readonly", false);
+            }
+        }
+    }
+
+    private ReleaseManifest released(String id, long sequence, List<String> paths, ManifestFile... files) {
+        return new ReleaseManifest(ProtocolConstants.RELEASE_SCHEMA_VERSION, "demo", id, sequence,
+                Instant.now(), "1.0." + sequence, "0.1.0", "release",
+                Set.of(ProtocolConstants.CAPABILITY_RELEASED_PATHS), List.of(), List.of(), paths,
+                Branding.empty(), List.of(files));
     }
 
     private Path fabricJar(Path path, String id, String name, String marker) throws Exception {

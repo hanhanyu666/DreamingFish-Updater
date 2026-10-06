@@ -89,9 +89,9 @@ final class ProjectConfigureCommand implements Runnable {
                     "Use either --clear-force-sync or --force-sync-directories, not both");
         }
         if (clearForceSync) {
-            rules = rules.withForcedSyncDirectories(java.util.List.of());
+            rules = rules.withLegacyForcedSyncDirectories(java.util.List.of());
         } else if (forcedSyncDirectories != null) {
-            rules = rules.withForcedSyncDirectories(
+            rules = rules.withLegacyForcedSyncDirectories(
                     ProjectCreateCommand.parsePaths(forcedSyncDirectories));
         }
         if (clearForceSyncFiles && forcedSyncFiles != null) {
@@ -99,9 +99,9 @@ final class ProjectConfigureCommand implements Runnable {
                     "Use either --clear-force-sync-files or --force-sync-files, not both");
         }
         if (clearForceSyncFiles) {
-            rules = rules.withForcedSyncFiles(java.util.List.of());
+            rules = rules.withLegacyForcedSyncFiles(java.util.List.of());
         } else if (forcedSyncFiles != null) {
-            rules = rules.withForcedSyncFiles(
+            rules = rules.withLegacyForcedSyncFiles(
                     ProjectCreateCommand.parsePaths(forcedSyncFiles));
         }
         CliOutput.project(root, services.projects().configure(

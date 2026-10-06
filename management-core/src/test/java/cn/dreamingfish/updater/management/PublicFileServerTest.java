@@ -85,7 +85,7 @@ class PublicFileServerTest {
             assertEquals(presentationSignature, presentationSidecar.body().trim());
             PlayerPresentation presentation = new JsonCodec().read(
                     presentationResponse.body(), PlayerPresentation.class);
-            assertEquals("守望梦屿", presentation.branding().productName());
+            assertEquals("Minecraft 整合包", presentation.branding().productName());
             String presentationEtag = presentationResponse.headers()
                     .firstValue("ETag").orElseThrow();
 

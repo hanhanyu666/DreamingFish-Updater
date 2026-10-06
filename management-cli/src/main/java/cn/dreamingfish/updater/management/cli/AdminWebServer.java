@@ -1,20 +1,31 @@
 package cn.dreamingfish.updater.management.cli;
 
 import cn.dreamingfish.updater.management.ManagementException;
+import cn.dreamingfish.updater.management.OptionalGroupRule;
 import cn.dreamingfish.updater.management.PreviewChange;
+import cn.dreamingfish.updater.management.ProjectPolicyService;
 import cn.dreamingfish.updater.management.ProjectRecord;
 import cn.dreamingfish.updater.management.ProjectRules;
 import cn.dreamingfish.updater.management.PublishPreview;
+import cn.dreamingfish.updater.management.ScanService;
+import cn.dreamingfish.updater.management.ScannedFile;
 import cn.dreamingfish.updater.management.RemovalDecision;
 import cn.dreamingfish.updater.management.RemovalAction;
 import cn.dreamingfish.updater.management.SourceFileService;
+import cn.dreamingfish.updater.management.SourceTransferService;
+import cn.dreamingfish.updater.management.PlayerPackageService;
+import cn.dreamingfish.updater.management.ProjectConnectionService;
 import cn.dreamingfish.updater.management.StoredPlayerProgram;
 import cn.dreamingfish.updater.management.StoredRelease;
 import cn.dreamingfish.updater.management.S3AddressingStyle;
 import cn.dreamingfish.updater.management.S3UploadConfiguration;
 import cn.dreamingfish.updater.management.WebDavUploadConfiguration;
 import cn.dreamingfish.updater.protocol.Branding;
+import cn.dreamingfish.updater.protocol.CorrectionMode;
 import cn.dreamingfish.updater.protocol.JsonCodec;
+import cn.dreamingfish.updater.protocol.MaintenancePreset;
+import cn.dreamingfish.updater.protocol.ManagedPaths;
+import cn.dreamingfish.updater.protocol.ManifestFile;
 import cn.dreamingfish.updater.protocol.PlayerCustomPage;
 import cn.dreamingfish.updater.protocol.PlayerContentPage;
 import cn.dreamingfish.updater.protocol.PlayerNewsArticle;
@@ -49,6 +60,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 final class AdminWebServer implements AutoCloseable {
     private static final int MAX_REQUEST_BYTES = 1024 * 1024;
@@ -497,8 +510,84 @@ final class AdminWebServer implements AutoCloseable {
             sendJson(exchange, 200, sourceFilesView(projectId));
             return;
         }
+        if (segments.size() >= 4 && segments.get(3).equals("operations")) {
+            var operations = root.services().operations();
+            if (segments.size() == 4) {
+                requireMethod(exchange, "GET");
+                sendJson(exchange, 200, operations.history(projectId));
+            } else if (segments.size() == 5) {
+                switch (segments.get(4)) {
+                    case "undo-preview" -> {
+                        requireMethod(exchange, "POST");
+                        OperationRequest request = readJson(exchange, OperationRequest.class);
+                        sendJson(exchange, 200, operations.previewUndo(projectId, required(request.id, "操作记录")));
+                    }
+                    case "undo" -> {
+                        requireMethod(exchange, "POST");
+                        OperationRequest request = readJson(exchange, OperationRequest.class);
+                        sendJson(exchange, 200, mutate(() -> operations.undo(projectId, required(request.id, "操作记录"), required(request.stamp, "恢复预览"))));
+                    }
+                    case "published-preview" -> {
+                        requireMethod(exchange, "GET");
+                        var plan = operations.previewRestorePublished(projectId);
+                        sendJson(exchange, 200, Map.of("releaseId", plan.releaseId(), "displayVersion", plan.displayVersion(),
+                                "stamp", plan.stamp(), "changes", plan.changes()));
+                    }
+                    case "restore-published" -> {
+                        requireMethod(exchange, "POST");
+                        OperationRequest request = readJson(exchange, OperationRequest.class);
+                        sendJson(exchange, 200, mutate(() -> operations.restorePublished(projectId, required(request.stamp, "恢复预览"))));
+                    }
+                    default -> throw new WebApiException(404, "not_found", "操作记录入口不存在");
+                }
+            } else throw new WebApiException(404, "not_found", "操作记录入口不存在");
+            return;
+        }
         if (segments.size() == 5 && segments.get(3).equals("files")) {
             switch (segments.get(4)) {
+                case "stage" -> {
+                    if (exchange.getRequestMethod().equals("DELETE")) {
+                        sourceTransfers().discard(projectId, required(query(exchange.getRequestURI(), "id"), "暂存 ID"));
+                        sendJson(exchange, 200, Map.of("discarded", true));
+                    } else {
+                        requireMethod(exchange, "PUT");
+                        requireBinary(exchange);
+                        sendJson(exchange, 201, mutate(() -> sourceTransfers().stage(projectId,
+                                required(query(exchange.getRequestURI(), "path"), "目标路径"),
+                                exchange.getRequestBody(), contentLength(exchange))));
+                    }
+                }
+                case "recheck" -> {
+                    requireMethod(exchange, "POST");
+                    IdRequest request = readJson(exchange, IdRequest.class);
+                    sendJson(exchange, 200, sourceTransfers().plan(projectId, required(request.id, "暂存 ID")));
+                }
+                case "stage-server" -> {
+                    requireMethod(exchange, "POST");
+                    ServerStageRequest request = readJson(exchange, ServerStageRequest.class);
+                    sendJson(exchange, 201, mutate(() -> sourceTransfers().stageServer(projectId,
+                            Path.of(required(request.sourcePath, "服务器文件路径")), required(request.targetPath, "目标路径"))));
+                }
+                case "commit" -> {
+                    requireMethod(exchange, "POST");
+                    SourceCommitRequest request = readJson(exchange, SourceCommitRequest.class);
+                    sendJson(exchange, 200, mutate(() -> sourceTransfers().commit(projectId,
+                            required(request.id, "暂存 ID"), required(request.action, "导入动作"), required(request.stamp, "检查凭据"), false)));
+                }
+                case "check-imports" -> {
+                    requireMethod(exchange, "POST");
+                    ImportCheckRequest request = readJson(exchange, ImportCheckRequest.class);
+                    sendJson(exchange, 200, mutate(() -> previewView(sourceTransfers().checkImports(projectId, request.ids))));
+                }
+                case "import-history" -> {
+                    requireMethod(exchange, "GET");
+                    sendJson(exchange, 200, sourceTransfers().history(projectId));
+                }
+                case "undo-import" -> {
+                    requireMethod(exchange, "POST");
+                    IdRequest request = readJson(exchange, IdRequest.class);
+                    sendJson(exchange, 200, mutate(() -> sourceTransfers().undo(projectId, required(request.id, "导入 ID"))));
+                }
                 case "upload" -> {
                     if (!exchange.getRequestMethod().equals("PUT")) {
                         throw new WebApiException(405, "method_not_allowed",
@@ -571,6 +660,55 @@ final class AdminWebServer implements AutoCloseable {
             }
             return;
         }
+        if (segments.size() == 4 && segments.get(3).equals("program-package")) {
+            PlayerPackageService packages = new PlayerPackageService(root.services().paths(), root.services().database(), root.services().json());
+            if (exchange.getRequestMethod().equals("PUT")) {
+                requireBinary(exchange);
+                sendJson(exchange, 201, mutate(() -> packages.stage(projectId,
+                        required(query(exchange.getRequestURI(), "fileName"), "ZIP 文件名"),
+                        exchange.getRequestBody(), contentLength(exchange))));
+            } else if (exchange.getRequestMethod().equals("DELETE")) {
+                packages.discard(projectId, required(query(exchange.getRequestURI(), "id"), "暂存 ID"));
+                sendJson(exchange, 200, Map.of("discarded", true));
+            } else {
+                requireMethod(exchange, "POST");
+                PackagePublishRequest request = readJson(exchange, PackagePublishRequest.class);
+                sendJson(exchange, 201, mutate(() -> programView(packages.publish(projectId,
+                        required(request.id, "暂存 ID"), defaultValue(request.minimumBootstrapVersion, "0.1.2")))));
+            }
+            return;
+        }
+        if (segments.size() == 4 && segments.get(3).equals("check-address")) {
+            requireMethod(exchange, "POST");
+            AddressCheckRequest request = readJson(exchange, AddressCheckRequest.class);
+            sendJson(exchange, 200, new ProjectConnectionService(root.services().json()).check(projectId,
+                    defaultValue(request.url, root.services().database().requireProject(projectId).publicBaseUrl())));
+            return;
+        }
+        if (segments.size() == 5 && segments.get(3).equals("deployment")
+                && segments.get(4).equals("download")) {
+            if (!exchange.getRequestMethod().equals("POST")) {
+                throw new WebApiException(405, "method_not_allowed",
+                        "首次部署包下载只允许 POST");
+            }
+            DeploymentDownloadRequest request = readJson(
+                    exchange, DeploymentDownloadRequest.class);
+            sendDeploymentDownload(exchange, projectId, request);
+            return;
+        }
+        if (segments.size() == 4 && segments.get(3).equals("history")
+                && exchange.getRequestMethod().equals("GET")) {
+            sendJson(exchange, 200, Map.of("files",
+                    root.services().policies().history(projectId)));
+            return;
+        }
+        if (segments.size() == 5 && segments.get(3).equals("maintenance")) {
+            if (!exchange.getRequestMethod().equals("POST")) {
+                throw new WebApiException(405, "method_not_allowed", "维护规则只允许 POST");
+            }
+            handleMaintenance(exchange, projectId, segments.get(4));
+            return;
+        }
         if (segments.size() != 4 || !exchange.getRequestMethod().equals("POST")) {
             throw new WebApiException(404, "not_found", "API 不存在");
         }
@@ -581,13 +719,24 @@ final class AdminWebServer implements AutoCloseable {
                             root.services().scanner().createPreview(projectId))));
             case "publish" -> {
                 PublishRequest request = readJson(exchange, PublishRequest.class);
-                sendJson(exchange, 201, mutate(() -> publishAndRefreshService(() ->
-                        root.services().publisher().publish(
-                                projectId,
-                                required(request.displayVersion, "显示版本"),
-                                defaultValue(request.minimumPlayerVersion, "0.1.0"),
-                                defaultValue(request.changelog, "")
-                        ))));
+                sendJson(exchange, 201, mutate(() -> {
+                    String previewId = required(request.previewId, "预览标识");
+                    String previewDigest = required(request.previewDigest, "预览摘要");
+                    PublishPreview preview = root.services().scanner().load(projectId);
+                    if (preview.requiresPlayerProgramAcknowledgement()
+                            && !Boolean.TRUE.equals(request.acknowledgePlayerUpgrade)) {
+                        throw playerUpgradeRequired();
+                    }
+                    return publishAndRefreshService(() ->
+                            root.services().publisher().publish(
+                                    projectId,
+                                    required(request.displayVersion, "显示版本"),
+                                    defaultValue(request.minimumPlayerVersion,
+                                            ScanService.POLICY_PLAYER_VERSION),
+                                    defaultValue(request.changelog, ""),
+                                    previewId,
+                                    previewDigest));
+                }));
             }
             case "removals" -> {
                 RemovalDecisionsRequest request = readJson(
@@ -595,30 +744,25 @@ final class AdminWebServer implements AutoCloseable {
                 sendJson(exchange, 200, mutate(() -> previewView(
                         root.services().scanner().decideRemovals(
                                 projectId,
+                                required(request.previewId, "预览标识"),
+                                required(request.previewDigest, "预览摘要"),
                                 request.decisions == null
                                         ? List.of() : request.decisions))));
             }
-            case "forced-files" -> {
-                ForcedFilesRequest request = readJson(
-                        exchange, ForcedFilesRequest.class);
-                sendJson(exchange, 200, mutate(() ->
-                        updateForcedFiles(projectId, request)));
-            }
-            case "forced-directories" -> {
-                ForcedDirectoriesRequest request = readJson(
-                        exchange, ForcedDirectoriesRequest.class);
-                sendJson(exchange, 200, mutate(() ->
-                        updateForcedDirectories(projectId, request)));
-            }
             case "rollback" -> {
                 RollbackRequest request = readJson(exchange, RollbackRequest.class);
-                sendJson(exchange, 201, mutate(() -> publishAndRefreshService(() ->
-                        root.services().publisher().rollback(
-                                projectId,
-                                required(request.targetReleaseId, "目标发布"),
-                                required(request.displayVersion, "显示版本"),
-                                request.changelog
-                        ))));
+                sendJson(exchange, 201, mutate(() -> {
+                    if (!Boolean.TRUE.equals(request.acknowledgePlayerUpgrade)
+                            && !root.services().scanner().policyPlayerPublished(projectId)) {
+                        throw playerUpgradeRequired();
+                    }
+                    return publishAndRefreshService(() ->
+                            root.services().publisher().rollback(
+                                    projectId,
+                                    required(request.targetReleaseId, "目标发布"),
+                                    required(request.displayVersion, "显示版本"),
+                                    request.changelog));
+                }));
             }
             case "programs" -> {
                 PlayerProgramRequest request = readJson(exchange, PlayerProgramRequest.class);
@@ -769,14 +913,19 @@ final class AdminWebServer implements AutoCloseable {
         result.put("releases", services.database().listReleases(projectId).stream()
                 .map(AdminWebServer::releaseView).toList());
         result.put("platform", platform);
+        result.put("currentProgramVersion", services.playerPrograms().latest(projectId, platform).map(StoredPlayerProgram::version).orElse(""));
         result.put("playerPrograms",
                 reverse(services.playerPrograms().list(projectId, platform)).stream()
                         .map(AdminWebServer::programView).toList());
         try {
-            result.put("preview", previewView(services.scanner().load(projectId)));
+            PublishPreview preview = services.scanner().load(projectId);
+            result.put("preview", previewView(preview));
+            result.put("previewStale", services.scanner().isStale(preview));
         } catch (ManagementException ignored) {
             result.put("preview", null);
+            result.put("previewStale", false);
         }
+        result.put("policyPlayerPublished", services.scanner().policyPlayerPublished(projectId));
         return result;
     }
 
@@ -784,10 +933,10 @@ final class AdminWebServer implements AutoCloseable {
         String id = required(request.id, "项目 ID");
         String displayName = required(request.displayName, "项目名称");
         Branding branding = branding(request, displayName, null);
-        ProjectRules rules = ProjectRules.defaults().withForcedSyncDirectories(
+        ProjectRules rules = ProjectRules.defaults().withLegacyForcedSyncDirectories(
                 request.forcedSyncDirectories == null
                         ? List.of() : request.forcedSyncDirectories)
-                .withForcedSyncFiles(request.forcedSyncFiles == null
+                .withLegacyForcedSyncFiles(request.forcedSyncFiles == null
                         ? List.of() : request.forcedSyncFiles);
         ProjectRecord project = root.services().projects().create(
                 id,
@@ -811,10 +960,10 @@ final class AdminWebServer implements AutoCloseable {
         Branding branding = branding(request, current.displayName(), current.branding());
         ProjectRules rules = request.forcedSyncDirectories == null
                 ? current.rules()
-                : current.rules().withForcedSyncDirectories(
+                : current.rules().withLegacyForcedSyncDirectories(
                         request.forcedSyncDirectories);
         if (request.forcedSyncFiles != null) {
-            rules = rules.withForcedSyncFiles(request.forcedSyncFiles);
+            rules = rules.withLegacyForcedSyncFiles(request.forcedSyncFiles);
         }
         Path source = present(request.sourceDirectory)
                 ? Path.of(request.sourceDirectory.trim()) : current.sourceDirectory();
@@ -1075,37 +1224,146 @@ final class AdminWebServer implements AutoCloseable {
         return null;
     }
 
-    private Map<String, Object> updateForcedFiles(
-            String projectId, ForcedFilesRequest request) {
-        ManagementCli.Services services = root.services();
-        ProjectRecord current = services.database().requireProject(projectId);
-        ProjectRules rules = current.rules().withForcedSyncFiles(
-                request.files == null ? List.of() : request.files);
-        ProjectRecord updated = services.projects().configure(
-                projectId, current.sourceDirectory(), current.publicBaseUrl(),
-                current.branding(), rules);
-        PublishPreview preview = services.scanner().createPreview(projectId);
+    private void handleMaintenance(HttpExchange exchange, String projectId, String action)
+            throws Exception {
+        ProjectPolicyService policies = root.services().policies();
+        switch (action) {
+            case "presets" -> {
+                PresetsRequest request = readJson(exchange, PresetsRequest.class);
+                MaintenancePreset preset = preset(request.preset);
+                List<ProjectPolicyService.PresetChange> changes = request.items == null
+                        ? List.of() : request.items.stream()
+                        .map(item -> new ProjectPolicyService.PresetChange(
+                                required(item == null ? null : item.path, "路径"),
+                                Boolean.TRUE.equals(item.directory), preset))
+                        .toList();
+                sendJson(exchange, 200, mutate(() -> maintenanceView(
+                        policies.applyPresets(projectId, changes))));
+            }
+            case "cleanup" -> {
+                CleanupRequest request = readJson(exchange, CleanupRequest.class);
+                sendJson(exchange, 200, mutate(() -> maintenanceView(policies.setCleanup(
+                        projectId, required(request.directory, "目录"),
+                        Boolean.TRUE.equals(request.enabled)))));
+            }
+            case "group" -> {
+                GroupRequest request = readJson(exchange, GroupRequest.class);
+                sendJson(exchange, 200, mutate(() -> {
+                    OptionalGroupRule group = policies.defineOptionalGroup(projectId,
+                            request.id, request.title, request.description,
+                            Boolean.TRUE.equals(request.defaultInstall));
+                    Map<String, Object> result = maintenanceView(
+                            root.services().database().requireProject(projectId));
+                    result.put("groupId", group.id());
+                    return result;
+                }));
+            }
+            case "group-delete" -> {
+                IdRequest request = readJson(exchange, IdRequest.class);
+                sendJson(exchange, 200, mutate(() -> maintenanceView(
+                        policies.deleteOptionalGroup(projectId, required(request.id, "可选内容")))));
+            }
+            case "group-members" -> {
+                GroupMembersRequest request = readJson(exchange, GroupMembersRequest.class);
+                List<ProjectPolicyService.GroupMember> members = request.items == null
+                        ? List.of() : request.items.stream()
+                        .map(item -> {
+                            if (item == null) throw new ManagementException("可选内容成员不完整");
+                            return new ProjectPolicyService.GroupMember(
+                                    present(item.path) ? item.path.trim() : null,
+                                    Boolean.TRUE.equals(item.directory),
+                                    present(item.modId) ? item.modId.trim() : null);
+                        })
+                        .toList();
+                sendJson(exchange, 200, mutate(() -> maintenanceView(policies.setGroupMembers(
+                        projectId, required(request.groupId, "可选内容"), members,
+                        !Boolean.FALSE.equals(request.add)))));
+            }
+            case "make-optional" -> {
+                MakeOptionalRequest request = readJson(exchange, MakeOptionalRequest.class);
+                sendJson(exchange, 200, mutate(() -> {
+                    ProjectRecord project = policies.makeOptional(projectId,
+                            required(request.path, "文件"), required(request.groupId, "可选内容"));
+                    root.services().scanner().createPreview(projectId);
+                    return maintenanceView(project);
+                }));
+            }
+            case "withdraw" -> {
+                WithdrawRequest request = readJson(exchange, WithdrawRequest.class);
+                List<ProjectPolicyService.VersionReference> versions = request.versions == null
+                        ? List.of() : request.versions.stream()
+                        .map(version -> new ProjectPolicyService.VersionReference(
+                                required(version == null ? null : version.path, "文件"),
+                                required(version.sha256, "版本")))
+                        .toList();
+                sendJson(exchange, 200, mutate(() -> {
+                    var withdrawal = policies.withdraw(projectId, request.reason, versions);
+                    Map<String, Object> result = maintenanceView(
+                            root.services().database().requireProject(projectId));
+                    result.put("withdrawalId", withdrawal.id());
+                    return result;
+                }));
+            }
+            case "withdrawal-revoke" -> {
+                IdRequest request = readJson(exchange, IdRequest.class);
+                sendJson(exchange, 200, mutate(() -> maintenanceView(
+                        policies.revokeWithdrawal(projectId, required(request.id, "撤回记录")))));
+            }
+            case "correct" -> {
+                CorrectRequest request = readJson(exchange, CorrectRequest.class);
+                CorrectionMode mode;
+                try {
+                    mode = CorrectionMode.valueOf(required(request.mode, "修正方式"));
+                } catch (IllegalArgumentException e) {
+                    throw new WebApiException(400, "invalid_mode", "修正方式无效");
+                }
+                sendJson(exchange, 200, mutate(() -> {
+                    policies.correct(projectId, required(request.path, "文件"), mode,
+                            request.reason, request.badSha256);
+                    return maintenanceView(root.services().database().requireProject(projectId));
+                }));
+            }
+            case "correction-revoke" -> {
+                IdRequest request = readJson(exchange, IdRequest.class);
+                sendJson(exchange, 200, mutate(() -> maintenanceView(
+                        policies.revokeCorrection(projectId, required(request.id, "修正记录")))));
+            }
+            default -> throw new WebApiException(404, "not_found", "维护规则 API 不存在");
+        }
+    }
+
+    /** What the content page needs after a rule change: the rules, the file list and whether the check is outdated. */
+    private Map<String, Object> maintenanceView(ProjectRecord project) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("forcedSyncFiles", updated.rules().forcedSyncFiles());
-        result.put("preview", previewView(preview));
+        result.put("project", projectView(project));
+        result.put("sourceFiles", sourceFilesView(project.id()));
+        result.put("previewStale", previewStale(project.id()));
         return result;
     }
 
-    private Map<String, Object> updateForcedDirectories(
-            String projectId, ForcedDirectoriesRequest request) {
-        ManagementCli.Services services = root.services();
-        ProjectRecord current = services.database().requireProject(projectId);
-        ProjectRules rules = current.rules().withForcedSyncDirectories(
-                request.directories == null ? List.of() : request.directories);
-        ProjectRecord updated = services.projects().configure(
-                projectId, current.sourceDirectory(), current.publicBaseUrl(),
-                current.branding(), rules);
-        PublishPreview preview = services.scanner().createPreview(projectId);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("forcedSyncDirectories",
-                updated.rules().forcedSyncDirectories());
-        result.put("preview", previewView(preview));
-        return result;
+    private boolean previewStale(String projectId) {
+        try {
+            ScanService scanner = root.services().scanner();
+            return scanner.isStale(scanner.load(projectId));
+        } catch (ManagementException missing) {
+            return false;
+        }
+    }
+
+    private static MaintenancePreset preset(String value) {
+        if (value == null || value.isBlank() || value.equals("DEFAULT")) return null;
+        try {
+            return MaintenancePreset.valueOf(value.trim());
+        } catch (IllegalArgumentException e) {
+            throw new WebApiException(400, "invalid_preset", "维护方式无效：" + value);
+        }
+    }
+
+    private static WebApiException playerUpgradeRequired() {
+        return new WebApiException(409, "player_upgrade_required",
+                "这次发布需要玩家端 " + ScanService.POLICY_PLAYER_VERSION + " 或更新版本，"
+                        + "但项目还没有发布这样的玩家端。请先在“玩家端程序”中发布新版玩家端；"
+                        + "如果已确认玩家会通过新的整合包下载包获得新版玩家端，请勾选确认后再发布。");
     }
 
     private Map<String, Object> updateSettings(SettingsRequest request) {
@@ -1290,6 +1548,21 @@ final class AdminWebServer implements AutoCloseable {
         );
     }
 
+    private SourceTransferService sourceTransfers() {
+        return new SourceTransferService(root.services().paths(), root.services().database(), root.services().json());
+    }
+
+    private static void requireMethod(HttpExchange exchange, String method) {
+        if (!exchange.getRequestMethod().equals(method))
+            throw new WebApiException(405, "method_not_allowed", "此操作只允许 " + method);
+    }
+
+    private static void requireBinary(HttpExchange exchange) {
+        if (!defaultValue(exchange.getRequestHeaders().getFirst("Content-Type"), "").toLowerCase(Locale.ROOT)
+                .startsWith("application/octet-stream"))
+            throw new WebApiException(415, "unsupported_media_type", "文件必须以二进制内容上传");
+    }
+
     private Map<String, Object> uploadSourceFile(
             HttpExchange exchange, String projectId) {
         String contentType = defaultValue(
@@ -1437,9 +1710,13 @@ final class AdminWebServer implements AutoCloseable {
         result.put("sourceDirectory", project.sourceDirectory().toString());
         result.put("publicBaseUrl", project.publicBaseUrl());
         result.put("branding", project.branding());
-        result.put("forcedSyncDirectories",
-                project.rules().forcedSyncDirectories());
-        result.put("forcedSyncFiles", project.rules().forcedSyncFiles());
+        Map<String, Object> maintenance = new LinkedHashMap<>();
+        maintenance.put("presets", project.rules().presets());
+        maintenance.put("cleanupDirectories", project.rules().cleanupDirectories());
+        maintenance.put("optionalGroups", project.rules().optionalGroups());
+        maintenance.put("withdrawals", project.rules().withdrawals());
+        maintenance.put("corrections", project.rules().corrections());
+        result.put("maintenance", maintenance);
         result.put("nextSequence", project.nextSequence());
         result.put("createdAt", project.createdAt());
         return result;
@@ -1491,14 +1768,18 @@ final class AdminWebServer implements AutoCloseable {
         result.put("path", file.path());
         result.put("size", file.size());
         result.put("lastModifiedMillis", file.lastModifiedMillis());
-        result.put("policy", file.policy().name());
-        result.put("forcedByDirectory", file.forcedByDirectory());
-        result.put("forcedByFile", file.forcedByFile());
         result.put("published", file.published());
+        result.put("preset", file.preset().name());
+        result.put("presetSource", file.presetSource());
+        result.put("cleanup", file.cleanup());
+        result.put("optionalGroup", file.optionalGroup());
+        result.put("componentId", file.componentId());
+        result.put("displayName", file.displayName());
+        result.put("version", file.version());
         return result;
     }
 
-    private static Map<String, Object> sourceMutationView(
+    private Map<String, Object> sourceMutationView(
             SourceFileService.SourceMutation mutation) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", mutation.path());
@@ -1509,7 +1790,7 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
-    private static Map<String, Object> sourceBatchMutationView(
+    private Map<String, Object> sourceBatchMutationView(
             SourceFileService.SourceBatchMutation mutation) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("count", mutation.removed().size());
@@ -1521,31 +1802,67 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
-    private static Map<String, Object> previewView(PublishPreview preview) {
+    private Map<String, Object> previewView(PublishPreview preview) {
+        Map<String, ManifestFile> previous = new java.util.HashMap<>();
+        if (preview.baseReleaseId() != null) {
+            var database = root.services().database();
+            database.findRelease(preview.projectId(), preview.baseReleaseId())
+                    .map(database::readManifest)
+                    .ifPresent(manifest -> manifest.files().forEach(file ->
+                            previous.put(ManagedPaths.fold(file.path()), file)));
+        }
+        Map<String, ScannedFile> current = new java.util.HashMap<>();
+        preview.files().forEach(file -> current.put(ManagedPaths.fold(file.path()), file));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("previewId", preview.previewId());
+        result.put("previewDigest", preview.confirmationDigest());
+        result.put("projectDigest", preview.projectDigest());
+        result.put("policyChanges", preview.policyChanges());
+        result.put("warnings", preview.warnings());
+        result.put("requiresPlayerUpgrade", preview.requiresPlayerProgramAcknowledgement());
+        result.put("policyPlayerVersion", ScanService.POLICY_PLAYER_VERSION);
+        result.put("rules", preview.rules());
         result.put("baseReleaseId", preview.baseReleaseId());
         result.put("createdAt", preview.createdAt());
         result.put("managedFiles", preview.files().size());
         result.put("totalManagedBytes", preview.totalManagedBytes());
         result.put("estimatedDownloadBytes", preview.estimatedDownloadBytes());
         result.put("changes", preview.changes().stream()
-                .map(AdminWebServer::changeView).toList());
-        result.put("files", preview.files().stream().map(file -> Map.of(
-                "path", file.path(),
-                "size", file.size(),
-                "policy", file.policy().name()
-        )).toList());
+                .map(change -> changeView(change, current, previous, preview.rules())).toList());
+        result.put("files", preview.files().stream().map(file -> {
+            Map<String, Object> view = new LinkedHashMap<>();
+            view.put("path", file.path());
+            view.put("size", file.size());
+            view.put("preset", file.preset().name());
+            view.put("optionalGroup", file.optionalGroup());
+            view.put("componentId", file.componentId());
+            view.put("displayName", file.displayName());
+            view.put("version", file.version());
+            return view;
+        }).toList());
         return result;
     }
 
-    private static Map<String, Object> changeView(PreviewChange change) {
+    private static Map<String, Object> changeView(PreviewChange change, Map<String, ScannedFile> current,
+                                                  Map<String, ManifestFile> previous, ProjectRules rules) {
+        ScannedFile now = current.get(ManagedPaths.fold(change.path()));
+        ManifestFile before = previous.get(ManagedPaths.fold(change.path()));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("kind", change.kind().name());
         result.put("path", change.path());
         result.put("downloadSize", change.downloadSize());
         result.put("removalAction", change.removalAction() == null
                 ? null : change.removalAction().name());
+        result.put("displayName", now != null && now.displayName() != null ? now.displayName()
+                : before == null ? null : before.displayName());
+        result.put("componentId", now != null && now.componentId() != null ? now.componentId()
+                : before == null ? null : before.componentId());
+        result.put("version", now == null ? null : now.version());
+        result.put("previousVersion", before == null ? null : before.version());
+        result.put("preset", now == null ? null : now.preset().name());
+        result.put("optionalGroup", now == null ? null : now.optionalGroup());
+        result.put("mod", ManagedPaths.isModJar(change.path()));
+        result.put("insideCleanup", rules != null && rules.insideCleanupDirectory(change.path()));
         return result;
     }
 
@@ -1582,6 +1899,143 @@ final class AdminWebServer implements AutoCloseable {
             return operation.call();
         } finally {
             mutationLock.unlock();
+        }
+    }
+
+    /**
+     * Generate a thin deployment package in a private temporary directory and
+     * stream it to the browser.  The normal deployment endpoint intentionally
+     * remains path-based for CLI/advanced workflows; this endpoint never
+     * accepts a server path supplied by the browser.
+     */
+    private void sendDeploymentDownload(
+            HttpExchange exchange, String projectId,
+            DeploymentDownloadRequest request) throws Exception {
+        DeploymentArchive archive = (DeploymentArchive) mutate(() ->
+                createDeploymentArchive(projectId, request));
+        try {
+            streamDownload(exchange, archive.archive(), archive.fileName());
+        } finally {
+            deleteRecursivelyQuietly(archive.cleanupRoot());
+        }
+    }
+
+    private DeploymentArchive createDeploymentArchive(
+            String projectId, DeploymentDownloadRequest request) {
+        Path temporaryRoot;
+        try {
+            temporaryRoot = Files.createTempDirectory(
+                    root.services().paths().temporary(),
+                    ".dfs-web-deployment-download-");
+        } catch (IOException e) {
+            throw new ManagementException("无法创建首次部署包临时目录", e);
+        }
+        try {
+            Path outputParent = Files.createDirectories(
+                    temporaryRoot.resolve("output"));
+            String platform = defaultValue(request.platform, "windows-x64");
+            String releaseId = required(request.releaseId, "整合包发布版本");
+            var prepared = root.services().deployments().create(
+                    projectId, platform, releaseId, outputParent,
+                    root.bootstrapAgentPath());
+            Path archive = temporaryRoot.resolve("deployment.zip");
+            writeDeploymentZip(prepared.outputDirectory(), archive);
+            String fileName = deploymentFileName(
+                    projectId, prepared.releaseDisplayVersion(),
+                    prepared.playerVersion());
+            return new DeploymentArchive(archive, fileName, temporaryRoot);
+        } catch (RuntimeException | IOException e) {
+            deleteRecursivelyQuietly(temporaryRoot);
+            if (e instanceof RuntimeException runtime) throw runtime;
+            throw new ManagementException("无法生成首次部署包", e);
+        }
+    }
+
+    private static void writeDeploymentZip(Path directory, Path archive)
+            throws IOException {
+        List<Path> files;
+        try (var stream = Files.walk(directory)) {
+            files = stream
+                    .filter(path -> !path.equals(directory))
+                    .sorted(Comparator.comparing(path ->
+                            directory.relativize(path).toString()))
+                    .toList();
+        }
+        try (OutputStream raw = Files.newOutputStream(archive);
+             ZipOutputStream zip = new ZipOutputStream(raw)) {
+            for (Path file : files) {
+                if (Files.isSymbolicLink(file)) {
+                    throw new IOException(
+                            "首次部署包目录包含不安全的符号链接：" + file);
+                }
+                if (!Files.isRegularFile(file,
+                        java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    continue;
+                }
+                String entryName = directory.relativize(file)
+                        .toString().replace('\\', '/');
+                ZipEntry entry = new ZipEntry(entryName);
+                entry.setTime(0L);
+                zip.putNextEntry(entry);
+                try (InputStream input = Files.newInputStream(file)) {
+                    input.transferTo(zip);
+                }
+                zip.closeEntry();
+            }
+        }
+    }
+
+    private static String deploymentFileName(
+            String projectId, String releaseVersion, String playerVersion) {
+        String value = (projectId + "-player-deployment-"
+                + releaseVersion + "-" + playerVersion)
+                .replaceAll("[^A-Za-z0-9._-]+", "-")
+                .replaceAll("^-+|-+$", "");
+        return (value.isBlank() ? "dreamingfish-player-deployment" : value)
+                + ".zip";
+    }
+
+    private static void streamDownload(
+            HttpExchange exchange, Path archive, String fileName)
+            throws IOException {
+        long size = Files.size(archive);
+        String safeName = fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+        Headers headers = exchange.getResponseHeaders();
+        securityHeaders(headers);
+        headers.set("Content-Type", "application/zip");
+        headers.set("Content-Disposition",
+                "attachment; filename=\"" + safeName + "\"");
+        headers.set("Cache-Control", "no-store");
+        headers.set("Content-Length", Long.toString(size));
+        boolean head = exchange.getRequestMethod().equals("HEAD");
+        exchange.sendResponseHeaders(200, head ? -1 : size);
+        if (head) return;
+        try (InputStream input = Files.newInputStream(archive);
+             OutputStream output = exchange.getResponseBody()) {
+            try {
+                input.transferTo(output);
+            } catch (IOException clientDisconnected) {
+                // The browser may be closed while the package is streaming.
+                // Cleanup is handled by sendDeploymentDownload's finally block.
+            }
+        } catch (IOException clientDisconnected) {
+            // Closing a response whose browser went away can also report a
+            // broken pipe; it is still a completed, safely-cleaned request.
+        }
+    }
+
+    private static void deleteRecursivelyQuietly(Path root) {
+        try {
+            if (!Files.exists(root, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                return;
+            }
+            try (var stream = Files.walk(root)) {
+                for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        } catch (IOException ignored) {
+            // A failed cleanup must not hide the package generation result.
         }
     }
 
@@ -1738,7 +2192,14 @@ final class AdminWebServer implements AutoCloseable {
                 "/app.css", loadAsset(
                         "web/app.css", "text/css; charset=utf-8"),
                 "/app.js", loadAsset(
-                        "web/app.js", "text/javascript; charset=utf-8")
+                        "web/app.js", "text/javascript; charset=utf-8"),
+                "/file-workspace.js", loadAsset("web/file-workspace.js", "text/javascript; charset=utf-8"),
+                "/file-transfer.js", loadAsset("web/file-transfer.js", "text/javascript; charset=utf-8"),
+                "/admin-workflow.js", loadAsset("web/admin-workflow.js", "text/javascript; charset=utf-8"),
+                "/workspace.css", loadAsset("web/workspace.css", "text/css; charset=utf-8"),
+                "/icons/folder.svg", loadAsset("web/icons/folder.svg", "image/svg+xml"),
+                "/icons/file.svg", loadAsset("web/icons/file.svg", "image/svg+xml"),
+                "/operation-history.js", loadAsset("web/operation-history.js", "text/javascript; charset=utf-8")
         );
     }
 
@@ -1754,6 +2215,8 @@ final class AdminWebServer implements AutoCloseable {
             throw new ExceptionInInitializerError(e);
         }
     }
+
+    private record OperationRequest(String id, String stamp) {}
 
     @Override
     public void close() {
@@ -1793,13 +2256,40 @@ final class AdminWebServer implements AutoCloseable {
     ) {
     }
 
-    private record RemovalDecisionsRequest(List<RemovalDecision> decisions) {
+    private record RemovalDecisionsRequest(List<RemovalDecision> decisions, String previewId, String previewDigest) {
     }
 
-    private record ForcedFilesRequest(List<String> files) {
+    private record PathItem(String path, Boolean directory) {
     }
 
-    private record ForcedDirectoriesRequest(List<String> directories) {
+    private record PresetsRequest(List<PathItem> items, String preset) {
+    }
+
+    private record CleanupRequest(String directory, Boolean enabled) {
+    }
+
+    private record GroupRequest(String id, String title, String description, Boolean defaultInstall) {
+    }
+
+    private record MemberItem(String path, Boolean directory, String modId) {
+    }
+
+    private record GroupMembersRequest(String groupId, List<MemberItem> items, Boolean add) {
+    }
+
+    private record IdRequest(String id) {
+    }
+
+    private record MakeOptionalRequest(String path, String groupId) {
+    }
+
+    private record VersionItem(String path, String sha256) {
+    }
+
+    private record WithdrawRequest(String reason, List<VersionItem> versions) {
+    }
+
+    private record CorrectRequest(String path, String mode, String reason, List<String> badSha256) {
     }
 
     private record PathBrowseRequest(String kind, String path) {
@@ -1814,6 +2304,12 @@ final class AdminWebServer implements AutoCloseable {
 
     private record SourceDirectoryRequest(String path) {
     }
+
+    private record SourceCommitRequest(String id, String action, String stamp) {}
+    private record ImportCheckRequest(List<String> ids) {}
+    private record ServerStageRequest(String sourcePath, String targetPath) {}
+    private record PackagePublishRequest(String id, String minimumBootstrapVersion) {}
+    private record AddressCheckRequest(String url) {}
 
     private record LocalFileImportRequest(String sourcePath) {
     }
@@ -1848,14 +2344,18 @@ final class AdminWebServer implements AutoCloseable {
     private record PublishRequest(
             String displayVersion,
             String minimumPlayerVersion,
-            String changelog
+            String changelog,
+            String previewId,
+            String previewDigest,
+            Boolean acknowledgePlayerUpgrade
     ) {
     }
 
     private record RollbackRequest(
             String targetReleaseId,
             String displayVersion,
-            String changelog
+            String changelog,
+            Boolean acknowledgePlayerUpgrade
     ) {
     }
 
@@ -1881,6 +2381,19 @@ final class AdminWebServer implements AutoCloseable {
             String outputDirectory,
             String platform,
             String releaseId
+    ) {
+    }
+
+    private record DeploymentDownloadRequest(
+            String platform,
+            String releaseId
+    ) {
+    }
+
+    private record DeploymentArchive(
+            Path archive,
+            String fileName,
+            Path cleanupRoot
     ) {
     }
 

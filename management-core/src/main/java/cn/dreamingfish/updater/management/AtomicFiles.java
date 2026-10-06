@@ -13,7 +13,9 @@ final class AtomicFiles {
     }
 
     static void moveReplace(Path source, Path target) throws IOException {
-        Files.createDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(source);
+        cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(target);
         FileSystemException lastFailure = null;
         for (int attempt = 0; attempt < 5; attempt++) {
             try {
@@ -41,7 +43,8 @@ final class AtomicFiles {
     }
 
     static void write(Path target, byte[] bytes) throws IOException {
-        Files.createDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(target);
         Path temporary = Files.createTempFile(target.getParent(), target.getFileName().toString(), ".tmp");
         boolean moved = false;
         try {
@@ -56,7 +59,9 @@ final class AtomicFiles {
     }
 
     static void copyReplace(Path source, Path target) throws IOException {
-        Files.createDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(source);
+        cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(target);
         Path temporary = Files.createTempFile(target.getParent(), target.getFileName().toString(), ".tmp");
         boolean moved = false;
         try {
@@ -72,11 +77,13 @@ final class AtomicFiles {
     }
 
     static void deleteRecursively(Path root) throws IOException {
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(root);
         if (!Files.exists(root)) {
             return;
         }
         try (var stream = Files.walk(root)) {
             for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
+                cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(path);
                 Files.deleteIfExists(path);
             }
         }

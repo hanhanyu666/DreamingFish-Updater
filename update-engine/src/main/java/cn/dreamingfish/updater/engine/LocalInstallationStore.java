@@ -57,7 +57,8 @@ final class LocalInstallationStore {
             String hash = CryptoSupport.sha256(manifestBytes);
             validateMetadata(manifest, hash, installation, trust, binding.projectId());
             return Optional.of(new LocalInstallation(
-                    new SignedRelease(manifest, manifestBytes, signature, hash), installation, trust, false));
+                    new SignedRelease(manifest, manifestBytes, signature, hash), installation, trust,
+                    false, loadState(paths, binding.projectId())));
         } catch (UpdateException e) {
             throw e;
         } catch (IOException | ProtocolException e) {
@@ -106,24 +107,21 @@ final class LocalInstallationStore {
     }
 
     boolean verifyFiles(EnginePaths paths, LocalInstallation local, ProgressListener listener,
-                        LocalFileOverrides overrides, CancellationToken cancellationToken) {
-        java.util.Map<String, ManifestFile> manifestFiles = new java.util.HashMap<>();
-        local.release().manifest().files().forEach(file ->
-                manifestFiles.put(file.path().toLowerCase(java.util.Locale.ROOT), file));
-        long total = local.installation().files().stream()
-                .filter(file -> file.policy() == FilePolicy.ENFORCED)
-                .filter(file -> {
-                    ManifestFile manifestFile = manifestFiles.get(
-                            file.path().toLowerCase(java.util.Locale.ROOT));
-                    return manifestFile == null || !overrides.excludes(manifestFile);
-                })
-                .mapToLong(InstalledFileState::size).sum();
+                        LocalFileOverrides overrides, LocalFileIndex index,
+                        CancellationToken cancellationToken) {
+        cn.dreamingfish.updater.protocol.MaintenanceModel model =
+                cn.dreamingfish.updater.protocol.MaintenanceModel.of(local.release().manifest());
+        List<ManifestFile> checked = local.release().manifest().files().stream()
+                .filter(file -> TransactionInstaller.verification(model, overrides, file)
+                        != TransactionInstaller.Verification.NONE)
+                .toList();
+        long total = checked.stream()
+                .filter(file -> TransactionInstaller.verification(model, overrides, file)
+                        == TransactionInstaller.Verification.CONTENT)
+                .mapToLong(ManifestFile::size).sum();
         long complete = 0;
-        for (InstalledFileState file : local.installation().files()) {
+        for (ManifestFile file : checked) {
             cancellationToken.throwIfCancelled();
-            ManifestFile manifestFile = manifestFiles.get(
-                    file.path().toLowerCase(java.util.Locale.ROOT));
-            if (manifestFile != null && overrides.excludes(manifestFile)) continue;
             Path target;
             try {
                 target = cn.dreamingfish.updater.protocol.PathSafety.resolveInside(paths.instanceRoot(), file.path());
@@ -131,11 +129,10 @@ final class LocalInstallationStore {
                 return false;
             }
             if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) return false;
-            if (file.policy() == FilePolicy.ENFORCED) {
+            if (TransactionInstaller.verification(model, overrides, file)
+                    == TransactionInstaller.Verification.CONTENT) {
                 try {
-                    if (Files.size(target) != file.size() || !CryptoSupport.sha256(target).equals(file.sha256())) {
-                        return false;
-                    }
+                    if (!index.matches(target, file.path(), file.sha256(), file.size())) return false;
                 } catch (IOException e) {
                     return false;
                 }
@@ -147,7 +144,7 @@ final class LocalInstallationStore {
         return true;
     }
 
-    void save(EnginePaths paths, SignedRelease release) throws IOException {
+    void save(EnginePaths paths, SignedRelease release, MaintenanceState state) throws IOException {
         VerifiedInstallation installation = installationFor(release);
         TrustState trust = trustFor(release);
         AtomicFileSupport.write(paths.installedManifest(), release.bytes());
@@ -155,6 +152,30 @@ final class LocalInstallationStore {
                 (release.signature() + "\n").getBytes(StandardCharsets.US_ASCII));
         AtomicFileSupport.write(paths.installationState(), json.writePretty(installation));
         AtomicFileSupport.write(paths.trustState(), json.writePretty(trust));
+        MaintenanceState stored = state == null
+                ? MaintenanceState.empty(release.manifest().projectId()) : state;
+        AtomicFileSupport.write(paths.maintenanceState(), json.writePretty(stored));
+    }
+
+    /** Reads the per-instance maintenance memory; it is optional for installations from older versions. */
+    MaintenanceState loadState(EnginePaths paths, String projectId) {
+        Path file = paths.maintenanceState();
+        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return MaintenanceState.empty(projectId);
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(file)) {
+            throw invalid("Local maintenance state is not a safe regular file", null);
+        }
+        try {
+            MaintenanceState state = json.read(file, MaintenanceState.class);
+            if (state.schemaVersion() != MaintenanceState.SCHEMA_VERSION
+                    || !projectId.equals(state.projectId())) {
+                throw invalid("Local maintenance state belongs to another project or version", null);
+            }
+            return state;
+        } catch (UpdateException e) {
+            throw e;
+        } catch (IOException | ProtocolException e) {
+            throw invalid("Unable to read local maintenance state", e);
+        }
     }
 
     private VerifiedInstallation installationFor(SignedRelease release) {

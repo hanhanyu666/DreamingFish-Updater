@@ -1,13 +1,12 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.40",
-    [string]$AdminVersion = "0.1.26",
+    [string]$Version = "0.2.0",
+    [string]$AdminVersion = "0.2.0",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
     [switch]$PlayerOnly,
-    [switch]$AdminOnly,
-    [switch]$TauriPlayer
+    [switch]$AdminOnly
 )
 
 Set-StrictMode -Version Latest
@@ -71,6 +70,16 @@ function Clear-ReadOnlyFiles([string]$Path) {
     Get-ChildItem -Recurse -Force -LiteralPath $Path -File -ErrorAction SilentlyContinue |
         Where-Object { $_.IsReadOnly } |
         ForEach-Object { $_.IsReadOnly = $false }
+}
+
+function Remove-PlayerRuntimeDevelopmentFiles([string]$Runtime) {
+    # These are linker/import artifacts, not needed to launch Java or the sidecar.
+    foreach ($relativePath in @("lib\jvm.lib", "bin\javaw.exe")) {
+        $path = Join-Path $Runtime $relativePath
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            Remove-Item -Force -LiteralPath $path
+        }
+    }
 }
 
 function New-Zip([string]$Source, [string]$Destination) {
@@ -221,8 +230,8 @@ function Assert-PlayerVersionConsistency([string]$ExpectedVersion) {
         "player-ui/src-tauri/tauri.conf.json" = $tauriVersion
     }
     $patterns = [ordered]@{
-        "player-app/PlayerApplication.java" = @(
-            "player-app\src\main\java\cn\dreamingfish\updater\player\PlayerApplication.java",
+        "player-app/PlayerRuntime.java" = @(
+            "player-app\src\main\java\cn\dreamingfish\updater\player\PlayerRuntime.java",
             'VERSION\s*=\s*"([^"]+)"')
         "player-ui/src/App.vue" = @("player-ui\src\App.vue", 'Updater \{\{ "([^"]+)" \}\}')
         "player-ui/src/components/ContentPages.vue" = @(
@@ -303,7 +312,25 @@ if (-not $PlayerOnly) {
     }
 }
 
-$mavenArguments = @("clean", "package")
+# Only clean module outputs: the root target directory may contain a running
+# local admin, deployment diagnostics and other artifacts that must survive.
+$cleanModules = if ($PlayerOnly) {
+    @("protocol", "update-engine", "player-app")
+} elseif ($AdminOnly) {
+    @("protocol", "update-engine", "management-core", "bootstrap-agent", "management-cli")
+} else {
+    @("protocol", "update-engine", "management-core", "bootstrap-agent", "management-cli", "player-app")
+}
+foreach ($module in $cleanModules) {
+    $moduleTarget = Join-Path $repoRoot "$module\target"
+    Assert-ChildPath $moduleTarget $repoRoot
+    if ((Test-Path -LiteralPath $moduleTarget) -and
+            ((Get-Item -Force -LiteralPath $moduleTarget).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw "Refusing to clean a linked module output: $moduleTarget"
+    }
+}
+Invoke-Checked (Join-Path $repoRoot "mvnw.cmd") @("clean", "-pl", ($cleanModules -join ","))
+$mavenArguments = @("package")
 if ($PlayerOnly) { $mavenArguments += @("-pl", "player-app", "-am") }
 if ($AdminOnly) { $mavenArguments += @("-pl", "management-cli", "-am") }
 if ($SkipTests) { $mavenArguments += "-DskipTests" }
@@ -327,59 +354,30 @@ if ($missingArtifacts) {
 }
 
 if (-not $AdminOnly) {
-    if ($TauriPlayer) {
-        # New Tauri + Vue player window with the Java engine running as a sidecar.
-        $playerUi = Join-Path $repoRoot "player-ui"
-        Push-Location $playerUi
-        try {
-            if (-not (Test-Path -LiteralPath (Join-Path $playerUi "node_modules"))) {
-                Invoke-Checked "npm.cmd" @("install")
-            }
-            Invoke-Checked "npm.cmd" @("run", "tauri", "--", "build", "--no-bundle")
-        } finally {
-            Pop-Location
+    # Tauri + Vue is the only player window. Java runs headlessly as a sidecar.
+    $playerUi = Join-Path $repoRoot "player-ui"
+    Push-Location $playerUi
+    try {
+        if (-not (Test-Path -LiteralPath (Join-Path $playerUi "node_modules"))) {
+            Invoke-Checked "npm.cmd" @("install")
         }
-        $tauriExe = Join-Path $playerUi "src-tauri\target\release\dreamingfish-player.exe"
-        if (-not (Test-Path -LiteralPath $tauriExe)) {
-            throw "Tauri player executable was not produced: $tauriExe"
-        }
-
-        $playerRuntimeRoot = Join-Path $buildRoot "player-runtime"
-        New-Item -ItemType Directory -Force -Path $playerRuntimeRoot | Out-Null
-        Invoke-Checked $jlink @(
-            "--add-modules", "java.desktop,java.net.http,jdk.crypto.ec,jdk.unsupported,java.logging",
-            "--strip-debug", "--no-man-pages", "--no-header-files",
-            "--output", (Join-Path $playerRuntimeRoot "runtime")
-        )
-    } else {
-        # Legacy JavaFX app image with a private Java 21 runtime.
-        $playerInput = Join-Path $buildRoot "player-input"
-        New-Item -ItemType Directory -Force -Path $playerInput | Out-Null
-        Copy-Item -LiteralPath $playerJar.FullName -Destination (Join-Path $playerInput "player-app.jar")
-        Get-ChildItem -LiteralPath (Join-Path $repoRoot "player-app\target\runtime-dependencies") -Filter "*.jar" |
-            ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $playerInput }
-        $playerImageRoot = Join-Path $buildRoot "player-image"
-        New-Item -ItemType Directory -Force -Path $playerImageRoot | Out-Null
-        Invoke-Checked $jpackage @(
-            "--type", "app-image",
-            "--name", "DreamingFishUpdater",
-            "--dest", $playerImageRoot,
-            "--input", $playerInput,
-            "--main-jar", "player-app.jar",
-            "--main-class", "cn.dreamingfish.updater.player.PlayerLauncher",
-            "--app-version", $Version,
-            "--vendor", "DreamingFish",
-            "--description", "Minecraft modpack player updater",
-            "--add-modules", "java.desktop,java.net.http,jdk.crypto.ec,jdk.unsupported",
-            "--java-options", "-Dfile.encoding=UTF-8"
-        )
-
-        # jpackage can mark the Windows launcher read-only. Normalize the app image so
-        # Maven clean, updater maintenance, and later packaging runs can remove it.
-        Get-ChildItem -Recurse -Force -LiteralPath (Join-Path $playerImageRoot "DreamingFishUpdater") |
-            Where-Object { -not $_.PSIsContainer -and $_.IsReadOnly } |
-            ForEach-Object { $_.IsReadOnly = $false }
+        Invoke-Checked "npm.cmd" @("run", "tauri", "--", "build", "--no-bundle")
+    } finally {
+        Pop-Location
     }
+    $tauriExe = Join-Path $playerUi "src-tauri\target\release\dreamingfish-player.exe"
+    if (-not (Test-Path -LiteralPath $tauriExe)) {
+        throw "Tauri player executable was not produced: $tauriExe"
+    }
+
+    $playerRuntimeRoot = Join-Path $buildRoot "player-runtime"
+    New-Item -ItemType Directory -Force -Path $playerRuntimeRoot | Out-Null
+    Invoke-Checked $jlink @(
+        "--add-modules", "java.net.http,jdk.crypto.ec,jdk.unsupported,java.logging",
+        "--strip-debug", "--no-man-pages", "--no-header-files",
+        "--output", (Join-Path $playerRuntimeRoot "runtime")
+    )
+    Remove-PlayerRuntimeDevelopmentFiles (Join-Path $playerRuntimeRoot "runtime")
 
     $playerBundle = Join-Path $distRoot "dreamingfish-player-windows-x64"
     $bootstrapDirectory = Join-Path $playerBundle ".dreamingfish-bootstrap"
@@ -388,16 +386,12 @@ if (-not $AdminOnly) {
     New-Item -ItemType Directory -Force -Path $bootstrapDirectory, $initialProgram, $playerState | Out-Null
     Copy-Item -LiteralPath $agentJar.FullName -Destination (Join-Path $bootstrapDirectory "bootstrap-agent.jar")
     Copy-Item -LiteralPath (Join-Path $templates "project-binding.example.json") -Destination $bootstrapDirectory
-    if ($TauriPlayer) {
-        Copy-Item -Force -LiteralPath $tauriExe -Destination `
-            (Join-Path $initialProgram "DreamingFishUpdater.exe")
-        Copy-Item -Force -LiteralPath $playerJar.FullName -Destination `
-            (Join-Path $initialProgram "player-sidecar.jar")
-        Copy-DirectoryContents (Join-Path $playerRuntimeRoot "runtime") `
-            (Join-Path $initialProgram "runtime")
-    } else {
-        Copy-DirectoryContents (Join-Path $playerImageRoot "DreamingFishUpdater") $initialProgram
-    }
+    Copy-Item -Force -LiteralPath $tauriExe -Destination `
+        (Join-Path $initialProgram "DreamingFishUpdater.exe")
+    Copy-Item -Force -LiteralPath $playerJar.FullName -Destination `
+        (Join-Path $initialProgram "player-sidecar.jar")
+    Copy-DirectoryContents (Join-Path $playerRuntimeRoot "runtime") `
+        (Join-Path $initialProgram "runtime")
     $activeTemplate = Get-Content -Raw -LiteralPath (Join-Path $templates "active-player.properties")
     $activeTemplate = $activeTemplate.Replace("@VERSION@", $Version)
     [System.IO.File]::WriteAllText((Join-Path $playerState "active-player.properties"),
@@ -430,7 +424,7 @@ Invoke-Checked $jpackage @(
     "--vendor", "DreamingFish",
     "--description", "DreamingFish modpack update management",
     "--win-console",
-    "--add-modules", "java.desktop,java.naming,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
+    "--add-modules", "java.naming,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
     "--java-options", "-Dfile.encoding=UTF-8",
     "--java-options", '-Ddfs.home=$APPDIR/..'
 )
@@ -441,6 +435,9 @@ Copy-Item -LiteralPath $agentJar.FullName -Destination `
 Copy-Item -LiteralPath (Join-Path $templates "README-management.txt") -Destination (Join-Path $adminWindows "README.txt")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\QUICKSTART.md") -Destination (Join-Path $adminWindows "QUICKSTART.md")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") -Destination (Join-Path $adminWindows "DEPLOYMENT.md")
+foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md')) {
+    Copy-Item -LiteralPath (Join-Path $repoRoot "docs\$guide") -Destination (Join-Path $adminWindows $guide)
+}
 $adminVersionOutput = & (Join-Path $adminWindows "DreamingFishAdmin.exe") --version 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "Packaged admin version check failed: $($adminVersionOutput -join [Environment]::NewLine)"
@@ -469,7 +466,7 @@ if (-not $SkipLinux) {
     if ($null -eq $linuxJdkSource) { throw "The Linux JDK archive has an unexpected layout." }
     Invoke-Checked $jlink @(
         "--module-path", (Join-Path $linuxJdkSource.FullName "jmods"),
-        "--add-modules", "java.desktop,java.naming,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
+        "--add-modules", "java.naming,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
         "--strip-debug", "--no-man-pages", "--no-header-files", "--compress=2",
         "--output", $linuxRuntimeImage
     )
@@ -497,6 +494,9 @@ if (-not $SkipLinux) {
         -Destination (Join-Path $adminLinux "QUICKSTART.md")
     Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") `
         -Destination (Join-Path $adminLinux "DEPLOYMENT.md")
+    foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md')) {
+        Copy-Item -LiteralPath (Join-Path $repoRoot "docs\$guide") -Destination (Join-Path $adminLinux $guide)
+    }
     New-Zip $adminLinux (Join-Path $distRoot "dfs-admin-linux-x64-$AdminVersion.zip")
 }
 

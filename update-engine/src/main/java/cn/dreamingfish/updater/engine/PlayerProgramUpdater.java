@@ -170,8 +170,8 @@ public final class PlayerProgramUpdater {
                 .header("Accept-Encoding", "identity")
                 .build();
         try {
-            HttpResponse<InputStream> response = ManifestFetcher.client(request)
-                    .send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = HttpTransfer.send(ManifestFetcher.client(request),
+                    httpRequest, request.requestTimeout(), request.cancellationToken());
             try (InputStream input = response.body()) {
                 if (response.statusCode() == 404) throw new PlayerProgramNotPublished();
                 if (response.statusCode() >= 500 || response.statusCode() == 408
@@ -184,11 +184,10 @@ public final class PlayerProgramUpdater {
                             "Player program request failed with HTTP " + response.statusCode());
                 }
                 byte[] bytes = readLimited(input);
-                String signature = SignedPayloadSupport.resolveSignature(
-                                ManifestFetcher.client(request), response, uri,
-                                request.requestTimeout())
-                        .orElseThrow(() -> new UpdateException(UpdateErrorCode.INVALID_SIGNATURE,
-                                "Player program manifest has no signature"));
+                var document = SignedPayloadSupport.resolvePayload(ManifestFetcher.client(request), response, uri,
+                        request.requestTimeout(), request.cancellationToken(), bytes, MAX_MANIFEST_BYTES);
+                bytes = document.payload();
+                String signature = document.signature();
                 LocalInstallationStore.verifySignature(bytes, signature, publicKey);
                 PlayerProgramManifest manifest;
                 try {
@@ -343,9 +342,13 @@ public final class PlayerProgramUpdater {
     }
 
     private static void deleteTree(Path root) throws IOException {
+        PathSafety.assertSafePathTree(root);
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return;
         try (var stream = Files.walk(root)) {
-            for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
+                PathSafety.assertSafePathTree(path);
+                Files.deleteIfExists(path);
+            }
         }
     }
 

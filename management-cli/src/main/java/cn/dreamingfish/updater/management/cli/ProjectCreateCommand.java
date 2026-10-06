@@ -53,7 +53,7 @@ final class ProjectCreateCommand implements Runnable {
     @CommandLine.Option(names = "--card-color", defaultValue = "#030708")
     String cardColor;
 
-    @CommandLine.Option(names = "--brand-name", defaultValue = "梦鱼服",
+    @CommandLine.Option(names = "--brand-name", defaultValue = "梦鱼更新器",
             description = "Chinese brand name shown in the player title bar")
     String brandName;
 
@@ -83,10 +83,10 @@ final class ProjectCreateCommand implements Runnable {
                 ? ProjectRules.defaults()
                 : readRules(services, rulesFile);
         if (forcedSyncDirectories != null) {
-            rules = rules.withForcedSyncDirectories(parsePaths(forcedSyncDirectories));
+            rules = rules.withLegacyForcedSyncDirectories(parsePaths(forcedSyncDirectories));
         }
         if (forcedSyncFiles != null) {
-            rules = rules.withForcedSyncFiles(parsePaths(forcedSyncFiles));
+            rules = rules.withLegacyForcedSyncFiles(parsePaths(forcedSyncFiles));
         }
         Branding branding = new Branding(name, subtitle, serverAddress, null,
                 accent, secondaryAccent, brandName, brandEnglishName,

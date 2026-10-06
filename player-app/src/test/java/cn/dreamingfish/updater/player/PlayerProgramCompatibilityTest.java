@@ -18,10 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class PlayerProgramCompatibilityTest {
     @Test
     void packagedAgentMeetsThePublishedCompatibilityFloor() {
-        PlayerProgramManifest manifest = manifestRequiring(PlayerApplication.BOOTSTRAP_AGENT_VERSION);
+        PlayerProgramManifest manifest = manifestRequiring(PlayerRuntime.BOOTSTRAP_AGENT_VERSION);
 
         assertDoesNotThrow(() -> PlayerProgramUpdater.requireCompatibleVersions(
-                PlayerApplication.VERSION, PlayerApplication.BOOTSTRAP_AGENT_VERSION, manifest));
+                PlayerRuntime.VERSION, PlayerRuntime.BOOTSTRAP_AGENT_VERSION, manifest));
     }
 
     @Test
@@ -30,14 +30,14 @@ class PlayerProgramCompatibilityTest {
 
         UpdateException error = assertThrows(UpdateException.class,
                 () -> PlayerProgramUpdater.requireCompatibleVersions(
-                        PlayerApplication.VERSION, PlayerApplication.BOOTSTRAP_AGENT_VERSION, manifest));
+                        PlayerRuntime.VERSION, PlayerRuntime.BOOTSTRAP_AGENT_VERSION, manifest));
 
         assertEquals(UpdateErrorCode.UNSUPPORTED_PLAYER_VERSION, error.code());
     }
 
     private static PlayerProgramManifest manifestRequiring(String bootstrapVersion) {
         return new PlayerProgramManifest(1, "build_server", "windows-x64",
-                PlayerApplication.VERSION, Instant.parse("2026-07-26T00:00:00Z"),
+                PlayerRuntime.VERSION, Instant.parse("2026-07-26T00:00:00Z"),
                 "DreamingFishUpdater.exe", bootstrapVersion, Set.of(),
                 List.of(new PlayerProgramFile("DreamingFishUpdater.exe", "a".repeat(64), 1, true)));
     }

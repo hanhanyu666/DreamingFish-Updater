@@ -8,6 +8,7 @@ import {
   isPathExpanded,
   type TreeNode,
 } from "../lib/fileTree";
+import { canRestoreDefault } from "../lib/maintenance";
 import { usePlayerStore } from "../stores/player";
 
 const props = defineProps<{
@@ -57,6 +58,16 @@ function toggleEntry(checked: boolean): void {
         </div>
         <div class="local-file-detail">{{ detailText(node.entry) }}</div>
       </div>
+      <button
+        v-if="canRestoreDefault(node.entry)"
+        type="button"
+        class="file-reset-button"
+        title="下次更新时换回服主提供的默认配置，你现在的这份会先移入备份"
+        @click="store.requestDefaultReset(node.entry)"
+      >
+        恢复默认
+      </button>
+      <span v-else-if="node.entry.resetPending" class="file-reset-pending">等待恢复默认</span>
       <label
         class="mod-toggle"
         :class="{ disabled: node.entry.forced || node.entry.inheritedExclusion != null }"

@@ -442,7 +442,7 @@ class UpdateEngineTest {
                     forcedRequest(instance, playerHome, server.binding()), null);
             assertEquals(3, first.archivedFiles().size());
             assertTrue(first.archiveDirectory().startsWith(
-                    playerHome.resolve("backups/forced-sync")));
+                    playerHome.resolve("backups/archive")));
             assertEquals("old", Files.readString(
                     first.archiveDirectory().resolve("mods/old-official.jar")));
             assertEquals("extra", Files.readString(
@@ -450,7 +450,13 @@ class UpdateEngineTest {
             assertEquals("not a jar", Files.readString(
                     first.archiveDirectory().resolve("mods/notes/readme.txt")));
             assertTrue(Files.readString(first.archiveDirectory().resolve("archived-files.txt"))
-                    .contains("Remote management forced directories: mods"));
+                    .contains("mods/player-extra.jar  —  " + ArchiveReason.CLEANUP.description()));
+            ArchiveIndex index = new cn.dreamingfish.updater.protocol.JsonCodec().read(
+                    first.archiveDirectory().resolve(ArchiveIndex.FILE_NAME), ArchiveIndex.class);
+            assertEquals(3, index.files().size());
+            assertTrue(index.files().stream().allMatch(file ->
+                    file.reason() == ArchiveReason.CLEANUP && "mods".equals(file.detail())));
+            assertEquals(3, first.archived().size());
             assertTrue(Files.isRegularFile(instance.resolve("mods/new-official.jar")));
             assertFalse(Files.exists(instance.resolve("mods/old-official.jar")));
             assertFalse(Files.exists(instance.resolve("mods/player-extra.jar")));

@@ -9,7 +9,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 
-/** UI-agnostic contract used by {@link PlayerController} so the JavaFX window and the Tauri sidecar share identical orchestration. */
+/** JSON-facing presentation contract implemented by the Tauri sidecar bridge. */
 public interface PlayerViewPort {
     enum DialogTone {
         INFO,
@@ -42,6 +42,14 @@ public interface PlayerViewPort {
     void setLocalMods(List<LocalModEntry> mods);
 
     void setLocalFiles(List<LocalFileEntry> files);
+
+    /** Optional groups of the installed release with the player's effective switches. */
+    default void setOptionalGroups(List<OptionalGroupView> groups) {
+    }
+
+    /** Player backups, newest first. */
+    default void setArchives(List<cn.dreamingfish.updater.engine.ArchiveCatalog.Archive> archives) {
+    }
 
     void showLaunchCountdown(int seconds);
 

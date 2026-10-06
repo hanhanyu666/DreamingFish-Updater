@@ -2,7 +2,11 @@ package cn.dreamingfish.updater.management;
 
 import cn.dreamingfish.updater.protocol.CryptoSupport;
 import cn.dreamingfish.updater.protocol.FilePolicy;
+import cn.dreamingfish.updater.protocol.MaintenancePreset;
+import cn.dreamingfish.updater.protocol.ManagedPaths;
 import cn.dreamingfish.updater.protocol.ManifestFile;
+import cn.dreamingfish.updater.protocol.ModMetadata;
+import cn.dreamingfish.updater.protocol.ModMetadataReader;
 import cn.dreamingfish.updater.protocol.PathSafety;
 
 import java.io.IOException;
@@ -18,9 +22,11 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -45,9 +51,10 @@ public final class SourceFileService {
 
     public List<SourceFileEntry> list(String projectId) {
         ProjectRecord project = database.requireProject(projectId);
-        RuleSet ruleSet = new RuleSet(project.rules());
-        Set<String> forcedFiles = folded(project.rules().forcedSyncFiles());
+        ProjectRules rules = project.rules();
+        RuleSet ruleSet = new RuleSet(rules);
         Set<String> publishedFiles = latestPublishedFiles(projectId);
+        Map<String, ScannedFile> scanned = lastScannedFiles(projectId);
         List<SourceFileEntry> result = new ArrayList<>();
         try (var stream = Files.walk(project.sourceDirectory())) {
             for (Path path : stream.sorted().toList()) {
@@ -60,15 +67,32 @@ public final class SourceFileService {
                 if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
                 RuleSet.Decision decision = ruleSet.decide(relative);
                 if (decision.excluded()) continue;
-                boolean directoryForced = project.rules().forcedSyncDirectories().stream()
-                        .anyMatch(directory -> insideDirectory(relative, directory));
-                boolean fileForced = forcedFiles.contains(fold(relative));
-                FilePolicy policy = directoryForced || fileForced
-                        ? FilePolicy.ENFORCED : decision.policy();
-                result.add(new SourceFileEntry(relative, Files.size(path),
-                        Files.getLastModifiedTime(path, LinkOption.NOFOLLOW_LINKS).toMillis(),
-                        policy, directoryForced, fileForced,
-                        publishedFiles.contains(fold(relative))));
+                long size = Files.size(path);
+                long modified = Files.getLastModifiedTime(path, LinkOption.NOFOLLOW_LINKS).toMillis();
+                ModMetadata mod = modMetadata(path, relative, size, modified, scanned);
+                List<OptionalGroupRule> groups = rules.groupsFor(relative,
+                        mod == null ? null : mod.componentId());
+                PresetRule presetRule = rules.presetRuleFor(relative).orElse(null);
+                MaintenancePreset preset = presetRule == null
+                        ? MaintenancePreset.SYNC : presetRule.preset();
+                String presetSource = presetRule == null ? "DEFAULT"
+                        : presetRule.directory() ? "DIRECTORY:" + presetRule.path() : "FILE";
+                if (rules.optionalOverridesRequired(relative, mod == null ? null : mod.componentId())) {
+                    // Optional content inside a required folder follows normal sync.
+                    preset = MaintenancePreset.SYNC;
+                    presetSource = "GROUP";
+                }
+                boolean required = preset == MaintenancePreset.REQUIRED;
+                result.add(new SourceFileEntry(relative, size, modified,
+                        FilePolicy.ENFORCED,
+                        required && presetRule.directory(),
+                        required && !presetRule.directory(),
+                        publishedFiles.contains(fold(relative)),
+                        preset, presetSource, rules.insideCleanupDirectory(relative),
+                        groups.isEmpty() ? null : groups.getFirst().id(),
+                        mod == null ? null : mod.componentId(),
+                        mod == null ? null : mod.displayName(),
+                        mod == null ? null : mod.version()));
             }
         } catch (IOException e) {
             throw new ManagementException(
@@ -76,6 +100,30 @@ public final class SourceFileService {
         }
         result.sort(Comparator.comparing(SourceFileEntry::path));
         return List.copyOf(result);
+    }
+
+    /** Mod details of the last check, reused while a jar is unchanged so listing stays fast. */
+    private Map<String, ScannedFile> lastScannedFiles(String projectId) {
+        Map<String, ScannedFile> result = new HashMap<>();
+        try {
+            for (ScannedFile file : scanner.load(projectId).files()) {
+                result.put(fold(file.path()), file);
+            }
+        } catch (ManagementException ignored) {
+            // Without a check the jars are read directly.
+        }
+        return result;
+    }
+
+    private static ModMetadata modMetadata(Path path, String relative, long size, long modified,
+                                           Map<String, ScannedFile> scanned) {
+        if (!ManagedPaths.isModJar(relative)) return null;
+        ScannedFile known = scanned.get(fold(relative));
+        if (known != null && known.size() == size && known.lastModifiedMillis() == modified) {
+            return known.componentId() == null ? null
+                    : new ModMetadata(known.componentId(), known.displayName(), known.version());
+        }
+        return ModMetadataReader.read(path).orElse(null);
     }
 
     /** Lists every real directory, including empty upload destinations. */
@@ -105,6 +153,10 @@ public final class SourceFileService {
 
     /** Creates an empty upload destination below the standard source root. */
     public String createDirectory(String projectId, String relativePath) {
+        return locked(projectId, () -> createDirectoryLocked(projectId, relativePath));
+    }
+
+    private String createDirectoryLocked(String projectId, String relativePath) {
         ProjectRecord project = database.requireProject(projectId);
         String normalized = PathSafety.normalizeManifestPath(relativePath);
         ensureManageable(project, normalized + "/.dfs-directory-check");
@@ -131,6 +183,13 @@ public final class SourceFileService {
                 }
                 current = current.getParent();
             }
+            try {
+                new SourceOperationJournal(paths, database, new cn.dreamingfish.updater.protocol.JsonCodec())
+                        .record(project, "MKDIR", List.of(), List.of(), normalized);
+            } catch (RuntimeException failure) {
+                try { Files.delete(target); } catch (IOException restore) { failure.addSuppressed(restore); }
+                throw failure;
+            }
             return normalized;
         } catch (IOException e) {
             throw new ManagementException(
@@ -140,6 +199,11 @@ public final class SourceFileService {
 
     public SourceMutation importFile(String projectId, Path externalFile,
                                      String targetDirectory, boolean overwrite) {
+        return locked(projectId, () -> importFileLocked(projectId, externalFile, targetDirectory, overwrite));
+    }
+
+    private SourceMutation importFileLocked(String projectId, Path externalFile,
+                                           String targetDirectory, boolean overwrite) {
         ProjectRecord project = database.requireProject(projectId);
         Path source = externalFile.toAbsolutePath().normalize();
         requireSafeRegularFile(source, "Imported source file");
@@ -176,6 +240,11 @@ public final class SourceFileService {
     public SourceMutation upload(String projectId, String targetPath, InputStream input,
                                  long expectedBytes, boolean overwrite,
                                  boolean refreshPreview) {
+        return locked(projectId, () -> uploadLocked(projectId, targetPath, input, expectedBytes, overwrite, refreshPreview));
+    }
+
+    private SourceMutation uploadLocked(String projectId, String targetPath, InputStream input,
+                                       long expectedBytes, boolean overwrite, boolean refreshPreview) {
         ProjectRecord project = database.requireProject(projectId);
         if (expectedBytes > MAX_UPLOAD_BYTES) {
             throw new ManagementException("Uploaded file exceeds the 4 GiB limit");
@@ -183,6 +252,7 @@ public final class SourceFileService {
         String normalized = PathSafety.normalizeManifestPath(targetPath);
         Path temporary = prepareTemporary(project, normalized);
         long copied = 0;
+        try {
         try (OutputStream output = Files.newOutputStream(
                 temporary, StandardOpenOption.TRUNCATE_EXISTING)) {
             byte[] buffer = new byte[BUFFER_SIZE];
@@ -198,6 +268,7 @@ public final class SourceFileService {
             if (expectedBytes >= 0 && copied != expectedBytes) {
                 throw new ManagementException("Uploaded file length does not match the request");
             }
+        }
             return install(project, normalized, temporary, overwrite, refreshPreview);
         } catch (IOException e) {
             throw new ManagementException("Unable to store uploaded source file", e);
@@ -217,6 +288,10 @@ public final class SourceFileService {
 
     public SourceBatchMutation removeBatch(
             String projectId, List<SourceRemoval> removals) {
+        return locked(projectId, () -> removeBatchLocked(projectId, removals));
+    }
+
+    private SourceBatchMutation removeBatchLocked(String projectId, List<SourceRemoval> removals) {
         if (removals == null || removals.isEmpty()) {
             throw new ManagementException("Choose at least one managed source file to remove");
         }
@@ -233,21 +308,23 @@ public final class SourceFileService {
                 throw new ManagementException(
                         "Managed source file was selected more than once: " + normalized);
             }
-            boolean insideForcedDirectory = project.rules().forcedSyncDirectories().stream()
-                    .anyMatch(directory -> insideDirectory(normalized, directory));
-            if (insideForcedDirectory && removal.action() == RemovalAction.RELEASE) {
+            if (project.rules().insideCleanupDirectory(normalized)
+                    && removal.action() != null && removal.action() != RemovalAction.DELETE) {
                 throw new ManagementException(
                         "Files inside a forced sync directory cannot be released from management");
             }
             Path source = resolve(project, normalized);
             requireSafeRegularFile(source, "Managed source file");
+            if (removal.expectedSha256() != null && !matchesExpectedVersion(source, removal.expectedSha256())) {
+                throw new ManagementException("Source version changed; inspect it again: " + normalized);
+            }
             boolean published = publishedFiles.contains(fold(normalized));
             if (published && removal.action() == null) {
                 throw new ManagementException(
                         "Choose whether players should delete or retain the removed file");
             }
             prepared.add(new PreparedRemoval(
-                    normalized, source, removal.action(), published));
+                    normalized, source, removal.action(), published, removal.expectedSha256()));
         }
 
         List<ArchivedRemoval> archived = new ArrayList<>();
@@ -257,8 +334,16 @@ public final class SourceFileService {
         }
 
         List<ArchivedRemoval> deleted = new ArrayList<>();
+        SourceOperationJournal journal = new SourceOperationJournal(paths, database, new cn.dreamingfish.updater.protocol.JsonCodec());
+        List<SourceOperationJournal.Before> before = archived.stream().map(item -> journal.archived(
+                item.removal().path(), item.archive(), Files.isExecutable(item.removal().source()))).toList();
         try {
             for (ArchivedRemoval removal : archived) {
+                String expected = removal.removal().expectedSha256();
+                if (expected != null && (!expected.equals(CryptoSupport.sha256(removal.archive()))
+                        || !expected.equals(CryptoSupport.sha256(removal.removal().source())))) {
+                    throw new ManagementException("Source version changed; retained its archive: " + removal.removal().path());
+                }
                 Files.delete(removal.removal().source());
                 deleted.add(removal);
             }
@@ -266,12 +351,20 @@ public final class SourceFileService {
                 removeEmptyParents(project.sourceDirectory(),
                         removal.removal().source().getParent());
             }
-            clearExactForcedFiles(project, unique);
+            clearExactRules(project, unique);
+            journal.record(project, "REMOVE", before, prepared.stream().map(PreparedRemoval::path).toList(), null);
         } catch (IOException | RuntimeException e) {
             for (int index = deleted.size() - 1; index >= 0; index--) {
                 ArchivedRemoval removal = deleted.get(index);
                 restoreArchive(removal.archive(), removal.removal().source(), e);
             }
+            try {
+                ProjectRecord latest = database.requireProject(projectId);
+                if (!latest.rules().equals(project.rules())) {
+                    database.updateProjectWithoutJournal(latest.id(), latest.displayName(), latest.sourceDirectory(),
+                            latest.publicBaseUrl(), latest.branding(), project.rules());
+                }
+            } catch (RuntimeException restore) { e.addSuppressed(restore); }
             if (e instanceof ManagementException managementException) {
                 throw managementException;
             }
@@ -329,6 +422,16 @@ public final class SourceFileService {
             }
             throw new ManagementException("Unable to install managed source file: " + normalized, e);
         }
+        SourceOperationJournal journal = new SourceOperationJournal(paths, database, new cn.dreamingfish.updater.protocol.JsonCodec());
+        List<SourceOperationJournal.Before> before = archived == null ? List.of()
+                : List.of(journal.archived(normalized, archived, Files.isExecutable(archived)));
+        try {
+            journal.record(project, "WRITE", before, List.of(normalized), null);
+        } catch (RuntimeException failure) {
+            if (archived != null) restoreArchive(archived, target, failure);
+            else try { Files.deleteIfExists(target); } catch (IOException restore) { failure.addSuppressed(restore); }
+            throw failure;
+        }
         PublishPreview preview = refreshPreview
                 ? scanner.createPreview(project.id()) : null;
         return new SourceMutation(normalized, archived, preview);
@@ -375,14 +478,27 @@ public final class SourceFileService {
         }
     }
 
-    private void clearExactForcedFiles(ProjectRecord project, Set<String> foldedPaths) {
-        List<String> forced = project.rules().forcedSyncFiles().stream()
-                .filter(candidate -> !foldedPaths.contains(fold(candidate)))
-                .toList();
-        if (forced.size() == project.rules().forcedSyncFiles().size()) return;
-        ProjectRules rules = project.rules().withForcedSyncFiles(forced);
-        database.updateProject(project.id(), project.displayName(),
-                project.sourceDirectory(), project.publicBaseUrl(), project.branding(), rules);
+    /** Drops exact-file presets and optional group entries for files removed from the source. */
+    private void clearExactRules(ProjectRecord project, Set<String> foldedPaths) {
+        try (ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(project.id() + ".lock"))) {
+            ProjectRecord current = database.requireProject(project.id());
+            ProjectRules rules = current.rules();
+            List<PresetRule> presets = rules.presets().stream()
+                    .filter(rule -> rule.directory() || !foldedPaths.contains(fold(rule.path())))
+                    .toList();
+            List<OptionalGroupRule> groups = rules.optionalGroups().stream()
+                    .map(group -> new OptionalGroupRule(group.id(), group.title(), group.description(),
+                            group.defaultInstall(), group.modIds(),
+                            group.files().stream().filter(file -> !foldedPaths.contains(fold(file))).toList(),
+                            group.directories()))
+                    .toList();
+            if (presets.equals(rules.presets()) && groups.equals(rules.optionalGroups())) return;
+            ProjectRules updated = rules.withPresets(presets).withOptionalGroups(groups);
+            database.updateProjectWithoutJournal(current.id(), current.displayName(),
+                    current.sourceDirectory(), current.publicBaseUrl(), current.branding(), updated);
+        } catch (IOException error) {
+            throw new ManagementException("Unable to lock maintenance rules", error);
+        }
     }
 
     private Set<String> latestPublishedFiles(String projectId) {
@@ -464,6 +580,11 @@ public final class SourceFileService {
         }
     }
 
+    /**
+     * @param presetSource {@code FILE}, {@code DIRECTORY:<path>} or {@code DEFAULT}
+     * @param cleanup      whether the file lies in a directory whose extra files players archive
+     * @param optionalGroup the group claiming this path by file or directory, if any
+     */
     public record SourceFileEntry(
             String path,
             long size,
@@ -471,7 +592,14 @@ public final class SourceFileService {
             FilePolicy policy,
             boolean forcedByDirectory,
             boolean forcedByFile,
-            boolean published
+            boolean published,
+            MaintenancePreset preset,
+            String presetSource,
+            boolean cleanup,
+            String optionalGroup,
+            String componentId,
+            String displayName,
+            String version
     ) {
     }
 
@@ -482,7 +610,8 @@ public final class SourceFileService {
     ) {
     }
 
-    public record SourceRemoval(String path, RemovalAction action) {
+    public record SourceRemoval(String path, RemovalAction action, String expectedSha256) {
+        public SourceRemoval(String path, RemovalAction action) { this(path, action, null); }
     }
 
     public record RemovedSourceFile(String path, Path archivedPreviousFile) {
@@ -501,7 +630,8 @@ public final class SourceFileService {
             String path,
             Path source,
             RemovalAction action,
-            boolean published
+            boolean published,
+            String expectedSha256
     ) {
     }
 
@@ -509,5 +639,16 @@ public final class SourceFileService {
             PreparedRemoval removal,
             Path archive
     ) {
+    }
+
+    private static boolean matchesExpectedVersion(Path source, String expected) {
+        try { return expected.equals(CryptoSupport.sha256(source)); }
+        catch (IOException error) { throw new ManagementException("Unable to verify source version", error); }
+    }
+
+    private <T> T locked(String projectId, java.util.function.Supplier<T> operation) {
+        try (ProjectLock ignored = ProjectLock.acquire(PathSafety.resolveInside(paths.locks(), projectId + ".lock"))) {
+            return operation.get();
+        } catch (IOException error) { throw new ManagementException("Unable to lock source file operation", error); }
     }
 }

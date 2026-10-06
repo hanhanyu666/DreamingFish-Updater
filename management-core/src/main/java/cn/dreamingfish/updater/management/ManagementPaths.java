@@ -31,6 +31,7 @@ public record ManagementPaths(
     }
 
     public void initialize() throws IOException {
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(root);
         Files.createDirectories(root);
         Files.createDirectories(objects);
         Files.createDirectories(manifests);
@@ -39,6 +40,9 @@ public record ManagementPaths(
         Files.createDirectories(previews);
         Files.createDirectories(locks);
         Files.createDirectories(temporary);
+        for (Path directory : java.util.List.of(root, objects, manifests, playerPrograms, keys, previews, locks, temporary)) {
+            cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(directory);
+        }
     }
 
     public Path objectPath(String sha256) {

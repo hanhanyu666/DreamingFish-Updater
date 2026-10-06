@@ -8,14 +8,22 @@ const app = {
   selectedProjectId: "",
   view: "dashboard",
   busy: false,
-  forcedDirectorySelection: new Set(),
-  forcedFileSelection: new Set(),
   sourceFileSelection: new Set(),
   sourceExpandedFolders: new Set(),
-  forcedDirectoryExpandedFolders: new Set(),
-  forcedFileExpandedFolders: new Set(),
   sourceFiles: null,
+  history: null,
+  withdrawSelection: new Set(),
+  correctSelection: new Set(),
   pendingUploads: [],
+  sourceDirectory: "",
+  collapsedSourceDirectories: new Set(),
+  detailPath: "",
+  transferTasks: [],
+  transferBusy: false,
+  transferPaused: false,
+  transferProjectId: "",
+  personalTab: "brand",
+  packagePlan: null,
   uploadTargetDirectory: null,
   uploadTargetExpandedFolders: new Set(),
   activeUploads: new Set(),
@@ -51,46 +59,62 @@ const DEFAULT_PLAYER_APPEARANCE = Object.freeze({
 
 const titles = {
   dashboard: "运行概览",
+  content: "管理内容",
+  publish: "检查并发布",
   project: "项目设置",
   personalization: "玩家端个性化",
-  publish: "管理文件",
   player: "玩家端程序",
   distribution: "外部托管",
   instance: "玩家实例",
-  settings: "服务设置"
+  settings: "系统设置"
 };
 
 const kindNames = {
   ADDED: "新增",
-  MODIFIED: "修改",
-  REMOVED: "删除",
-  POLICY_CHANGED: "策略",
+  MODIFIED: "更新",
+  REMOVED: "移除",
+  POLICY_CHANGED: "维护方式",
   METADATA_CHANGED: "模组信息"
 };
 
+const PRESETS = Object.freeze({
+  REQUIRED: Object.freeze({
+    label: "强制同步", css: "required",
+    help: "和服主完全一致，玩家不能停用或自行管理"
+  }),
+  SYNC: Object.freeze({
+    label: "普通同步", css: "sync",
+    help: "跟随服主更新，玩家可以停用模组或改为自行管理"
+  }),
+  INITIAL: Object.freeze({
+    label: "首次提供", css: "initial",
+    help: "只在玩家没有时放一份，之后归玩家所有"
+  }),
+  DEFAULT_CONFIG: Object.freeze({
+    label: "旧版：未修改才更新", css: "default-config",
+    help: "玩家没改过就跟着更新，改过就保留玩家的"
+  })
+});
+
+const REMOVAL_LABELS = Object.freeze({
+  DELETE: "移除玩家副本（持续生效，先备份）",
+  RELEASE: "停止维护，留给玩家"
+});
+
+const REMOVAL_HELP = Object.freeze({
+  DELETE: "活动、停用、豁免和首次提供副本先备份再移出；以后装回仍会处理",
+  RELEASE: "玩家已有的文件留在原处，从此由玩家自己处理"
+});
+
+const WARNING_TITLES = Object.freeze({
+  PLAYER_PROGRAM_REQUIRED: "玩家端需要升级",
+  CONTENT_MOD_REMOVED: "移除了可能影响存档的模组",
+  STALE_RULE: "有规则指向已经不存在的文件"
+});
+
 const byId = (id) => document.getElementById(id);
 
-async function api(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-  headers.set("Accept", "application/json");
-  if (options.body !== undefined) {
-    headers.set("Content-Type", "application/json");
-  }
-  if (app.token) headers.set("X-DFS-Token", app.token);
-  const response = await fetch(path, {
-    method: options.method || "GET",
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
-  });
-  const contentType = response.headers.get("Content-Type") || "";
-  const data = contentType.includes("application/json")
-    ? await response.json()
-    : null;
-  if (!response.ok) {
-    throw new Error(data?.message || `请求失败：HTTP ${response.status}`);
-  }
-  return data;
-}
+async function api(path, options = {}) { return AdminTransport.request(path, options, app.token); }
 
 async function initialize() {
   initializeTheme();
@@ -242,7 +266,7 @@ async function refreshState(preferredProjectId = app.selectedProjectId) {
   renderState();
   if (nextProject) {
     await loadProject(nextProject);
-    if (app.view === "publish") {
+    if (app.view === "content") {
       await loadSourceFiles();
     }
   } else {
@@ -264,18 +288,16 @@ async function loadProject(projectId, platform) {
     `/api/projects/${encodeURIComponent(projectId)}`
       + `?platform=${encodeURIComponent(requestedPlatform)}`
   );
-  app.forcedDirectorySelection = new Set(
-    app.project.forcedSyncDirectories || []
-  );
-  app.forcedFileSelection = new Set(app.project.forcedSyncFiles || []);
   app.sourceFileSelection = new Set();
   app.sourceFiles = null;
   if (projectChanged) {
     app.sourceExpandedFolders.clear();
-    app.forcedDirectoryExpandedFolders.clear();
-    app.forcedFileExpandedFolders.clear();
+    app.sourceDirectory = "";
+    app.collapsedSourceDirectories.clear();
+    app.packagePlan = null;
     app.uploadTargetExpandedFolders.clear();
     app.uploadTargetDirectory = null;
+    app.history = null;
   }
   renderProjectOptions();
   renderProjectDependentViews();
@@ -373,10 +395,8 @@ function renderDashboard() {
 function renderProjectDependentViews() {
   renderProjectForm();
   renderPersonalizationForm();
-  renderSourceFiles();
+  renderContent();
   renderPreview();
-  renderForcedDirectories();
-  renderForcedFiles();
   renderReleases();
   renderPrograms();
   renderInstanceReleases();
@@ -387,65 +407,29 @@ async function loadSourceFiles() {
   app.sourceFiles = await api(
     `/api/projects/${encodeURIComponent(app.project.id)}/files`
   );
+  pruneSourceSelection();
+  renderContent();
+}
+
+function pruneSourceSelection() {
   const selected = app.sourceFileSelection;
   app.sourceFileSelection = new Set(
-    (app.sourceFiles.files || [])
+    (app.sourceFiles?.files || [])
       .filter((file) => pathSelected(selected, file.path))
       .map((file) => file.path)
   );
+}
+
+function renderContent() {
   renderSourceFiles();
-  renderForcedDirectories();
-  renderForcedFiles();
+  renderCleanup();
+  renderGroups();
+  renderDirectives();
 }
 
-function renderSourceFiles() {
-  const result = app.sourceFiles;
-  if (!result) {
-    byId("source-file-count").textContent = "打开页面后读取";
-    byId("source-managed-count").textContent = "--";
-    byId("source-total-size").textContent = "--";
-    byId("source-forced-count").textContent = "--";
-    byId("source-file-selection-count").textContent = "未选择文件";
-    byId("source-file-select-all").checked = false;
-    byId("source-file-select-all").indeterminate = false;
-    byId("source-file-select-all").disabled = true;
-    byId("remove-selected-source-files").disabled = true;
-    setRows("source-file-table", "source-file-empty", []);
-    return;
-  }
-  const query = byId("source-file-search").value
-    .trim().toLocaleLowerCase("zh-CN");
-  const allFiles = result.files || [];
-  const files = allFiles.filter((file) =>
-    !query || file.path.toLocaleLowerCase("zh-CN").includes(query)
-  );
-  const forcedCount = allFiles.filter(
-    (file) => file.forcedByDirectory || file.forcedByFile
-  ).length;
-  byId("source-file-count").textContent = query
-    ? `显示 ${files.length} / ${result.count} 个文件`
-    : `${result.count} 个托管文件`;
-  byId("source-managed-count").textContent = String(result.count);
-  byId("source-total-size").textContent = formatBytes(result.totalBytes);
-  byId("source-forced-count").textContent = String(forcedCount);
-  byId("source-file-empty").textContent = query
-    ? "没有符合搜索条件的文件"
-    : "整合包目录中没有文件";
-  const rows = fileTreeRows(
-    files,
-    sourceFolderRow,
-    sourceFileRow,
-    {
-      expandedFolders: app.sourceExpandedFolders,
-      expandAll: Boolean(query),
-      onToggle: renderSourceFiles
-    }
-  );
-  setRows("source-file-table", "source-file-empty", rows);
-  updateSourceFileSelection(files);
-}
+function renderSourceFiles() { renderFileWorkspace(); }
 
-function sourceFolderRow(node, depth, treeState) {
+function contentFolderRow(node, depth, treeState) {
   const control = treeSelectionCell(
     node.entries,
     (file) => pathSelected(app.sourceFileSelection, file.path),
@@ -454,77 +438,1049 @@ function sourceFolderRow(node, depth, treeState) {
       setPathsSelected(app.sourceFileSelection, files, checked);
       renderSourceFiles();
     },
-    node.path ? `选择 ${node.path}/ 中的全部文件` : "选择当前列表中的全部文件"
+    `选择 ${node.path}/ 中的全部文件`
   );
-  const status = document.createElement("span");
-  status.className = "source-status folder-status";
-  status.textContent = node.path ? "文件夹" : "全部";
-  const folder = folderPathCell(node, depth, treeState);
+  const name = folderPathCell(node, depth, treeState);
+  if (depth === 0 && cleanupEnabled(node.path)) {
+    name.append(tag("强制同步目录", "cleanup",
+      "玩家在这个目录里自己添加的文件会在更新时移入备份"));
+  }
+  const preset = document.createElement("td");
+  preset.append(presetSelect(node.path, true));
+  const group = document.createElement("td");
+  const owner = groupForDirectory(node.path);
+  if (owner) group.append(tag(owner.title, "group", "整个文件夹属于这组可选内容"));
   const totalBytes = node.entries.reduce(
     (sum, file) => sum + Number(file.size || 0), 0
   );
-  const item = row([
-    control,
-    status,
-    folder,
-    formatBytes(totalBytes),
-    "--",
-    ""
-  ]);
+  const item = row([control, name, preset, group, formatBytes(totalBytes), ""]);
   item.className = "file-tree-folder";
   return item;
 }
 
-function sourceFileRow(file, depth) {
-  const control = document.createElement("td");
-  const checkbox = selectionCheckbox(
-    pathSelected(app.sourceFileSelection, file.path),
-    false,
-    `选择 ${file.path}`
-  );
-  checkbox.addEventListener("change", () => {
-    setPathSelected(app.sourceFileSelection, file.path, checkbox.checked);
-    renderSourceFiles();
-  });
-  control.append(checkbox);
+function contentFileRow(file, depth) { return workspaceFileRow(file); }
 
-  const status = document.createElement("span");
-  status.className = "source-status";
-  if (file.forcedByDirectory || file.forcedByFile) {
-    status.classList.add("forced");
-    status.textContent = file.forcedByDirectory ? "目录强制" : "单文件强制";
-  } else {
-    status.textContent = "普通托管";
-  }
-  const filePath = treeFilePathCell(file.path, depth);
-  const remove = actionButton("移除", () => removeSourceFile(file));
-  const item = row([
-    control,
-    status,
-    filePath,
-    formatBytes(file.size),
-    formatDate(file.lastModifiedMillis),
-    remove
-  ]);
-  item.className = "file-tree-file";
-  return item;
+function presetSelect(path, directory, file = null) {
+  const select = document.createElement("select");
+  select.className = "preset-select";
+  const own = ownPresetRule(path, directory);
+  const inherited = file?.presetSource === "GROUP"
+    ? { preset: "SYNC", source: null, optional: inheritedPreset(path, directory).source }
+    : inheritedPreset(path, directory);
+  const inheritedLabel = PRESETS[inherited.preset]?.label || inherited.preset;
+  select.append(option("", inherited.optional
+    ? `可选内容：${inheritedLabel}`
+    : inherited.source
+      ? `随 ${inherited.source}/：${inheritedLabel}`
+      : directory
+        ? `不单独设置（${inheritedLabel}）`
+        : `默认：${inheritedLabel}`));
+  Object.entries(PRESETS).filter(([key]) => key !== "DEFAULT_CONFIG").forEach(([value, preset]) => {
+    const choice = option(value, preset.label);
+    choice.disabled = inherited.preset === "REQUIRED" && value !== "REQUIRED";
+    select.append(choice);
+  });
+  select.value = own?.preset || "";
+  const effective = own?.preset || inherited.preset;
+  select.classList.add(`preset-${PRESETS[effective]?.css || "sync"}`);
+  select.classList.toggle("inherited", !own);
+  select.title = `${PRESETS[effective]?.label}：${PRESETS[effective]?.help}`
+    + (directory ? "。改变文件夹方式会统一其下的文件设置；强制同步还会移出额外文件" : "")
+    + (inherited.preset === "REQUIRED"
+      ? `。如需普通同步或首次提供，请先改变 ${inherited.source}/ 的强制同步设置` : "");
+  select.setAttribute("aria-label", `${path}${directory ? "/" : ""} 的维护方式`);
+  select.addEventListener("change", () => {
+    applyPresets([{ path, directory }], select.value || "DEFAULT");
+  });
+  return select;
+}
+
+function ownPresetRule(path, directory) {
+  const folded = foldPath(path);
+  return (app.project?.maintenance?.presets || []).find((rule) =>
+    Boolean(rule.directory) === directory && foldPath(rule.path) === folded
+  ) || null;
+}
+
+/** The preset a path gets from enclosing folders, ignoring its own rule. */
+function inheritedPreset(path, directory) {
+  const folded = foldPath(path);
+  let best = null;
+  (app.project?.maintenance?.presets || []).forEach((rule) => {
+    if (!rule.directory) return;
+    const root = foldPath(rule.path);
+    if (directory && root === folded) return;
+    if (folded.startsWith(`${root}/`)
+        && (!best || rule.path.length > best.path.length)) {
+      best = rule;
+    }
+  });
+  return best
+    ? { preset: best.preset, source: best.path }
+    : { preset: "SYNC", source: null };
+}
+
+function cleanupEnabled(path) {
+  const folded = foldPath(path);
+  return (app.project?.maintenance?.cleanupDirectories || [])
+    .some((directory) => foldPath(directory) === folded);
+}
+
+function groupById(id) {
+  if (!id) return null;
+  return (app.project?.maintenance?.optionalGroups || [])
+    .find((group) => group.id === id) || null;
+}
+
+function groupForDirectory(path) {
+  const folded = foldPath(path);
+  return (app.project?.maintenance?.optionalGroups || []).find((group) =>
+    (group.directories || []).some((directory) => {
+      const root = foldPath(directory);
+      return folded === root || folded.startsWith(`${root}/`);
+    })
+  ) || null;
+}
+
+function tag(text, kind, title) {
+  const element = document.createElement("span");
+  element.className = `inline-tag ${kind}`;
+  element.textContent = text;
+  if (title) element.title = title;
+  return element;
+}
+
+function presetTag(preset) {
+  return tag(PRESETS[preset]?.label || preset, `preset-${PRESETS[preset]?.css || "sync"}`,
+    PRESETS[preset]?.help);
+}
+
+function note(text) {
+  const element = document.createElement("p");
+  element.className = "list-note";
+  element.textContent = text;
+  return element;
 }
 
 function updateSourceFileSelection(visibleFiles = []) {
-  const allFiles = app.sourceFiles?.files || [];
-  const selected = allFiles.filter(
-    (file) => pathSelected(app.sourceFileSelection, file.path)
-  );
-  byId("source-file-selection-count").textContent = selected.length === 0
+  const selected = selectedSourceFiles();
+  const none = selected.length === 0;
+  byId("source-file-selection-count").textContent = none
     ? "未选择文件"
     : `已选择 ${selected.length} 个文件`;
-  byId("remove-selected-source-files").disabled = selected.length === 0;
+  byId("remove-selected-source-files").disabled = none;
+  byId("selection-preset").disabled = none;
+  byId("selection-add-group").disabled = none;
+  byId("selection-remove-group").disabled =
+    !selected.some((file) => file.optionalGroup);
   applySelectionState(
     byId("source-file-select-all"),
     visibleFiles,
     (file) => pathSelected(app.sourceFileSelection, file.path),
     () => true
   );
+}
+
+function selectedSourceFiles() {
+  return (app.sourceFiles?.files || []).filter(
+    (file) => pathSelected(app.sourceFileSelection, file.path)
+  );
+}
+
+async function maintenance(action, body, label, done) {
+  if (!app.project) return null;
+  const projectId = app.project.id;
+  const position = captureContentPosition();
+  let result = null;
+  await runBusy(label, async () => {
+    result = await api(
+      `/api/projects/${encodeURIComponent(projectId)}/maintenance/${action}`,
+      { method: "POST", body }
+    );
+    applyMaintenanceResult(result);
+    restoreContentPosition(position);
+    if (done) toast(typeof done === "function" ? done(result) : done);
+  });
+  // A refused change re-renders so switches show the saved state again.
+  if (!result) renderContent();
+  return result;
+}
+
+function applyMaintenanceResult(result) {
+  if (!app.project || !result) return;
+  if (result.project) Object.assign(app.project, result.project);
+  if (typeof result.previewStale === "boolean") {
+    app.project.previewStale = result.previewStale;
+  }
+  if (result.sourceFiles) {
+    app.sourceFiles = result.sourceFiles;
+    pruneSourceSelection();
+  }
+  renderContent();
+  renderPreview();
+}
+
+async function applyPresets(items, preset) {
+  if (!await confirmFolderPreset(items, preset)) { renderSourceFiles(); return null; }
+  const label = preset === "DEFAULT" ? "跟随文件夹" : PRESETS[preset]?.label;
+  return maintenance("presets", { items, preset }, "正在保存维护方式",
+    items.length === 1
+      ? `已设为“${label}”，发布新版本后生效`
+      : `${items.length} 项已设为“${label}”，发布新版本后生效`);
+}
+
+function topLevelDirectories() {
+  const known = new Map();
+  const remember = (path, missing) => {
+    const key = foldPath(path);
+    if (!known.has(key)) known.set(key, { path, fileCount: 0, missing });
+    return known.get(key);
+  };
+  (app.sourceFiles?.files || []).forEach((file) => {
+    const slash = file.path.indexOf("/");
+    if (slash > 0) remember(file.path.slice(0, slash), false).fileCount += 1;
+  });
+  (app.sourceFiles?.directories || []).forEach((directory) => {
+    if (!directory.includes("/")) remember(directory, false);
+  });
+  (app.project?.maintenance?.cleanupDirectories || []).forEach((directory) => {
+    remember(directory, true);
+  });
+  return [...known.values()].sort((left, right) =>
+    left.path.localeCompare(right.path, "zh-CN", { sensitivity: "base" })
+  );
+}
+
+function renderCleanup() {
+  const list = byId("cleanup-list");
+  const enabled = app.project?.maintenance?.cleanupDirectories || [];
+  byId("cleanup-count").textContent = enabled.length === 0
+    ? "未开启"
+    : `已对 ${enabled.length} 个目录开启`;
+  if (!app.sourceFiles) {
+    list.replaceChildren(note("打开页面后读取目录"));
+    return;
+  }
+  const directories = topLevelDirectories();
+  if (directories.length === 0) {
+    list.replaceChildren(note("整合包目录中还没有文件夹"));
+    return;
+  }
+  list.replaceChildren(...directories.map((directory) => {
+    const on = cleanupEnabled(directory.path);
+    const item = document.createElement("label");
+    item.className = `cleanup-item${on ? " active" : ""}`;
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.className = "switch";
+    toggle.checked = on;
+    toggle.setAttribute("aria-label", `清理 ${directory.path}/ 中的多余文件`);
+    toggle.addEventListener("change", () => setCleanup(directory.path, toggle.checked));
+    const text = document.createElement("span");
+    const name = document.createElement("strong");
+    name.textContent = `${directory.path}/`;
+    const detail = document.createElement("small");
+    detail.textContent = directory.missing
+      ? "目录已不存在，可以关闭"
+      : on
+        ? `玩家自己添加的文件会移入备份 · ${directory.fileCount} 个托管文件`
+        : `玩家自己添加的文件不受影响 · ${directory.fileCount} 个托管文件`;
+    text.append(name, detail);
+    item.append(toggle, text);
+    return item;
+  }));
+}
+
+async function setCleanup(directory, enabled) {
+  if (enabled) {
+    const accepted = await ask(
+      "开启清理多余文件",
+      `开启后，玩家在 ${directory}/ 里自己添加的文件会在下次更新时移入备份，不会再留在游戏里。\n\n`
+        + `请确认 ${directory}/ 不是存档、截图、日志等玩家自己的目录。`,
+      "开启清理"
+    );
+    if (!accepted) {
+      renderCleanup();
+      return;
+    }
+  }
+  await maintenance("cleanup", { directory, enabled }, "正在保存清理设置",
+    enabled ? `已开启 ${directory}/ 的清理，发布新版本后生效`
+      : `已关闭 ${directory}/ 的清理，发布新版本后生效`);
+}
+
+function renderGroups() {
+  const list = byId("group-list");
+  const groups = app.project?.maintenance?.optionalGroups || [];
+  byId("group-count").textContent = groups.length === 0
+    ? "没有可选内容"
+    : `${groups.length} 组可选内容`;
+  if (groups.length === 0) {
+    list.replaceChildren(note("还没有可选内容。新建一组后，在上方列表中选择文件加入。"));
+    return;
+  }
+  list.replaceChildren(...groups.map(groupCard));
+}
+
+function groupCard(group) {
+  const card = document.createElement("article");
+  card.className = "group-card";
+  const header = document.createElement("div");
+  header.className = "group-card-header";
+  const title = document.createElement("div");
+  title.className = "group-card-title";
+  const name = document.createElement("strong");
+  name.textContent = group.title;
+  title.append(name, tag(group.defaultInstall ? "默认安装" : "默认不安装",
+    group.defaultInstall ? "on" : "off"));
+  const actions = document.createElement("div");
+  actions.className = "button-row";
+  actions.append(
+    actionButton("编辑", () => openGroupDialog(group)),
+    actionButton("删除", () => deleteGroup(group))
+  );
+  header.append(title, actions);
+  card.append(header);
+  if (group.description) {
+    const description = document.createElement("p");
+    description.textContent = group.description;
+    card.append(description);
+  }
+  const members = groupMembers(group);
+  const list = document.createElement("ul");
+  list.className = "group-members";
+  if (members.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "group-members-empty";
+    empty.textContent = "还没有内容：在上方列表中选择文件，再点“加入可选内容”";
+    list.append(empty);
+  }
+  members.forEach((member) => {
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = member.label;
+    label.title = member.title;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "member-remove";
+    remove.textContent = "×";
+    remove.title = `把 ${member.label} 移出这组可选内容`;
+    remove.setAttribute("aria-label", remove.title);
+    remove.addEventListener("click", () => maintenance("group-members",
+      { groupId: group.id, add: false, items: [member.item] },
+      "正在移出可选内容", `已把 ${member.label} 移出“${group.title}”`));
+    item.append(label, remove);
+    list.append(item);
+  });
+  card.append(list);
+  if (app.sourceFiles) {
+    const count = (app.sourceFiles.files || [])
+      .filter((file) => file.optionalGroup === group.id).length;
+    const footer = document.createElement("small");
+    footer.className = "group-card-footer";
+    footer.textContent = `当前包含 ${count} 个文件`;
+    card.append(footer);
+  }
+  return card;
+}
+
+function groupMembers(group) {
+  const files = app.sourceFiles?.files || [];
+  const members = [];
+  (group.modIds || []).forEach((modId) => {
+    const jar = files.find((file) => file.componentId
+      && file.componentId.toLowerCase() === modId.toLowerCase());
+    members.push({
+      label: jar?.displayName ? `${jar.displayName}（${modId}）` : `模组 ${modId}`,
+      title: jar ? `${jar.path}\n按 modid 加入，改名后的新版本仍然属于这组`
+        : `modid：${modId}（整合包目录中暂时没有这个模组）`,
+      item: { modId }
+    });
+  });
+  (group.files || []).forEach((path) => members.push({
+    label: path, title: path, item: { path, directory: false }
+  }));
+  (group.directories || []).forEach((path) => members.push({
+    label: `${path}/`, title: `${path}/ 中的全部文件`, item: { path, directory: true }
+  }));
+  return members;
+}
+
+function openGroupDialog(group) {
+  const dialog = byId("group-dialog");
+  const form = byId("group-form");
+  form.reset();
+  byId("group-dialog-title").textContent = group ? "编辑可选内容" : "新建可选内容";
+  setFormValue(form, "id", group?.id || "");
+  setFormValue(form, "title", group?.title || "");
+  setFormValue(form, "description", group?.description || "");
+  form.elements.defaultInstall.checked = group ? Boolean(group.defaultInstall) : true;
+  dialog.showModal();
+}
+
+async function deleteGroup(group) {
+  const accepted = await ask(
+    "删除可选内容",
+    `删除“${group.title}”后，里面的文件会变回普通内容，按各自的维护方式同步给所有玩家；`
+      + "玩家之前关闭这组内容的选择也会失效。",
+    "删除",
+    true
+  );
+  if (!accepted) return;
+  await maintenance("group-delete", { id: group.id }, "正在删除可选内容",
+    `已删除“${group.title}”`);
+}
+
+async function pickGroup(message) {
+  const dialog = byId("group-pick-dialog");
+  const form = byId("group-pick-form");
+  const groups = app.project?.maintenance?.optionalGroups || [];
+  form.reset();
+  byId("group-pick-message").textContent = message;
+  const list = byId("group-pick-list");
+  list.replaceChildren(
+    ...groups.map((group, index) => choiceRadio("groupChoice", group.id, group.title,
+      group.description || (group.defaultInstall ? "默认安装" : "默认不安装"), index === 0)),
+    choiceRadio("groupChoice", "__new__", "新建一组可选内容", "在下方填写名称",
+      groups.length === 0)
+  );
+  const fields = byId("group-pick-new");
+  const sync = () => {
+    fields.hidden = form.querySelector('input[name="groupChoice"]:checked')?.value
+      !== "__new__";
+  };
+  list.querySelectorAll("input").forEach((input) => {
+    input.addEventListener("change", sync);
+  });
+  sync();
+  dialog.returnValue = "cancel";
+  dialog.showModal();
+  const confirmed = await new Promise((resolve) => {
+    dialog.addEventListener("close",
+      () => resolve(dialog.returnValue === "confirm"), { once: true });
+  });
+  if (!confirmed) return null;
+  const choice = form.querySelector('input[name="groupChoice"]:checked')?.value;
+  if (choice && choice !== "__new__") return choice;
+  const data = new FormData(form);
+  const title = textValue(data, "title");
+  if (!title) {
+    toast("请填写新可选内容的名称", true);
+    return null;
+  }
+  const result = await maintenance("group", {
+    title,
+    description: textValue(data, "description"),
+    defaultInstall: form.elements.defaultInstall.checked
+  }, "正在创建可选内容");
+  return result?.groupId || null;
+}
+
+function choiceRadio(name, value, title, detail, checked) {
+  const label = document.createElement("label");
+  label.className = "choice";
+  const input = document.createElement("input");
+  input.type = "radio";
+  input.name = name;
+  input.value = value;
+  input.checked = checked;
+  const text = document.createElement("span");
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+  text.append(strong);
+  if (detail) {
+    const small = document.createElement("small");
+    small.textContent = detail;
+    text.append(small);
+  }
+  label.append(input, text);
+  return label;
+}
+
+async function addFilesToGroup(files, message) {
+  const groupId = await pickGroup(message);
+  if (!groupId) return false;
+  const required = files.filter((file) => file.preset === "REQUIRED"
+    && file.presetSource === "FILE");
+  if (required.length > 0) {
+    // A file set to required on its own cannot be left to players; it becomes normal sync first.
+    const changed = await maintenance("presets", {
+      items: required.map((file) => ({ path: file.path, directory: false })),
+      preset: "SYNC"
+    }, "正在把强制同步改为普通同步");
+    if (!changed) return false;
+  }
+  const group = groupById(groupId);
+  const result = await maintenance("group-members", {
+    groupId,
+    add: true,
+    items: files.map((file) => ({ path: file.path, directory: false }))
+  }, "正在加入可选内容",
+  `${files.length} 个文件已加入“${group?.title || groupId}”，发布新版本后生效`);
+  return Boolean(result);
+}
+
+async function removeFilesFromGroups(files) {
+  const grouped = new Map();
+  files.filter((file) => file.optionalGroup).forEach((file) => {
+    if (!grouped.has(file.optionalGroup)) grouped.set(file.optionalGroup, []);
+    grouped.get(file.optionalGroup).push(file);
+  });
+  for (const [groupId, members] of grouped) {
+    const result = await maintenance("group-members", {
+      groupId,
+      add: false,
+      items: members.map((file) => ({ path: file.path, directory: false }))
+    }, "正在移出可选内容");
+    if (!result) return;
+  }
+  const remaining = files.filter((file) => (app.sourceFiles?.files || []).some(
+    (current) => foldPath(current.path) === foldPath(file.path) && current.optionalGroup
+  ));
+  if (remaining.length > 0) {
+    toast(`有 ${remaining.length} 个文件所在的文件夹整体属于可选内容，请在“可选内容”卡片中移除那个文件夹`, true);
+  } else {
+    toast("已移出可选内容，发布新版本后生效");
+  }
+}
+
+async function removeSourceFiles(files) {
+  if (!app.project || files.length === 0) return;
+  const action = await chooseRemoval(files);
+  if (!action) return;
+  if (action === "OPTIONAL") {
+    await addFilesToGroup(files, files.length === 1
+      ? `“${files[0].path}”会留在整合包里，由玩家决定是否安装。加入哪组可选内容？`
+      : `所选的 ${files.length} 个文件会留在整合包里，由玩家决定是否安装。加入哪组可选内容？`);
+    return;
+  }
+  const position = captureContentPosition();
+  await runBusy(`正在归档并移除 ${files.length} 个文件`, async () => {
+    await api(
+      `/api/projects/${encodeURIComponent(app.project.id)}/files/remove-batch`,
+      {
+        method: "POST",
+        body: { paths: files.map((file) => file.path), action }
+      }
+    );
+    files.forEach((file) => setPathSelected(app.sourceFileSelection, file.path, false));
+    await loadProject(app.project.id);
+    await loadSourceFiles();
+    restoreContentPosition(position);
+    const published = files.some((file) => file.published);
+    toast(published
+      ? `已从整合包移除 ${files.length} 个文件；玩家那边：${REMOVAL_LABELS[action]}（发布新版本后生效）`
+      : `已从整合包移除 ${files.length} 个文件`);
+  });
+}
+
+function chooseRemoval(files) {
+  const dialog = byId("removal-dialog");
+  const form = byId("removal-form");
+  const published = files.filter((file) => file.published).length;
+  const inCleanup = files.some((file) => file.cleanup);
+  form.reset();
+  byId("removal-title").textContent = files.length === 1
+    ? "从整合包移除"
+    : `从整合包移除 ${files.length} 个文件`;
+  byId("removal-message").textContent =
+    (files.length === 1 ? `${files[0].path}\n` : "")
+      + "源文件会先归档到管理端的备份目录，再从整合包目录移出。"
+      + (published === 0
+        ? "这些文件还没有发布过，玩家那边不受影响。"
+        : "玩家更新到下一个版本时怎么处理？");
+  form.querySelectorAll('input[name="removalAction"]').forEach((input) => {
+    const keepsCopy = input.value === "RELEASE"
+      || input.value === "DELETE_KEEP_SELF_MANAGED";
+    input.disabled = keepsCopy && (inCleanup || published === 0);
+    input.closest(".choice").classList.toggle("disabled", input.disabled);
+  });
+  byId("removal-cleanup-note").hidden = !inCleanup || published === 0;
+  const confirm = byId("removal-confirm");
+  const sync = () => {
+    const optional = form.querySelector('input[name="removalAction"]:checked')
+      ?.value === "OPTIONAL";
+    confirm.textContent = optional ? "选择可选内容…" : "确认移除";
+    confirm.className = optional ? "primary-button" : "danger-button";
+  };
+  form.onchange = sync;
+  sync();
+  dialog.returnValue = "cancel";
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      resolve(dialog.returnValue === "confirm"
+        ? form.querySelector('input[name="removalAction"]:checked')?.value || null
+        : null);
+    }, { once: true });
+  });
+}
+
+function latestReleaseTime() {
+  return (app.project?.releases || []).reduce((latest, release) => {
+    const time = new Date(release.createdAt).getTime();
+    return Number.isFinite(time) && time > latest ? time : latest;
+  }, 0);
+}
+
+function renderDirectives() {
+  const list = byId("directive-list");
+  const withdrawals = (app.project?.maintenance?.withdrawals || [])
+    .filter((withdrawal) => withdrawal.kind !== "REMOVAL");
+  const corrections = app.project?.maintenance?.corrections || [];
+  const total = withdrawals.length + corrections.length;
+  byId("directive-count").textContent = total === 0
+    ? "没有正在处理的问题"
+    : `问题处理 ${total} 项`;
+  if (total === 0) {
+    list.replaceChildren(note("没有正在处理的问题。以前停止维护、留给玩家的文件，后来出问题时，也可以从历史发布中选中坏版本。"));
+    return;
+  }
+  const published = latestReleaseTime();
+  const stateOf = (createdAt) => new Date(createdAt).getTime() <= published
+    ? "已随发布生效" : "等待下一次发布";
+  list.replaceChildren(
+    ...withdrawals.map((withdrawal) => directiveCard({
+      kind: "withdrawal",
+      label: "移出问题版本",
+      reason: withdrawal.reason,
+      lines: (withdrawal.items || []).map((item) => [item.path, item.version].filter(Boolean).join(" · ")),
+      detail: `创建于 ${formatDate(withdrawal.createdAt)} · ${stateOf(withdrawal.createdAt)}`,
+      revoke: () => revokeDirective("withdrawal-revoke", withdrawal.id, "结束问题处理",
+        "撤销后，玩家手里的这些版本不再被移走；已经移入玩家备份的文件不会自动放回。")
+    })),
+    ...corrections.map((correction) => directiveCard({
+      kind: "correction",
+      label: correction.mode === "ONCE" ? "修正 · 各覆盖一次" : "修正 · 替换旧版本",
+      reason: correction.reason,
+      lines: [correction.mode === "KNOWN_BAD"
+        ? `${correction.path} · 替换 ${(correction.badSha256 || []).length} 个旧版本`
+        : correction.path],
+      detail: `创建于 ${formatDate(correction.createdAt)} · ${stateOf(correction.createdAt)}`,
+      revoke: () => revokeDirective("correction-revoke", correction.id, "撤销修正",
+        "撤销后不再覆盖玩家的这个文件；已经覆盖过的不会还原。")
+    }))
+  );
+}
+
+function directiveCard({ kind, label, reason, lines, detail, revoke }) {
+  const card = document.createElement("article");
+  card.className = `directive-card ${kind}`;
+  const header = document.createElement("div");
+  header.className = "directive-card-header";
+  const text = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = reason;
+  text.append(tag(label, kind), title);
+  header.append(text, actionButton("结束处理", revoke));
+  const items = document.createElement("ul");
+  lines.forEach((line) => {
+    const item = document.createElement("li");
+    item.textContent = line;
+    item.title = line;
+    items.append(item);
+  });
+  const footer = document.createElement("small");
+  footer.textContent = detail;
+  card.append(header, items, footer);
+  return card;
+}
+
+async function revokeDirective(action, id, title, message) {
+  if (!(await ask(title, message, title, true))) return;
+  const result = await maintenance(action, { id }, "正在撤销",
+    `${title}已保存，发布新版本后生效`);
+  if (result) app.history = null;
+}
+
+function shortHash(value) {
+  return value ? String(value).slice(0, 8) : "";
+}
+
+async function ensureHistory() {
+  if (app.history?.projectId === app.project?.id) return app.history;
+  const result = await api(
+    `/api/projects/${encodeURIComponent(app.project.id)}/history`
+  );
+  app.history = { projectId: app.project.id, files: result.files || [] };
+  return app.history;
+}
+
+function fillHistoryReleases(select, includeAll = false, preferred = select.value) {
+  const releases = [...(app.project?.releases || [])]
+    .sort((a, b) => Number(b.sequence) - Number(a.sequence));
+  select.replaceChildren(...(includeAll ? [option("", "全部历史发布")] : []),
+    ...releases.map((release) => option(release.releaseId,
+      `${release.displayVersion} · #${release.sequence}`)));
+  select.value = releases.some((release) => release.releaseId === preferred)
+    ? preferred : includeAll ? "" : releases[0]?.releaseId || "";
+}
+
+function versionsInRelease(history, releaseId) {
+  return (history?.versions || []).filter((version) => !releaseId
+    || (version.releaseIds || []).includes(releaseId));
+}
+
+function historyVersionState(version) {
+  if (version.withdrawnKind === "VERSION") return "问题版本处理中";
+  if (version.withdrawnKind === "REMOVAL") return "已移除（自动处理）";
+  return version.currentlyPublished ? "当前仍在提供" : "当前已不再提供此版本";
+}
+
+async function openFileHistory() {
+  if (!app.project) return;
+  if (!(app.project.releases || []).length) {
+    toast("还没有发布版本，发布后可在这里管理历史文件");
+    return;
+  }
+  let loaded = false;
+  await runBusy("正在读取历史文件", async () => { await ensureHistory(); loaded = true; });
+  if (!loaded) return;
+  fillHistoryReleases(byId("file-history-release"));
+  byId("file-history-search").value = "";
+  renderFileHistory();
+  byId("file-history-dialog").showModal();
+}
+
+function renderFileHistory() {
+  const releaseId = byId("file-history-release").value;
+  const query = byId("file-history-search").value.trim().toLocaleLowerCase("zh-CN");
+  const entries = (app.history?.files || []).flatMap((history) =>
+    versionsInRelease(history, releaseId).map((version) => ({ history, version })))
+    .filter(({ history, version }) => !query ||
+      [history.path, version.componentId, version.version].filter(Boolean).join(" ")
+        .toLocaleLowerCase("zh-CN").includes(query));
+  const selected = (app.project?.releases || []).find((release) => release.releaseId === releaseId);
+  byId("file-history-count").textContent =
+    `${selected?.displayVersion || "所选发布"} 当时提供的文件 · ${entries.length} 项`
+      + (query ? "（筛选后）" : "");
+  const list = byId("file-history-list");
+  if (!entries.length) {
+    list.replaceChildren(note(query ? "没有匹配的历史文件" : "这个发布没有托管文件"));
+    return;
+  }
+  list.replaceChildren(...entries.map(({ history, version }) => {
+    const item = document.createElement("article");
+    item.className = "release-history-file";
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = history.path;
+    const detail = document.createElement("small");
+    detail.textContent = [version.componentId,
+      version.version ? `文件版本 ${version.version}` : `内容 ${shortHash(version.sha256)}`,
+      formatBytes(version.size), historyVersionState(version)].filter(Boolean).join(" · ");
+    info.append(name, detail);
+    const actions = document.createElement("div");
+    actions.className = "history-file-actions";
+    const treat = actionButton("处理这个版本", async () => {
+      byId("file-history-dialog").close();
+      await openCorrect({ releaseId, path: history.path, sha256: version.sha256 });
+    });
+    treat.disabled = Boolean(version.withdrawnBy) && version.withdrawnKind !== "REMOVAL";
+    if (treat.disabled) treat.textContent = "已在处理";
+    actions.append(treat);
+    if (version.withdrawnKind === "REMOVAL" && version.withdrawnBy) {
+      const more = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = "移除要求";
+      const allow = actionButton("允许玩家保留", async () => {
+        await revokeDirective("withdrawal-revoke", version.withdrawnBy, "允许玩家保留这个资源",
+          "结束这条自动移除要求，发布后允许玩家保留或恢复副本。强制同步目录中的额外文件仍按目录规则处理。");
+        await ensureHistory();
+        renderFileHistory();
+      });
+      more.append(summary, allow);
+      actions.append(more);
+    }
+    item.append(info, actions);
+    return item;
+  }));
+}
+
+function renderCorrectPaths(preferred = byId("correct-path").value) {
+  const releaseId = byId("correct-release").value;
+  const histories = [...(app.history?.files || [])]
+    .filter((history) => versionsInRelease(history, releaseId).length)
+    .sort((a, b) => a.path.localeCompare(b.path, "zh-CN"));
+  byId("correct-path").replaceChildren(option("", "请选择问题文件"),
+    ...histories.map((history) => option(history.path, history.path)));
+  byId("correct-path").value = histories.some((history) => history.path === preferred) ? preferred : "";
+}
+
+async function openWithdraw() {
+  if (!app.project) return;
+  if ((app.project.releases || []).length === 0) {
+    toast("还没有发布过任何版本，没有可以撤回的内容", true);
+    return;
+  }
+  let loaded = false;
+  await runBusy("正在读取发布历史", async () => {
+    await ensureHistory();
+    loaded = true;
+  });
+  if (!loaded) return;
+  byId("withdraw-form").reset();
+  byId("withdraw-search").value = "";
+  app.withdrawSelection = new Set();
+  renderWithdrawVersions();
+  byId("withdraw-dialog").showModal();
+}
+
+function versionKey(path, sha256) {
+  return `${path}\n${sha256}`;
+}
+
+function renderWithdrawVersions() {
+  const container = byId("withdraw-versions");
+  const query = byId("withdraw-search").value.trim().toLocaleLowerCase("zh-CN");
+  const files = (app.history?.files || [])
+    .filter((history) => history.versions.some((version) => !version.currentlyPublished))
+    .filter((history) => !query || [history.path, ...history.versions.map((version) =>
+      `${version.componentId || ""} ${version.version || ""}`)]
+      .join(" ").toLocaleLowerCase("zh-CN").includes(query));
+  if (files.length === 0) {
+    container.replaceChildren(note(query
+      ? "没有符合搜索条件的历史版本"
+      : "没有可以撤回的历史版本（当前发布中的版本不能撤回）"));
+  } else {
+    const shown = files.slice(0, 80);
+    container.replaceChildren(...shown.map((history) => versionGroup(history, {
+      selectable: (version) => !version.currentlyPublished && !version.withdrawnBy,
+      selected: (version) => app.withdrawSelection.has(
+        versionKey(history.path, version.sha256)),
+      onToggle: (version, checked) => {
+        const key = versionKey(history.path, version.sha256);
+        if (checked) app.withdrawSelection.add(key);
+        else app.withdrawSelection.delete(key);
+        updateWithdrawSelection();
+      },
+      state: (version) => version.currentlyPublished ? "当前发布中"
+        : version.withdrawnBy ? "已撤回" : ""
+    })));
+    if (files.length > shown.length) {
+      container.append(note(`还有 ${files.length - shown.length} 个文件，请输入关键字缩小范围`));
+    }
+  }
+  updateWithdrawSelection();
+}
+
+function updateWithdrawSelection() {
+  const count = app.withdrawSelection?.size || 0;
+  byId("withdraw-selection").textContent = count === 0
+    ? "未选择版本"
+    : `已选择 ${count} 个版本`;
+}
+
+function versionGroup(history, options) {
+  const group = document.createElement("section");
+  group.className = "version-group";
+  const title = document.createElement("strong");
+  title.textContent = history.path;
+  title.title = history.path;
+  group.append(title);
+  [...history.versions].reverse().forEach((version) => {
+    const item = document.createElement("label");
+    item.className = "version-item";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.disabled = !options.selectable(version);
+    checkbox.checked = options.selected(version);
+    checkbox.addEventListener("change", () => options.onToggle(version, checkbox.checked));
+    const name = document.createElement("span");
+    name.className = "version-name";
+    name.textContent = version.version || `内容 ${shortHash(version.sha256)}`;
+    name.title = version.sha256;
+    const range = document.createElement("small");
+    range.textContent = version.firstRelease === version.lastRelease
+      ? `发布于 ${version.firstRelease}`
+      : `${version.firstRelease} → ${version.lastRelease}`;
+    const size = document.createElement("small");
+    size.textContent = formatBytes(version.size);
+    item.append(checkbox, name, range, size);
+    const state = options.state(version);
+    if (state) {
+      item.append(tag(state, version.currentlyPublished ? "current" : "withdrawn"));
+    }
+    item.classList.toggle("disabled", checkbox.disabled);
+    group.append(item);
+  });
+  return group;
+}
+
+async function openCorrect(context = {}) {
+  if (!app.project) return;
+  let loaded = false;
+  await runBusy("正在读取文件历史", async () => { await ensureHistory(); await loadSourceFiles(); loaded = true; });
+  if (!loaded) return;
+  const form = byId("correct-form");
+  form.reset();
+  fillHistoryReleases(byId("correct-release"), true, context.releaseId || "");
+  renderCorrectPaths(context.path || "");
+  app.correctSelection = new Set();
+  const selectedHistory = (app.history?.files || []).find((history) => history.path === context.path);
+  if (context.sha256 && versionsInRelease(selectedHistory, context.releaseId)
+    .some((version) => version.sha256 === context.sha256
+      && (!version.withdrawnBy || version.withdrawnKind === "REMOVAL"))) {
+    app.correctSelection.add(context.sha256);
+  }
+  renderCorrectVersions();
+  byId("correct-dialog").showModal();
+}
+
+function renderCorrectVersions() {
+  const form = byId("correct-form");
+  const action = form.querySelector('input[name="action"]:checked')?.value;
+  const mode = form.querySelector('input[name="mode"]:checked')?.value;
+  byId("problem-replacement").hidden = action !== "REPLACE";
+  const path = byId("correct-path").value;
+  const history = (app.history?.files || []).find((entry) => entry.path === path);
+  const candidates = app.sourceFiles?.files || [];
+  const target = byId("correct-target");
+  const chosen = target.value;
+  target.replaceChildren(option("", "请选择准备好的正确文件"), ...candidates.map((file) => option(file.path, file.path)));
+  const suggested = candidates.find((file) => file.path === path) || candidates.find((file) =>
+    file.componentId && history?.versions.some((version) => version.componentId === file.componentId));
+  target.value = candidates.some((file) => file.path === chosen) ? chosen : suggested?.path || "";
+  const container = byId("correct-versions");
+  container.hidden = action === "REPLACE" && mode === "ONCE";
+  if (container.hidden) return;
+  if (!history) { container.replaceChildren(note("请选择问题文件，再勾选有问题的历史版本")); return; }
+  const versions = versionsInRelease(history, byId("correct-release").value);
+  container.replaceChildren(versionGroup({ ...history, versions }, {
+    selectable: (version) => !version.withdrawnBy || version.withdrawnKind === "REMOVAL",
+    selected: (version) => app.correctSelection.has(version.sha256),
+    onToggle: (version, checked) => { if (checked) app.correctSelection.add(version.sha256); else app.correctSelection.delete(version.sha256); },
+    state: (version) => version.withdrawnKind === "REMOVAL" ? "已移除，仍可标记问题版本"
+      : version.withdrawnBy ? "已在处理" : version.currentlyPublished ? "上次发布" : "历史版本"
+  }));
+}
+
+function bindContent() {
+  byId("file-history-form").addEventListener("submit", (event) => event.preventDefault());
+  byId("open-file-history").addEventListener("click", openFileHistory);
+  byId("file-history-release").addEventListener("change", renderFileHistory);
+  byId("file-history-search").addEventListener("input", renderFileHistory);
+  ["close-file-history", "finish-file-history"].forEach((id) =>
+    byId(id).addEventListener("click", () => byId("file-history-dialog").close()));
+  byId("content-filter").addEventListener("change", renderSourceFiles);
+  byId("selection-preset").addEventListener("change", async (event) => {
+    const value = event.target.value;
+    event.target.value = "";
+    if (!value) return;
+    const files = selectedSourceFiles();
+    if (files.length === 0) return;
+    await applyPresets(
+      files.map((file) => ({ path: file.path, directory: false })), value);
+  });
+  byId("selection-add-group").addEventListener("click", async () => {
+    const files = selectedSourceFiles();
+    if (files.length === 0) return;
+    await addFilesToGroup(files,
+      `把所选的 ${files.length} 个文件加入哪组可选内容？模组会按 modid 加入，改名后的新版本仍然属于这组。`);
+  });
+  byId("selection-remove-group").addEventListener("click", () =>
+    removeFilesFromGroups(selectedSourceFiles()));
+  byId("create-group").addEventListener("click", () => openGroupDialog(null));
+  byId("group-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const dialog = byId("group-dialog");
+    const form = event.currentTarget;
+    if (event.submitter?.value === "cancel") {
+      dialog.close();
+      return;
+    }
+    if (!form.reportValidity()) return;
+    const data = new FormData(form);
+    const id = textValue(data, "id");
+    dialog.close();
+    await maintenance("group", {
+      id: id || null,
+      title: textValue(data, "title"),
+      description: textValue(data, "description"),
+      defaultInstall: form.elements.defaultInstall.checked
+    }, "正在保存可选内容",
+    id ? "可选内容已保存" : "可选内容已创建，在上方列表中选择文件加入");
+  });
+
+  byId("open-withdraw").addEventListener("click", openWithdraw);
+  byId("withdraw-search").addEventListener("input", renderWithdrawVersions);
+  byId("withdraw-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const dialog = byId("withdraw-dialog");
+    if (event.submitter?.value !== "confirm") {
+      dialog.close();
+      return;
+    }
+    const reason = textValue(new FormData(event.currentTarget), "reason");
+    if (!app.withdrawSelection?.size) {
+      toast("请至少选择一个要撤回的版本", true);
+      return;
+    }
+    if (!reason) {
+      toast("请填写原因，玩家会在更新器里看到它", true);
+      return;
+    }
+    const versions = [...app.withdrawSelection].map((key) => {
+      const [path, sha256] = key.split("\n");
+      return { path, sha256 };
+    });
+    dialog.close();
+    const result = await maintenance("withdraw", { reason, versions },
+      "正在保存撤回", `已撤回 ${versions.length} 个版本，发布新版本后生效`);
+    if (result) app.history = null;
+  });
+
+  byId("open-correct").addEventListener("click", () => openCorrect());
+  byId("correct-release").addEventListener("change", () => {
+    app.correctSelection = new Set();
+    renderCorrectPaths();
+    renderCorrectVersions();
+  });
+  byId("correct-path").addEventListener("change", () => {
+    app.correctSelection = new Set();
+    renderCorrectVersions();
+  });
+  byId("correct-form").querySelectorAll('input[name="action"]').forEach((input) => input.addEventListener("change", renderCorrectVersions));
+  byId("correct-form").querySelectorAll('input[name="mode"]').forEach((input) => {
+    input.addEventListener("change", renderCorrectVersions);
+  });
+  byId("correct-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const dialog = byId("correct-dialog");
+    const form = event.currentTarget;
+    if (event.submitter?.value !== "confirm") { dialog.close(); return; }
+    const data = new FormData(form);
+    const path = textValue(data, "path");
+    const reason = textValue(data, "reason");
+    const action = textValue(data, "action");
+    const mode = textValue(data, "mode");
+    if (!path || !reason) { toast("请选择问题文件并填写原因", true); return; }
+    if ((action === "REMOVE" || mode === "KNOWN_BAD") && !app.correctSelection?.size) { toast("请勾选有问题的历史版本", true); return; }
+    const target = textValue(data, "target");
+    if (action === "REPLACE" && !target) { toast("请先在文件列表中准备正确文件，再选择它", true); return; }
+    dialog.close();
+    const hashes = [...(app.correctSelection || [])];
+    const result = action === "REMOVE"
+      ? await maintenance("withdraw", { reason, versions: hashes.map((sha256) => ({ path, sha256 })) }, "正在准备移出问题版本", "处理已保存，检查并发布后生效")
+      : await maintenance("correct", { path: target, mode, reason, badSha256: mode === "KNOWN_BAD" ? hashes : [] }, "正在准备替换问题版本", "处理已保存，检查并发布后生效");
+    if (result) app.history = null;
+  });
+}
+
+function captureContentPosition() {
+  return {
+    content: document.querySelector(".content")?.scrollTop || 0,
+    table: document.querySelector(".content-table")?.scrollTop || 0
+  };
+}
+
+function restoreContentPosition(position) {
+  window.requestAnimationFrame(() => {
+    const content = document.querySelector(".content");
+    const table = document.querySelector(".content-table");
+    if (content) content.scrollTop = position.content;
+    if (table) table.scrollTop = position.table;
+  });
 }
 
 function renderProjectForm() {
@@ -535,21 +1491,18 @@ function renderProjectForm() {
   setFormValue(form, "displayName", app.project.displayName);
   setFormValue(form, "sourceDirectory", app.project.sourceDirectory);
   setFormValue(form, "publicBaseUrl", app.project.publicBaseUrl);
-  setFormValue(
-    form,
-    "forcedSyncDirectories",
-    (app.project.forcedSyncDirectories || []).join(", ")
-  );
 }
 
 function renderPersonalizationForm() {
   if (!app.project) return;
+  if (app.personalDirty && app.personalDirtyProjectId === app.project.id) return;
+  app.personalDirty = false;
   const form = byId("personalization-form");
   const branding = app.project.branding || {};
   byId("personalization-identity").textContent =
     `${app.project.displayName} · ${app.project.id}`;
   setFormValue(form, "productName", branding.productName);
-  setFormValue(form, "brandName", branding.brandName || "梦鱼服");
+  setFormValue(form, "brandName", branding.brandName || "梦鱼更新器");
   setFormValue(
     form,
     "brandEnglishName",
@@ -1219,389 +2172,424 @@ function resizePlayerPreview() {
 function renderPreview() {
   const preview = app.project?.preview;
   const summary = byId("preview-summary").querySelectorAll("strong");
+  byId("preview-stale").hidden = !preview || !app.project?.previewStale;
+  byId("publish-ack-field").hidden = !preview?.requiresPlayerUpgrade;
+  renderWarnings(preview);
+  renderPolicyChanges(preview);
+  renderPublishBadge();
   if (!preview) {
     summary.forEach((element) => {
       element.textContent = "--";
     });
-    byId("preview-time").textContent = "尚未扫描";
-    byId("preview-empty").textContent = "扫描后显示文件变更";
+    byId("preview-time").textContent = "尚未检查";
+    byId("preview-empty").textContent =
+      "点击“检查整合包内容”，查看这次发布会给玩家带来哪些变化";
+    byId("removal-bulk").hidden = true;
     setRows("preview-table", "preview-empty", []);
-    byId("release-all-button").disabled = true;
-    byId("delete-all-button").disabled = true;
     return;
   }
-  summary[0].textContent = String(preview.managedFiles);
-  summary[1].textContent = String(preview.changes.length);
-  summary[2].textContent = formatBytes(preview.totalManagedBytes);
-  summary[3].textContent = formatBytes(preview.estimatedDownloadBytes);
-  const removals = preview.changes.filter(
-    (change) => change.kind === "REMOVED"
-  );
-  const undecided = removals.filter(
-    (change) => !change.removalAction
-  ).length;
-  byId("preview-time").textContent =
-    `扫描于 ${formatDate(preview.createdAt)}`
-      + (removals.length > 0
-        ? ` · ${undecided > 0 ? `待决定 ${undecided} 项` : "移除项已确认"}`
-        : preview.changes.length === 0 ? " · 本次没有修改" : "");
-  byId("preview-empty").textContent = preview.changes.length === 0
-    ? "本次没有修改"
-    : "扫描后显示文件变更";
-  byId("release-all-button").disabled = removals.length === 0;
-  byId("delete-all-button").disabled = removals.length === 0;
-  const rows = preview.changes.map((change) => {
-    const badge = document.createElement("span");
-    badge.className =
-      `change-badge ${change.kind.toLowerCase()}`;
-    badge.textContent = kindNames[change.kind] || change.kind;
-    const action = document.createElement("td");
-    if (change.kind === "REMOVED") {
-      const forced = insideForcedDirectory(change.path);
-      const select = document.createElement("select");
-      select.className = "removal-action";
-      select.dataset.path = change.path;
-      select.append(option("", "请选择"));
-      select.append(option("DELETE", "从玩家端删除"));
-      if (!forced) {
-        select.append(option("RELEASE", "放弃管理并保留"));
-      }
-      if (forced && !change.removalAction) {
-        change.removalAction = "DELETE";
-      }
-      select.value = change.removalAction || "";
-      select.title = forced
-        ? "该文件位于强制同步目录，只能从玩家端移除"
-        : "选择玩家更新到本版本时如何处理";
-      select.addEventListener("change", () => {
-        change.removalAction = select.value || null;
-        renderRemovalStatus();
-      });
-      action.append(select);
-    } else {
-      action.textContent = "--";
-      action.className = "muted-cell";
-    }
-    return row([
-      badge,
-      pathCell(change.path),
-      change.downloadSize > 0
-        ? formatBytes(change.downloadSize)
-        : "--",
-      action
-    ]);
+  const changes = (preview.changes || [])
+    .filter((change) => change.kind !== "POLICY_CHANGED");
+  const count = (kind) => changes.filter((change) => change.kind === kind).length;
+  const removals = changes.filter((change) => change.kind === "REMOVED");
+  removals.forEach((change) => {
+    if (change.insideCleanup && !change.removalAction) change.removalAction = "DELETE";
   });
+  const undecided = removals.filter((change) => !change.removalAction).length;
+  const policies = preview.policyChanges || [];
+  summary[0].textContent = String(count("ADDED"));
+  summary[1].textContent = String(count("MODIFIED"));
+  summary[2].textContent = String(removals.length);
+  summary[3].textContent = String(policies.length);
+  summary[4].textContent = formatBytes(preview.estimatedDownloadBytes);
+  byId("preview-time").textContent =
+    `检查于 ${formatDate(preview.createdAt)} · 共 ${preview.managedFiles} 个文件，`
+      + formatBytes(preview.totalManagedBytes)
+      + (removals.length > 0
+        ? undecided > 0
+          ? ` · 还有 ${undecided} 个移除的文件需要决定`
+          : " · 移除的文件都已决定"
+        : "");
+  byId("removal-bulk").hidden = removals.length === 0;
+  byId("removal-bulk-label").textContent = `移除的 ${removals.length} 个文件：`;
+  byId("preview-empty").textContent = changes.length === 0 && policies.length === 0
+    ? "本次没有修改"
+    : "文件内容没有变化，只有下方的维护规则变化";
+  const order = { REMOVED: 0, ADDED: 1, MODIFIED: 2, METADATA_CHANGED: 3 };
+  const rows = [...changes]
+    .sort((left, right) => (order[left.kind] ?? 9) - (order[right.kind] ?? 9)
+      || compareFilePath(left, right))
+    .map(previewRow);
   setRows("preview-table", "preview-empty", rows);
 }
 
-function renderRemovalStatus() {
+function previewRow(change) {
+  const badge = document.createElement("span");
+  badge.className = `change-badge ${change.kind.toLowerCase()}`;
+  badge.textContent = kindNames[change.kind] || change.kind;
+  const file = document.createElement("td");
+  file.className = "preview-file-cell";
+  file.title = change.path;
+  const name = document.createElement("strong");
+  name.textContent = change.displayName
+    || String(change.path).split("/").filter(Boolean).at(-1);
+  const path = document.createElement("small");
+  path.textContent = change.path;
+  file.append(name, path);
+  const versions = change.kind === "MODIFIED" && change.previousVersion
+      && change.version && change.previousVersion !== change.version
+    ? `${change.previousVersion} → ${change.version}`
+    : change.kind === "ADDED" ? change.version : null;
+  if (versions) {
+    const version = document.createElement("small");
+    version.className = "preview-version";
+    version.textContent = versions;
+    file.append(version);
+  }
+  const maintenanceCell = document.createElement("td");
+  if (change.preset) maintenanceCell.append(presetTag(change.preset));
+  if (change.optionalGroup) {
+    maintenanceCell.append(tag(groupById(change.optionalGroup)?.title
+      || change.optionalGroup, "group", "可选内容"));
+  }
+  if (!change.preset && !change.optionalGroup) {
+    maintenanceCell.textContent = "--";
+    maintenanceCell.className = "muted-cell";
+  }
+  const action = document.createElement("td");
+  if (change.kind === "REMOVED") {
+    action.append(removalControl(change));
+  } else {
+    action.textContent = change.kind === "METADATA_CHANGED" ? "只更新模组信息，无需下载" : "--";
+    action.className = "muted-cell";
+  }
+  return row([
+    badge,
+    file,
+    maintenanceCell,
+    change.downloadSize > 0 ? formatBytes(change.downloadSize) : "--",
+    action
+  ]);
+}
+
+function removalControl(change) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "removal-control";
+  const select = document.createElement("select");
+  select.className = "removal-action";
+  select.dataset.path = change.path;
+  select.append(option("", "请选择…"));
+  Object.entries(REMOVAL_LABELS).forEach(([value, label]) => {
+    if (change.insideCleanup && value !== "DELETE") return;
+    select.append(option(value, label));
+  });
+  select.value = change.removalAction || "";
+  select.classList.toggle("undecided", !change.removalAction);
+  select.title = change.insideCleanup
+    ? "这个文件位于强制同步目录中，玩家副本会移入备份；要留给玩家，请先将目录改为普通同步"
+    : REMOVAL_HELP[change.removalAction] || "选择玩家更新到这个版本时怎么处理";
+  select.addEventListener("change", () => {
+    change.removalAction = select.value || null;
+    renderPreview();
+  });
+  wrapper.append(select);
+  return wrapper;
+}
+
+async function makeOptional(change) {
+  const groupId = await pickGroup(
+    `“${change.displayName || change.path}”会放回整合包，由玩家决定是否安装。加入哪组可选内容？`);
+  if (!groupId) return;
+  const result = await maintenance("make-optional",
+    { path: change.path, groupId }, "正在放回整合包并重新检查");
+  if (!result) return;
+  await runBusy("正在刷新检查结果", async () => {
+    await loadProject(app.project.id);
+    if (app.view === "content") await loadSourceFiles();
+    toast(`已改为可选内容：${change.path}`);
+  });
+}
+
+function setAllRemovalActions(action) {
   const preview = app.project?.preview;
   if (!preview) return;
-  const removals = preview.changes.filter(
-    (change) => change.kind === "REMOVED"
-  );
-  const undecided = removals.filter(
-    (change) => !change.removalAction
-  ).length;
-  byId("preview-time").textContent =
-    `扫描于 ${formatDate(preview.createdAt)}`
-      + (removals.length > 0
-        ? ` · ${undecided > 0 ? `待决定 ${undecided} 项` : "移除项已确认"}`
-        : "");
+  preview.changes
+    .filter((change) => change.kind === "REMOVED")
+    .forEach((change) => {
+      change.removalAction = change.insideCleanup ? "DELETE" : action;
+    });
+  renderPreview();
 }
 
-function renderForcedDirectories() {
-  const directories = forcedDirectoryCandidates();
-  const rows = [];
-  directories.forEach((directory) => {
-    const selected = pathSelected(
-      app.forcedDirectorySelection, directory.path
-    );
-    const control = document.createElement("td");
-    const checkbox = selectionCheckbox(
-      selected,
-      directory.missing && !selected,
-      selected
-        ? `取消强制同步 ${directory.path}/`
-        : directory.missing
-          ? `${directory.path}/ 当前不存在`
-          : `强制同步 ${directory.path}/`
-    );
-    checkbox.addEventListener("change", () => {
-      setPathSelected(
-        app.forcedDirectorySelection,
-        directory.path,
-        checkbox.checked
-      );
-      renderForcedDirectories();
-    });
-    control.append(checkbox);
-    const effect = directory.missing
-      ? "目录不存在，请取消选择后保存"
-      : selected
-        ? "整个目录保持一致，禁止玩家豁免"
-        : "普通管理，不处理玩家额外文件";
-    const node = forcedDirectoryTreeNode(directory);
-    const treeState = folderExpansionState(node, {
-      expandedFolders: app.forcedDirectoryExpandedFolders,
-      onToggle: renderForcedDirectories
-    });
-    const item = row([
-      control,
-      folderPathCell(node, 0, treeState),
-      effect,
-      directory.missing ? "--" : String(directory.fileCount)
-    ]);
-    item.className = "file-tree-folder";
-    rows.push(item);
-    if (treeState.expanded) {
-      rows.push(...forcedDirectoryContentRows(node, directory.path));
-    }
+function renderWarnings(preview) {
+  const list = byId("preview-warnings");
+  const warnings = preview?.warnings || [];
+  list.hidden = warnings.length === 0;
+  const byCode = new Map();
+  warnings.forEach((warning) => {
+    if (!byCode.has(warning.code)) byCode.set(warning.code, []);
+    byCode.get(warning.code).push(warning);
   });
-  setRows("forced-directory-table", "forced-directory-empty", rows);
-
-  const selectedCount = directories.filter((directory) =>
-    pathSelected(app.forcedDirectorySelection, directory.path)
-  ).length;
-  byId("forced-directory-count").textContent = selectedCount === 0
-    ? "未设置强制同步目录"
-    : `已选择 ${selectedCount} 个强制同步目录`;
-  byId("forced-directory-visible-count").textContent = directories.length === 0
-    ? "当前没有可管理的一级目录"
-    : `${directories.filter((directory) => !directory.missing).length} 个现有一级目录`;
-  applySelectionState(
-    byId("forced-directory-select-all"),
-    directories,
-    (directory) => pathSelected(
-      app.forcedDirectorySelection, directory.path
-    ),
-    (directory) => !directory.missing
-  );
-}
-
-function forcedDirectoryCandidates() {
-  const known = new Map();
-  (app.sourceFiles?.files || []).forEach((file) => {
-    const normalized = String(file.path || "").replaceAll("\\", "/");
-    const slash = normalized.indexOf("/");
-    if (slash <= 0) return;
-    const path = normalized.slice(0, slash);
-    const key = foldPath(path);
-    const current = known.get(key);
-    if (current) {
-      current.fileCount += 1;
-      current.entries.push(file);
+  list.replaceChildren(...[...byCode.entries()].map(([code, items]) => {
+    const item = document.createElement("div");
+    item.className = `warning-item${code === "PLAYER_PROGRAM_REQUIRED" ? " critical" : ""}`;
+    const text = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = (WARNING_TITLES[code] || "请注意")
+      + (items.length > 1 ? `（${items.length} 项）` : "");
+    text.append(title);
+    if (items.length === 1) {
+      const message = document.createElement("span");
+      message.textContent = items[0].message;
+      text.append(message);
     } else {
-      known.set(key, {
-        path,
-        fileCount: 1,
-        missing: false,
-        entries: [file]
+      const details = document.createElement("ul");
+      items.slice(0, 8).forEach((warning) => {
+        const line = document.createElement("li");
+        line.textContent = warning.message;
+        details.append(line);
       });
+      if (items.length > 8) {
+        const more = document.createElement("li");
+        more.textContent = `还有 ${items.length - 8} 项`;
+        details.append(more);
+      }
+      text.append(details);
     }
-  });
-  const configured = new Set([
-    ...(app.project?.forcedSyncDirectories || []),
-    ...app.forcedDirectorySelection
-  ]);
-  configured.forEach((path) => {
-    const key = foldPath(path);
-    if (!known.has(key)) {
-      known.set(key, {
-        path,
-        fileCount: 0,
-        missing: true,
-        entries: []
-      });
+    item.append(text);
+    if (code === "PLAYER_PROGRAM_REQUIRED") {
+      item.append(actionButton("去发布玩家端", () => showView("player")));
     }
-  });
-  return [...known.values()].sort((left, right) =>
-    left.path.localeCompare(
-      right.path, "zh-CN", { sensitivity: "base" }
-    )
-  );
+    return item;
+  }));
 }
 
-function forcedDirectoryTreeNode(directory) {
-  if (!directory.entries.length) {
-    return {
-      name: directory.path,
-      path: directory.path,
-      entries: [],
-      files: [],
-      folders: new Map()
-    };
+function renderPolicyChanges(preview) {
+  const container = byId("policy-change-list");
+  const changes = preview?.policyChanges || [];
+  container.hidden = changes.length === 0;
+  if (changes.length === 0) {
+    container.replaceChildren();
+    return;
   }
-  const root = buildFileTree(directory.entries);
-  return [...root.folders.values()].find(
-    (folder) => foldPath(folder.path) === foldPath(directory.path)
-  ) || {
-    name: directory.path,
-    path: directory.path,
-    entries: directory.entries,
-    files: [],
-    folders: new Map()
-  };
-}
-
-function forcedDirectoryContentRows(node, topLevelDirectory) {
-  const rows = [];
-  const appendContents = (parent, depth) => {
-    [...parent.folders.values()]
-      .sort((left, right) => left.name.localeCompare(
-        right.name, "zh-CN", { sensitivity: "base" }
-      ))
-      .forEach((folder) => {
-        const state = folderExpansionState(folder, {
-          expandedFolders: app.forcedDirectoryExpandedFolders,
-          onToggle: renderForcedDirectories
-        });
-        const item = row([
-          document.createElement("td"),
-          folderPathCell(folder, depth, state),
-          `随 ${topLevelDirectory}/ 一起强制同步`,
-          String(folder.entries.length)
-        ]);
-        item.className = "file-tree-folder file-tree-child";
-        rows.push(item);
-        if (state.expanded) appendContents(folder, depth + 1);
+  const sections = new Map([
+    ["维护方式", []], ["清理多余文件", []], ["可选内容", []], ["问题处理", []], ["其他", []]
+  ]);
+  const presetGroups = new Map();
+  changes.forEach((change) => {
+    switch (change.kind) {
+      case "PRESET": {
+        const key = `${change.previous || ""}>${change.current || ""}`;
+        if (!presetGroups.has(key)) {
+          presetGroups.set(key, { previous: change.previous, current: change.current, paths: [] });
+        }
+        presetGroups.get(key).paths.push(change.subject);
+        break;
+      }
+      case "CLEANUP_DIRECTORY":
+        sections.get("清理多余文件").push(change.current
+          ? `开始清理 ${change.subject}/：玩家自己添加的文件会移入备份`
+          : `不再清理 ${change.subject}/ 中玩家自己添加的文件`);
+        break;
+      case "OPTIONAL_GROUP":
+        sections.get("可选内容").push(change.previous == null
+          ? `新增可选内容：${change.current}`
+          : change.current == null
+            ? `不再提供可选内容：${change.previous}（里面的文件变回普通内容）`
+            : `可选内容调整：${change.previous} → ${change.current}`);
+        break;
+      case "OPTIONAL_MEMBERSHIP":
+        sections.get("可选内容").push(
+          `${change.subject}：${groupLabel(change.previous)} → ${groupLabel(change.current)}`);
+        break;
+      case "WITHDRAWAL":
+        sections.get("问题处理").push(withdrawalLine(change));
+        break;
+      case "CORRECTION":
+        sections.get("问题处理").push(correctionLine(change));
+        break;
+      case "CORRECTION_DROPPED":
+        sections.get("问题处理").push(
+          `修正不会生效：${change.previous} 已不在整合包中`);
+        break;
+      default:
+        sections.get("其他").push(`${change.kind}：${change.subject}`);
+    }
+  });
+  presetGroups.forEach((group) => {
+    const transition = `${behaviorName(group.previous)} → ${behaviorName(group.current)}`;
+    sections.get("维护方式").push(group.paths.length <= 3
+      ? `${group.paths.join("、")}：${transition}`
+      : `${group.paths.length} 个文件：${transition}（${group.paths.slice(0, 3).join("、")} 等）`);
+  });
+  const heading = document.createElement("h3");
+  heading.textContent = `维护规则变化（${changes.length} 项）`;
+  const blocks = [...sections.entries()]
+    .filter(([, lines]) => lines.length > 0)
+    .map(([label, lines]) => {
+      const block = document.createElement("section");
+      const title = document.createElement("strong");
+      title.textContent = label;
+      const list = document.createElement("ul");
+      lines.forEach((line) => {
+        const item = document.createElement("li");
+        item.textContent = line;
+        list.append(item);
       });
-    parent.files.sort(compareFilePath).forEach((file) => {
-      const item = row([
-        document.createElement("td"),
-        treeFilePathCell(file.path, depth),
-        "随一级目录强制同步",
-        "1"
-      ]);
-      item.className = "file-tree-file file-tree-child";
-      rows.push(item);
+      block.append(title, list);
+      return block;
     });
-  };
-  appendContents(node, 1);
-  return rows;
+  container.replaceChildren(heading, ...blocks);
 }
 
-function renderForcedFiles() {
-  const allFiles = forcedFileCandidates();
-  const query = byId("forced-file-search").value.trim().toLocaleLowerCase("zh-CN");
-  const files = allFiles
-    .filter((file) => !query
-      || file.path.toLocaleLowerCase("zh-CN").includes(query))
-    .sort(compareFilePath);
-  byId("forced-file-empty").textContent = query
-    ? "没有符合搜索条件的文件"
-    : "请先读取或扫描整合包目录";
-  const rows = fileTreeRows(
-    files,
-    forcedFolderRow,
-    forcedFileRow,
-    {
-      expandedFolders: app.forcedFileExpandedFolders,
-      expandAll: Boolean(query),
-      onToggle: renderForcedFiles
-    }
-  );
-  setRows("forced-file-table", "forced-file-empty", rows);
-  updateForcedFileCount(files, allFiles);
+function behaviorName(value) {
+  if (!value) return "新文件";
+  if (value === "LEGACY_MISSING_ONLY") return "旧版：只补齐缺失";
+  return PRESETS[value]?.label || value;
 }
 
-function forcedFileCandidates() {
-  const previewFiles = app.project?.preview?.files
-    || app.sourceFiles?.files
-    || [];
-  const known = new Map(previewFiles.map(
-    (file) => [foldPath(file.path), file]
-  ));
-  (app.project?.forcedSyncFiles || []).forEach((path) => {
-    if (!known.has(foldPath(path))) {
-      known.set(foldPath(path), {
-        path,
-        size: null,
-        policy: "MISSING"
-      });
-    }
+function groupLabel(id) {
+  if (!id) return "不在可选内容中";
+  return `可选内容“${groupById(id)?.title || id}”`;
+}
+
+function withdrawalLine(change) {
+  const withdrawal = (app.project?.maintenance?.withdrawals || [])
+    .find((item) => item.id === change.subject);
+  if (!change.current) return `撤销撤回：${change.subject}`;
+  return withdrawal
+    ? `撤回问题版本：${withdrawal.reason}（${(withdrawal.items || []).length} 个版本会从玩家那里移入备份）`
+    : `撤回问题版本：${change.subject}`;
+}
+
+function correctionLine(change) {
+  const correction = (app.project?.maintenance?.corrections || [])
+    .find((item) => item.id === change.subject);
+  if (!change.current) return `撤销修正：${change.subject}`;
+  return correction
+    ? `修正玩家文件 ${correction.path}：${correction.reason}`
+    : `修正玩家文件：${change.subject}`;
+}
+
+function renderPublishBadge() {
+  const badge = byId("publish-nav-badge");
+  const preview = app.project?.preview;
+  let text = "";
+  if (preview && app.project?.previewStale) {
+    text = "待检查";
+  } else if (preview && ((preview.changes || []).length > 0
+      || (preview.policyChanges || []).length > 0)) {
+    text = "待发布";
+  }
+  badge.textContent = text;
+  badge.hidden = !text;
+  renderWorkflow();
+}
+
+async function scanProject() {
+  if (!app.project) return;
+  await runBusy("正在检查整合包内容", async () => {
+    await api(
+      `/api/projects/${encodeURIComponent(app.project.id)}/scan`,
+      { method: "POST", body: {} }
+    );
+    await loadProject(app.project.id);
+    const preview = app.project.preview;
+    toast(preview?.changes.length === 0 && (preview?.policyChanges || []).length === 0
+      ? "检查完成，本次没有修改"
+      : "检查完成");
   });
-  return [...known.values()].sort(compareFilePath);
 }
 
-function forcedFolderRow(node, depth, treeState) {
-  const control = forcedTreeSelectionCell(node.entries, (checked, files) => {
-    setPathsSelected(app.forcedFileSelection, files, checked);
-    renderForcedFiles();
-  }, node.path
-    ? `选择 ${node.path}/ 中全部可设置的文件`
-    : "选择当前列表中全部可设置的文件");
-  const available = node.entries.filter(forcedFileSelectable);
-  const selected = available.filter(
-    (file) => pathSelected(app.forcedFileSelection, file.path)
-  ).length;
-  const existing = node.entries.filter((file) => file.policy !== "MISSING");
-  const entirelyDirectoryForced = existing.length > 0
-    && existing.every((file) => insideForcedDirectory(file.path));
-  const policy = available.length === 0
-    ? entirelyDirectoryForced ? "已由目录强制" : "无可选文件"
-    : selected === 0
-      ? `${available.length} 个可选文件`
-      : `已选 ${selected}/${available.length}`;
-  const item = row([
-    control,
-    folderPathCell(node, depth, treeState),
-    policy,
-    formatBytes(node.entries.reduce(
-      (sum, file) => sum + Number(file.size || 0), 0
-    ))
-  ]);
-  item.className = "file-tree-folder";
-  return item;
-}
-
-function forcedFileRow(file, depth) {
-  const directoryForced = insideForcedDirectory(file.path);
-  const missing = file.policy === "MISSING";
-  const control = document.createElement("td");
-  const checkbox = selectionCheckbox(
-    directoryForced || pathSelected(app.forcedFileSelection, file.path),
-    directoryForced || missing,
-    directoryForced
-      ? "该文件已由强制同步目录覆盖"
-      : missing
-        ? "源目录中已找不到该文件；清空旧选择后保存即可移除规则"
-        : "玩家不能豁免选中的文件"
-  );
-  checkbox.classList.add("forced-file-check");
-  checkbox.dataset.path = file.path;
-  checkbox.addEventListener("change", () => {
-    setPathSelected(app.forcedFileSelection, file.path, checkbox.checked);
-    renderForcedFiles();
+function bindPublish() {
+  byId("release-all-button").addEventListener("click", () => {
+    setAllRemovalActions("RELEASE");
   });
-  control.append(checkbox);
-  const fileForced = pathSelected(app.forcedFileSelection, file.path);
-  const policy = directoryForced
-    ? "目录强制"
-    : fileForced ? "单文件强制"
-      : missing ? "源文件缺失"
-        : "普通托管";
-  const filePath = treeFilePathCell(file.path, depth);
-  const item = row([
-    control,
-    filePath,
-    policy,
-    file.size === null ? "--" : formatBytes(file.size)
-  ]);
-  item.className = "file-tree-file";
-  return item;
-}
-
-function updateForcedFileCount(visibleFiles = [], allFiles = forcedFileCandidates()) {
-  const count = app.forcedFileSelection.size;
-  byId("forced-file-count").textContent =
-    count === 0
-      ? "未单独强制任何文件"
-      : `已选择 ${count} 个单独强制同步文件`;
-  byId("forced-file-visible-count").textContent = visibleFiles.length === allFiles.length
-    ? `${allFiles.length} 个文件，文件夹可整组选择`
-    : `显示 ${visibleFiles.length} / ${allFiles.length} 个文件`;
-  applyForcedSelectionState(byId("forced-file-select-all"), visibleFiles);
+  byId("delete-all-button").addEventListener("click", () => {
+    setAllRemovalActions("DELETE");
+  });
+  byId("keep-self-managed-all-button").addEventListener("click", () => {
+    setAllRemovalActions("DELETE_KEEP_SELF_MANAGED");
+  });
+  byId("scan-button").addEventListener("click", scanProject);
+  const form = byId("publish-form");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!app.project || !form.reportValidity()) return;
+    if (!app.project.preview) {
+      toast("请先检查整合包内容", true);
+      return;
+    }
+    if (app.project.previewStale) {
+      toast("检查结果已过期，请先重新检查整合包内容", true);
+      return;
+    }
+    const confirmedPreview = structuredClone(app.project.preview);
+    const confirmedProjectId = app.project.id;
+    const changes = confirmedPreview.changes
+      .filter((change) => change.kind !== "POLICY_CHANGED");
+    const removals = changes.filter((change) => change.kind === "REMOVED");
+    if (removals.some((change) => !change.removalAction)) {
+      toast("请先决定每个移除的文件在玩家那边怎么处理", true);
+      return;
+    }
+    const acknowledged = form.elements.acknowledgePlayerUpgrade.checked;
+    if (confirmedPreview.requiresPlayerUpgrade && !acknowledged) {
+      toast(`这次发布需要玩家端 ${confirmedPreview.policyPlayerVersion} 或更新版本。`
+        + "请先在“玩家端程序”中发布新版玩家端，或勾选确认玩家会获得新版玩家端。", true);
+      return;
+    }
+    const data = new FormData(form);
+    const payload = {
+      displayVersion: textValue(data, "displayVersion"),
+      minimumPlayerVersion: textValue(data, "minimumPlayerVersion"),
+      changelog: textValue(data, "changelog"),
+      previewId: confirmedPreview.previewId,
+      previewDigest: confirmedPreview.previewDigest,
+      acknowledgePlayerUpgrade: acknowledged
+    };
+    const count = (kind) => changes.filter((change) => change.kind === kind).length;
+    const lines = [
+      `显示版本：${payload.displayVersion}`,
+      `新增 ${count("ADDED")} · 更新 ${count("MODIFIED")} · 移除 ${removals.length}`
+        + ` · 规则变化 ${(confirmedPreview.policyChanges || []).length}`,
+      ...Object.entries(REMOVAL_LABELS).map(([action, label]) => {
+        const total = removals.filter((change) => change.removalAction === action).length;
+        return total > 0 ? `${label}：${total} 个` : null;
+      }).filter(Boolean),
+      "发布后该版本内容不可修改。"
+    ];
+    const accepted = await ask("发布新版本", lines.join("\n"), "确认发布");
+    if (!accepted) return;
+    await runBusy("正在签名并发布整合包", async () => {
+      if (removals.length > 0) {
+        const savedPreview = await api(
+          `/api/projects/${encodeURIComponent(confirmedProjectId)}/removals`,
+          {
+            method: "POST",
+            body: {
+              previewId: payload.previewId,
+              previewDigest: payload.previewDigest,
+              decisions: removals.map((change) => ({
+                path: change.path,
+                action: change.removalAction
+              }))
+            }
+          }
+        );
+        payload.previewDigest = savedPreview.previewDigest;
+      }
+      const release = await api(
+        `/api/projects/${encodeURIComponent(confirmedProjectId)}/publish`,
+        { method: "POST", body: payload }
+      );
+      form.reset();
+      form.elements.minimumPlayerVersion.value = "0.2.0";
+      app.history = null;
+      await refreshState(confirmedProjectId);
+      showPublishedToast(release, `版本 ${release.displayVersion} 已发布`);
+    });
+  });
 }
 
 function renderReleases() {
@@ -1626,7 +2614,7 @@ function renderPrograms() {
   const programs = app.project?.playerPrograms || [];
   byId("program-count-label").textContent = `${programs.length} 个版本`;
   const rows = programs.map((program) => row([
-    program.version,
+    program.version === app.project?.currentProgramVersion ? tag(`${program.version} · 当前选中`, "published") : program.version,
     program.platform,
     formatDate(program.createdAt),
     hashCell(program.manifestSha256)
@@ -1636,6 +2624,8 @@ function renderPrograms() {
 
 function renderInstanceReleases() {
   const releases = app.project?.releases || [];
+  const downloadButton = byId("download-deployment-button");
+  if (downloadButton) downloadButton.disabled = releases.length === 0;
   [byId("deployment-form"), byId("instance-form")].forEach((form) => {
     const select = form.elements.releaseId;
     select.replaceChildren();
@@ -1667,6 +2657,7 @@ function renderSettings() {
 
 function bindEvents() {
   bindAuthentication();
+  bindWorkspaceWorkflow();
   byId("theme-toggle").addEventListener("click", () => {
     const current = document.documentElement.dataset.theme === "light"
       ? "light"
@@ -1675,7 +2666,7 @@ function bindEvents() {
   });
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", async () => {
-      const needsSourceFiles = button.dataset.view === "publish";
+      const needsSourceFiles = button.dataset.view === "content";
       if (needsSourceFiles && app.project && !app.sourceFiles) {
         await runBusy("正在读取整合包文件", async () => {
           await loadSourceFiles();
@@ -1687,9 +2678,13 @@ function bindEvents() {
     });
   });
   byId("project-select").addEventListener("change", async (event) => {
+    if (app.personalDirty && app.personalDirtyProjectId === app.project?.id && event.target.value !== app.project?.id) {
+      if (!await ask("切换项目", "当前个性化内容还未保存，切换项目会丢弃这些输入。", "切换并丢弃输入")) {event.target.value=app.project.id; return;}
+      app.personalDirty=false;
+    }
     await runBusy("正在切换项目", async () => {
       await loadProject(event.target.value);
-      if (app.view === "publish") await loadSourceFiles();
+      if (app.view === "content") await loadSourceFiles();
       renderDashboard();
     });
   });
@@ -1747,6 +2742,7 @@ function bindEvents() {
   bindPersonalizationForm();
   bindPathPickers();
   bindSourceFiles();
+  bindContent();
   bindPublish();
   bindPrograms();
   bindDistribution();
@@ -1810,6 +2806,7 @@ function bindErrorDialog() {
 
 function bindDeployment() {
   const form = byId("deployment-form");
+  const downloadButton = byId("download-deployment-button");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!app.project || !form.reportValidity()) return;
@@ -1837,125 +2834,73 @@ function bindDeployment() {
       toast(`首次部署包已生成：${result.outputDirectory}`);
     });
   });
-}
-
-function bindSourceFiles() {
-  byId("source-file-search").addEventListener("input", renderSourceFiles);
-  byId("source-file-select-all").addEventListener("change", (event) => {
-    setPathsSelected(
-      app.sourceFileSelection,
-      visibleSourceFiles(),
-      event.target.checked
+  downloadButton.addEventListener("click", async () => {
+    if (!app.project) return;
+    const platformField = form.elements.platform;
+    const releaseField = form.elements.releaseId;
+    if (!platformField.reportValidity() || !releaseField.reportValidity()) return;
+    const formData = new FormData(form);
+    const payload = {
+      platform: textValue(formData, "platform"),
+      releaseId: textValue(formData, "releaseId")
+    };
+    const selected = app.project.releases.find(
+      (release) => release.releaseId === payload.releaseId
     );
-    renderSourceFiles();
-  });
-  byId("clear-source-selection").addEventListener("click", () => {
-    app.sourceFileSelection.clear();
-    renderSourceFiles();
-  });
-  byId("remove-selected-source-files").addEventListener(
-    "click", removeSelectedSourceFiles
-  );
-  byId("reload-source-files").addEventListener("click", () =>
-    runBusy("正在刷新源文件", async () => {
-      await loadSourceFiles();
-      toast("源文件列表已刷新");
-    })
-  );
-
-  const dialog = byId("source-add-dialog");
-  const form = byId("source-add-form");
-  const fileInput = byId("source-upload-input");
-  const dropzone = byId("source-dropzone");
-  const serverSourceInput = form.elements.serverSourcePath;
-  byId("open-source-add").addEventListener("click", async () => {
-    try {
-      if (!app.sourceFiles) await loadSourceFiles();
-      form.reset();
-      app.pendingUploads = [];
-      app.uploadTargetDirectory = null;
-      app.uploadTargetExpandedFolders.clear();
-      app.sourceUploadCancelled = false;
-      renderUploadTargetTree();
-      updateUploadSelection();
-      resetUploadProgress();
-      dialog.showModal();
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (event.submitter?.value === "cancel") {
-      app.sourceUploadCancelled = true;
-      abortActiveUploads();
-      dialog.close();
-    }
-  });
-  dialog.addEventListener("cancel", (event) => {
-    event.preventDefault();
-    app.sourceUploadCancelled = true;
-    abortActiveUploads();
-    dialog.close();
-  });
-  dialog.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    app.sourceUploadCancelled = true;
-    abortActiveUploads();
-    dialog.close();
-  });
-  dialog.addEventListener("close", () => {
-    if (app.activeUploads.size === 0) return;
-    app.sourceUploadCancelled = true;
-    abortActiveUploads();
-  });
-  byId("choose-source-upload").addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", () => {
-    app.pendingUploads = [...fileInput.files];
-    updateUploadSelection();
-  });
-  serverSourceInput.addEventListener("input", updateSourceAddActions);
-  byId("source-new-folder-name").addEventListener("input", updateSourceAddActions);
-  dropzone.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      fileInput.click();
-    }
-  });
-  ["dragenter", "dragover"].forEach((name) => {
-    dropzone.addEventListener(name, (event) => {
-      event.preventDefault();
-      dropzone.classList.add("dragging");
+    const accepted = await ask(
+      "生成并下载首次部署包",
+      `整合包基线：${selected?.displayVersion || payload.releaseId}\n`
+        + "管理端会在临时目录生成 ZIP，下载完成后自动清理临时文件。",
+      "生成并下载"
+    );
+    if (!accepted) return;
+    await runBusy("正在生成并准备下载", async () => {
+      const headers = new Headers({
+        Accept: "application/zip",
+        "Content-Type": "application/json"
+      });
+      if (app.token) headers.set("X-DFS-Token", app.token);
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(app.project.id)}/deployment/download`,
+        {
+          method: "POST",
+          headers,
+          credentials: "same-origin",
+          body: JSON.stringify(payload)
+        }
+      );
+      if (!response.ok) {
+        const contentType = response.headers.get("Content-Type") || "";
+        let message = `请求失败：HTTP ${response.status}`;
+        if (contentType.includes("application/json")) {
+          const data = await response.json().catch(() => null);
+          message = data?.message || message;
+        }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) throw new Error("服务器返回了空的部署包");
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="([^"]+)"/i);
+      const fallback = `${app.project.id}-player-deployment-${selected?.displayVersion || "latest"}.zip`;
+      const fileName = match?.[1] || fallback;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      toast(`首次部署包已下载：${fileName}`);
     });
   });
-  ["dragleave", "drop"].forEach((name) => {
-    dropzone.addEventListener(name, (event) => {
-      event.preventDefault();
-      dropzone.classList.remove("dragging");
-    });
-  });
-  dropzone.addEventListener("drop", (event) => {
-    app.pendingUploads = [...event.dataTransfer.files];
-    updateUploadSelection();
-  });
-
-  byId("upload-source-files").addEventListener("click", uploadSelectedSources);
-  byId("import-server-source").addEventListener("click", importServerSource);
-  byId("create-source-folder").addEventListener("click", createSourceFolder);
 }
 
-function updateUploadSelection() {
-  const files = app.pendingUploads;
-  byId("source-upload-selection").textContent = files.length === 0
-    ? "或从当前电脑选择"
-    : files.length === 1
-      ? `${files[0].name} · ${formatBytes(files[0].size)}`
-      : `已选择 ${files.length} 个文件 · ${formatBytes(
-        files.reduce((sum, file) => sum + file.size, 0)
-      )}`;
-  updateSourceAddActions();
-}
+
+
+
 
 function renderUploadTargetTree() {
   const container = byId("source-target-tree");
@@ -2020,6 +2965,11 @@ function uploadTargetRow({
   item.className = "source-target-row";
   item.style.setProperty("--tree-depth", String(depth));
   item.setAttribute("role", "treeitem");
+  item.tabIndex = 0;
+  item.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); app.uploadTargetDirectory = path; renderUploadTargetTree(); }
+    if (["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); const siblings = [...item.parentNode.querySelectorAll('[role="treeitem"]')]; const index = siblings.indexOf(item); siblings[Math.max(0, Math.min(siblings.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))].focus(); }
+  });
   item.setAttribute("aria-selected", String(
     app.uploadTargetDirectory !== null
       && foldPath(app.uploadTargetDirectory) === foldPath(path)
@@ -2052,24 +3002,6 @@ function uploadTargetRow({
   return item;
 }
 
-function updateSourceAddActions() {
-  const uploading = app.activeUploads.size > 0;
-  const targetSelected = app.uploadTargetDirectory !== null;
-  byId("upload-source-files").disabled = uploading
-    || !targetSelected
-    || app.pendingUploads.length === 0;
-  const serverPath = String(
-    byId("source-add-form").elements.serverSourcePath?.value || ""
-  ).trim();
-  byId("import-server-source").disabled = uploading
-    || !targetSelected
-    || !serverPath;
-  const folderName = String(byId("source-new-folder-name").value || "").trim();
-  byId("create-source-folder").disabled = uploading
-    || !targetSelected
-    || !folderName;
-}
-
 async function createSourceFolder() {
   if (!app.project || app.uploadTargetDirectory === null) return;
   const input = byId("source-new-folder-name");
@@ -2096,257 +3028,6 @@ async function createSourceFolder() {
     }
     renderUploadTargetTree();
     toast(`已新建并选中 ${result.path}/`);
-  });
-}
-
-function resetUploadProgress() {
-  byId("source-upload-progress").hidden = true;
-  byId("source-upload-meter").value = 0;
-  byId("source-upload-percent").textContent = "0%";
-  byId("source-upload-label").textContent = "准备上传";
-}
-
-async function uploadSelectedSources() {
-  if (!app.project || app.pendingUploads.length === 0) {
-    toast("请先选择要上传的文件", true);
-    return;
-  }
-  if (app.uploadTargetDirectory === null) {
-    toast("请先在目录树中选择文件保存位置", true);
-    return;
-  }
-  const form = byId("source-add-form");
-  const targetDirectory = app.uploadTargetDirectory;
-  const overwrite = form.elements.overwrite.checked;
-  const files = [...app.pendingUploads];
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  let completedBytes = 0;
-  const progress = byId("source-upload-progress");
-  const uploadButton = byId("upload-source-files");
-  const importButton = byId("import-server-source");
-  progress.hidden = false;
-  uploadButton.disabled = true;
-  importButton.disabled = true;
-  app.sourceUploadCancelled = false;
-  try {
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      const targetPath = joinSourcePath(targetDirectory, file.name);
-      byId("source-upload-label").textContent =
-        `正在上传 ${index + 1}/${files.length} · ${file.name}`;
-      await uploadSourceFile(file, targetPath, overwrite, false, (loaded) => {
-        const current = completedBytes + loaded;
-        const percent = totalBytes === 0 ? 100
-          : Math.min(100, Math.round(current * 100 / totalBytes));
-        byId("source-upload-meter").value = percent;
-        byId("source-upload-percent").textContent = `${percent}%`;
-      });
-      completedBytes += file.size;
-    }
-    byId("source-upload-label").textContent = "正在扫描整批文件";
-    await api(
-      `/api/projects/${encodeURIComponent(app.project.id)}/scan`,
-      { method: "POST", body: {} }
-    );
-    await loadProject(app.project.id);
-    await loadSourceFiles();
-    byId("source-add-dialog").close();
-    showView("publish");
-    toast(`${files.length} 个文件已加入整合包目录`);
-  } catch (error) {
-    if (!app.sourceUploadCancelled) toast(error.message, true);
-    try {
-      await api(
-        `/api/projects/${encodeURIComponent(app.project.id)}/scan`,
-        { method: "POST", body: {} }
-      );
-    } catch (_ignored) {
-      // Keep the original upload error visible; a later manual scan can recover.
-    }
-    await loadProject(app.project.id);
-    await loadSourceFiles();
-  } finally {
-    updateSourceAddActions();
-  }
-}
-
-function uploadSourceFile(file, targetPath, overwrite, refreshPreview, onProgress) {
-  return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    app.activeUploads.add(request);
-    updateSourceAddActions();
-    let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      app.activeUploads.delete(request);
-      updateSourceAddActions();
-      callback(value);
-    };
-    request.open("PUT",
-      `/api/projects/${encodeURIComponent(app.project.id)}/files/upload`
-        + `?path=${encodeURIComponent(targetPath)}`
-        + `&overwrite=${overwrite}`
-        + `&refreshPreview=${refreshPreview}`);
-    request.setRequestHeader("Accept", "application/json");
-    request.setRequestHeader("Content-Type", "application/octet-stream");
-    request.setRequestHeader("X-DFS-Token", app.token);
-    request.upload.addEventListener("progress", (event) => {
-      if (event.lengthComputable) onProgress(event.loaded);
-    });
-    request.addEventListener("load", () => {
-      let result = null;
-      try {
-        result = JSON.parse(request.responseText || "null");
-      } catch (_ignored) {
-        // The status fallback below is more useful than a JSON parser error.
-      }
-      if (request.status >= 200 && request.status < 300) finish(resolve, result);
-      else finish(reject,
-        new Error(result?.message || `上传失败：HTTP ${request.status}`));
-    });
-    request.addEventListener("error", () =>
-      finish(reject, new Error("上传连接中断")));
-    request.addEventListener("abort", () =>
-      finish(reject, new Error("上传已取消")));
-    request.send(file);
-  });
-}
-
-function abortActiveUploads() {
-  [...app.activeUploads].forEach((request) => request.abort());
-}
-
-async function importServerSource() {
-  if (!app.project) return;
-  const form = byId("source-add-form");
-  const data = new FormData(form);
-  const sourcePath = textValue(data, "serverSourcePath");
-  if (!sourcePath) {
-    toast("请先选择服务器上的文件", true);
-    return;
-  }
-  if (app.uploadTargetDirectory === null) {
-    toast("请先在目录树中选择文件保存位置", true);
-    return;
-  }
-  const payload = {
-    sourcePath,
-    targetDirectory: app.uploadTargetDirectory,
-    overwrite: form.elements.overwrite.checked
-  };
-  await runBusy("正在导入并扫描源文件", async () => {
-    await api(
-      `/api/projects/${encodeURIComponent(app.project.id)}/files/import`,
-      { method: "POST", body: payload }
-    );
-    await loadProject(app.project.id);
-    await loadSourceFiles();
-    byId("source-add-dialog").close();
-    showView("publish");
-    toast("服务器文件已加入整合包目录");
-  });
-}
-
-async function removeSourceFile(file) {
-  if (!app.project) return;
-  const action = await chooseSourceRemoval(file);
-  if (!action) return;
-  const position = capturePublishPosition();
-  await runBusy("正在归档并移除源文件", async () => {
-    const result = await api(
-      `/api/projects/${encodeURIComponent(app.project.id)}/files/remove`,
-      { method: "POST", body: { path: file.path, action } }
-    );
-    await loadProject(app.project.id);
-    await loadSourceFiles();
-    showView("publish");
-    restorePublishPosition(position);
-    const playerResult = action === "RELEASE"
-      ? "玩家本地将保留该文件"
-      : "玩家更新时将移除该文件";
-    toast(`${playerResult}；源文件已归档到 ${result.archivedPreviousFile}`);
-  });
-}
-
-async function removeSelectedSourceFiles() {
-  if (!app.project || !app.sourceFiles) return;
-  const files = (app.sourceFiles.files || []).filter(
-    (file) => pathSelected(app.sourceFileSelection, file.path)
-  );
-  if (files.length === 0) {
-    toast("请先选择要移除的整合包文件", true);
-    return;
-  }
-  const action = await chooseBulkSourceRemoval(files);
-  if (!action) return;
-  const position = capturePublishPosition();
-  await runBusy(`正在归档并移除 ${files.length} 个文件`, async () => {
-    await api(
-      `/api/projects/${encodeURIComponent(app.project.id)}/files/remove-batch`,
-      {
-        method: "POST",
-        body: {
-          paths: files.map((file) => file.path),
-          action
-        }
-      }
-    );
-    app.sourceFileSelection.clear();
-    await loadProject(app.project.id);
-    await loadSourceFiles();
-    showView("publish");
-    restorePublishPosition(position);
-    const playerResult = action === "RELEASE"
-      ? "玩家本地将保留这些文件"
-      : "玩家更新时将移除这些文件";
-    toast(`已移除 ${files.length} 个整合包文件；${playerResult}`);
-  });
-}
-
-function chooseBulkSourceRemoval(files) {
-  const dialog = byId("source-bulk-remove-dialog");
-  const release = byId("source-bulk-release-action");
-  const forcedCount = files.filter((file) => file.forcedByDirectory).length;
-  release.disabled = forcedCount > 0;
-  release.title = forcedCount > 0
-    ? `所选文件中有 ${forcedCount} 个位于强制同步目录，只能从玩家端删除`
-    : "玩家本地已有副本将退出管理并保留";
-  byId("source-bulk-remove-message").textContent =
-    `已选择 ${files.length} 个文件。\n\n`
-      + "所有源文件会先归档，再从整合包目录移出。"
-      + (forcedCount > 0
-        ? `其中 ${forcedCount} 个位于强制同步目录，不能选择“放弃管理并保留”。`
-        : "请选择玩家更新到下一版本时如何处理。");
-  dialog.returnValue = "cancel";
-  dialog.showModal();
-  return new Promise((resolve) => {
-    dialog.addEventListener("close", () => {
-      resolve(["DELETE", "RELEASE"].includes(dialog.returnValue)
-        ? dialog.returnValue : null);
-    }, { once: true });
-  });
-}
-
-function chooseSourceRemoval(file) {
-  const dialog = byId("source-remove-dialog");
-  const release = byId("source-release-action");
-  release.disabled = file.forcedByDirectory;
-  release.title = file.forcedByDirectory
-    ? "强制同步目录中的文件只能从玩家端删除"
-    : "玩家本地已有副本将退出管理并保留";
-  byId("source-remove-message").textContent =
-    `${file.path}\n\n文件会先归档，随后从整合包目录移出。`
-      + (file.published
-        ? "请选择玩家更新到下一版本时如何处理。"
-        : "该文件尚未发布，选择仅用于保持操作流程一致。");
-  dialog.returnValue = "cancel";
-  dialog.showModal();
-  return new Promise((resolve) => {
-    dialog.addEventListener("close", () => {
-      resolve(["DELETE", "RELEASE"].includes(dialog.returnValue)
-        ? dialog.returnValue : null);
-    }, { once: true });
   });
 }
 
@@ -2553,7 +3234,7 @@ function bindProjectCreate() {
   byId("open-create-project").addEventListener("click", () => {
     form.reset();
     setFormValue(form, "subtitle", "Minecraft 整合包更新");
-    setFormValue(form, "brandName", "梦鱼服");
+    setFormValue(form, "brandName", "梦鱼更新器");
     setFormValue(form, "brandEnglishName", "DreamingFish");
     dialog.showModal();
   });
@@ -2570,10 +3251,6 @@ function bindProjectCreate() {
       displayName: textValue(data, "displayName"),
       sourceDirectory: textValue(data, "sourceDirectory"),
       publicBaseUrl: textValue(data, "publicBaseUrl"),
-      forcedSyncDirectories: directoryList(
-        textValue(data, "forcedSyncDirectories")
-      ),
-      forcedSyncFiles: [],
       productName: textValue(data, "productName")
         || textValue(data, "displayName"),
       subtitle: textValue(data, "subtitle"),
@@ -2589,8 +3266,8 @@ function bindProjectCreate() {
       dialog.close();
       await refreshState(created.id);
       await loadSourceFiles();
-      showView("publish");
-      toast(`项目 ${created.displayName} 已创建，请添加文件并完成首次扫描`);
+      showView("content");
+      toast(`项目 ${created.displayName} 已创建：先添加文件，再到“检查并发布”完成首次发布`);
     });
   });
 }
@@ -2604,11 +3281,7 @@ function bindProjectForm() {
     const payload = {
       displayName: textValue(data, "displayName"),
       sourceDirectory: textValue(data, "sourceDirectory"),
-      publicBaseUrl: textValue(data, "publicBaseUrl"),
-      forcedSyncDirectories: directoryList(
-        textValue(data, "forcedSyncDirectories")
-      ),
-      forcedSyncFiles: [...app.forcedFileSelection]
+      publicBaseUrl: textValue(data, "publicBaseUrl")
     };
     await runBusy("正在保存项目设置", async () => {
       await api(`/api/projects/${encodeURIComponent(app.project.id)}`, {
@@ -2821,6 +3494,7 @@ function bindPersonalizationForm() {
       if (app.pendingCoverFile) {
         await uploadCoverFile(app.pendingCoverFile);
       }
+      app.personalDirty = false;
       await refreshState(app.project.id);
       toast("已保存；文字、配色和页面将在玩家下次启动时生效");
     });
@@ -2848,159 +3522,6 @@ async function uploadCoverFile(file) {
     throw new Error(data?.message || `背景图片上传失败：HTTP ${response.status}`);
   }
   return data;
-}
-
-function bindPublish() {
-  byId("release-all-button").addEventListener("click", () => {
-    setAllRemovalActions("RELEASE");
-  });
-  byId("delete-all-button").addEventListener("click", () => {
-    setAllRemovalActions("DELETE");
-  });
-  byId("forced-directory-select-all").addEventListener("change", (event) => {
-    forcedDirectoryCandidates()
-      .filter((directory) => !directory.missing)
-      .forEach((directory) => setPathSelected(
-        app.forcedDirectorySelection,
-        directory.path,
-        event.target.checked
-      ));
-    renderForcedDirectories();
-  });
-  byId("clear-forced-directories").addEventListener("click", () => {
-    app.forcedDirectorySelection.clear();
-    renderForcedDirectories();
-  });
-  byId("save-forced-directories").addEventListener("click", async () => {
-    if (!app.project) return;
-    await runBusy("正在保存强制同步目录设置", async () => {
-      await api(
-        `/api/projects/${encodeURIComponent(app.project.id)}/forced-directories`,
-        {
-          method: "POST",
-          body: { directories: [...app.forcedDirectorySelection] }
-        }
-      );
-      await refreshState(app.project.id);
-      showView("publish");
-      toast("强制同步目录设置已保存");
-    });
-  });
-  byId("forced-file-search").addEventListener("input", renderForcedFiles);
-  byId("forced-file-select-all").addEventListener("change", (event) => {
-    setPathsSelected(
-      app.forcedFileSelection,
-      visibleForcedFiles().filter(forcedFileSelectable),
-      event.target.checked
-    );
-    renderForcedFiles();
-  });
-  byId("clear-forced-files").addEventListener("click", () => {
-    app.forcedFileSelection.clear();
-    renderForcedFiles();
-  });
-  byId("save-forced-files").addEventListener("click", async () => {
-    if (!app.project) return;
-    await runBusy("正在保存单文件强制同步设置", async () => {
-      await api(
-        `/api/projects/${encodeURIComponent(app.project.id)}/forced-files`,
-        {
-          method: "POST",
-          body: { files: [...app.forcedFileSelection] }
-        }
-      );
-      await refreshState(app.project.id);
-      showView("publish");
-      toast("单文件强制同步设置已保存");
-    });
-  });
-  byId("scan-button").addEventListener("click", async () => {
-    if (!app.project) return;
-    await runBusy("正在扫描并计算差异", async () => {
-      await api(
-        `/api/projects/${encodeURIComponent(app.project.id)}/scan`,
-        { method: "POST", body: {} }
-      );
-      await refreshState(app.project.id);
-      showView("publish");
-      toast(app.project.preview?.changes.length === 0
-        ? "扫描完成，本次没有修改"
-        : "扫描完成");
-    });
-  });
-  const form = byId("publish-form");
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!app.project || !form.reportValidity()) return;
-    if (!app.project.preview) {
-      toast("请先扫描源目录", true);
-      return;
-    }
-    const removals = app.project.preview.changes.filter(
-      (change) => change.kind === "REMOVED"
-    );
-    if (removals.some((change) => !change.removalAction)) {
-      toast("请先决定每个移除文件是删除还是放弃管理", true);
-      return;
-    }
-    const data = new FormData(form);
-    const payload = {
-      displayVersion: textValue(data, "displayVersion"),
-      minimumPlayerVersion: textValue(data, "minimumPlayerVersion"),
-      changelog: textValue(data, "changelog")
-    };
-    const accepted = await ask(
-      "创建不可变发布",
-      `显示版本：${payload.displayVersion}\n`
-        + `文件变更：${app.project.preview.changes.length} 项\n`
-        + `从玩家端删除：${removals.filter(
-          (change) => change.removalAction === "DELETE"
-        ).length} 项\n`
-        + `放弃管理并保留：${removals.filter(
-          (change) => change.removalAction === "RELEASE"
-        ).length} 项\n`
-        + "发布后该版本内容不可修改。",
-      "确认发布"
-    );
-    if (!accepted) return;
-    await runBusy("正在签名并发布整合包", async () => {
-      if (removals.length > 0) {
-        await api(
-          `/api/projects/${encodeURIComponent(app.project.id)}/removals`,
-          {
-            method: "POST",
-            body: {
-              decisions: removals.map((change) => ({
-                path: change.path,
-                action: change.removalAction
-              }))
-            }
-          }
-        );
-      }
-      const release = await api(
-        `/api/projects/${encodeURIComponent(app.project.id)}/publish`,
-        { method: "POST", body: payload }
-      );
-      form.reset();
-      form.elements.minimumPlayerVersion.value = "0.1.14";
-      await refreshState(app.project.id);
-      showPublishedToast(release, `版本 ${release.displayVersion} 已发布`);
-    });
-  });
-}
-
-function setAllRemovalActions(action) {
-  const preview = app.project?.preview;
-  if (!preview) return;
-  preview.changes
-    .filter((change) => change.kind === "REMOVED")
-    .forEach((change) => {
-      change.removalAction = action === "RELEASE"
-        && insideForcedDirectory(change.path)
-        ? "DELETE" : action;
-    });
-  renderPreview();
 }
 
 function bindPrograms() {
@@ -3211,7 +3732,8 @@ function bindRollback() {
     const payload = {
       targetReleaseId: textValue(data, "targetReleaseId"),
       displayVersion: textValue(data, "displayVersion"),
-      changelog: textValue(data, "changelog")
+      changelog: textValue(data, "changelog"),
+      acknowledgePlayerUpgrade: form.elements.acknowledgePlayerUpgrade.checked
     };
     dialog.close();
     await runBusy("正在创建回滚发布", async () => {
@@ -3219,6 +3741,7 @@ function bindRollback() {
         `/api/projects/${encodeURIComponent(app.project.id)}/rollback`,
         { method: "POST", body: payload }
       );
+      app.history = null;
       await refreshState(app.project.id);
       showPublishedToast(release, `回滚版本 ${release.displayVersion} 已发布`);
     });
@@ -3249,6 +3772,7 @@ function openRollback(release) {
     "changelog",
     `回滚到 ${release.displayVersion}`
   );
+  byId("rollback-ack-field").hidden = Boolean(app.project?.policyPlayerPublished);
   byId("rollback-dialog").showModal();
 }
 
@@ -3269,37 +3793,11 @@ function showView(view) {
     button.classList.toggle("active", button.dataset.view === view);
   });
   byId("page-title").textContent = titles[view];
-  if (changed) byId("view-" + view).scrollTop = 0;
+  renderWorkflow();
+  if (changed) document.querySelector(".content").scrollTop = 0;
   if (view === "personalization") {
     requestAnimationFrame(resizePlayerPreview);
   }
-}
-
-function capturePublishPosition() {
-  return {
-    view: byId("view-publish")?.scrollTop || 0,
-    sourceTable: document.querySelector(".source-file-table")?.scrollTop || 0,
-    forcedDirectoryTable:
-      document.querySelector(".forced-directory-table")?.scrollTop || 0,
-    forcedFileTable:
-      document.querySelector(".forced-file-table")?.scrollTop || 0
-  };
-}
-
-function restorePublishPosition(position) {
-  window.requestAnimationFrame(() => {
-    byId("view-publish").scrollTop = position.view;
-    const sourceTable = document.querySelector(".source-file-table");
-    const forcedDirectoryTable = document.querySelector(
-      ".forced-directory-table"
-    );
-    const forcedFileTable = document.querySelector(".forced-file-table");
-    if (sourceTable) sourceTable.scrollTop = position.sourceTable;
-    if (forcedDirectoryTable) {
-      forcedDirectoryTable.scrollTop = position.forcedDirectoryTable;
-    }
-    if (forcedFileTable) forcedFileTable.scrollTop = position.forcedFileTable;
-  });
 }
 
 async function runBusy(label, operation) {
@@ -3465,27 +3963,31 @@ function textValue(formData, name) {
   return String(formData.get(name) || "").trim();
 }
 
-function directoryList(value) {
-  return value
-    .split(/[,，\n]/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 function visibleSourceFiles() {
   const query = byId("source-file-search").value
     .trim().toLocaleLowerCase("zh-CN");
-  return (app.sourceFiles?.files || []).filter((file) =>
-    !query || file.path.toLocaleLowerCase("zh-CN").includes(query)
-  );
-}
-
-function visibleForcedFiles() {
-  const query = byId("forced-file-search").value
-    .trim().toLocaleLowerCase("zh-CN");
-  return forcedFileCandidates().filter((file) =>
-    !query || file.path.toLocaleLowerCase("zh-CN").includes(query)
-  );
+  const filter = byId("content-filter").value;
+  return (app.sourceFiles?.files || []).filter((file) => {
+    if (query) {
+      const text = `${file.path} ${file.displayName || ""} ${file.componentId || ""}`
+        .toLocaleLowerCase("zh-CN");
+      if (!text.includes(query)) return false;
+    }
+    switch (filter) {
+      case "REQUIRED":
+      case "INITIAL":
+      case "DEFAULT_CONFIG":
+        return file.preset === filter;
+      case "optional":
+        return Boolean(file.optionalGroup);
+      case "custom":
+        return file.presetSource !== "DEFAULT";
+      case "unpublished":
+        return !file.published;
+      default:
+        return true;
+    }
+  });
 }
 
 function fileTreeRows(files, folderRenderer, fileRenderer, options = {}) {
@@ -3655,25 +4157,6 @@ function treeSelectionCell(
   return cell;
 }
 
-function forcedTreeSelectionCell(files, onChange, title) {
-  const cell = document.createElement("td");
-  const checkbox = selectionCheckbox(false, false, title);
-  const existing = files.filter((file) => file.policy !== "MISSING");
-  const selectable = files.filter(forcedFileSelectable);
-  const selected = existing.filter((file) =>
-    insideForcedDirectory(file.path)
-      || pathSelected(app.forcedFileSelection, file.path)
-  ).length;
-  checkbox.checked = existing.length > 0 && selected === existing.length;
-  checkbox.indeterminate = selected > 0 && selected < existing.length;
-  checkbox.disabled = selectable.length === 0;
-  checkbox.addEventListener("change", () => {
-    onChange(checkbox.checked, selectable);
-  });
-  cell.append(checkbox);
-  return cell;
-}
-
 function selectionCheckbox(checked, disabled, title) {
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
@@ -3693,21 +4176,6 @@ function applySelectionState(
   checkbox.checked = selectable.length > 0 && selected === selectable.length;
   checkbox.indeterminate = selected > 0 && selected < selectable.length;
   checkbox.disabled = selectable.length === 0;
-}
-
-function applyForcedSelectionState(checkbox, files) {
-  const existing = files.filter((file) => file.policy !== "MISSING");
-  const selected = existing.filter((file) =>
-    insideForcedDirectory(file.path)
-      || pathSelected(app.forcedFileSelection, file.path)
-  ).length;
-  checkbox.checked = existing.length > 0 && selected === existing.length;
-  checkbox.indeterminate = selected > 0 && selected < existing.length;
-  checkbox.disabled = !files.some(forcedFileSelectable);
-}
-
-function forcedFileSelectable(file) {
-  return file.policy !== "MISSING" && !insideForcedDirectory(file.path);
 }
 
 function pathSelected(selection, path) {
@@ -3744,14 +4212,6 @@ function compareFilePath(left, right) {
 
 function foldPath(value) {
   return String(value || "").replaceAll("\\", "/").toLocaleLowerCase("en-US");
-}
-
-function insideForcedDirectory(path) {
-  const folded = foldPath(path);
-  return (app.project?.forcedSyncDirectories || []).some((directory) => {
-    const root = foldPath(directory);
-    return folded.startsWith(`${root}/`);
-  });
 }
 
 function formatBytes(value) {
@@ -3825,5 +4285,3 @@ window.addEventListener("beforeunload", () => {
   app.sourceUploadCancelled = true;
   abortActiveUploads();
 });
-
-initialize();

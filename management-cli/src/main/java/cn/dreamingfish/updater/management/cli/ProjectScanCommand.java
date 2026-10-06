@@ -26,5 +26,11 @@ final class ProjectScanCommand implements Runnable {
             if (change.downloadSize() > 0) root.out().printf("  (%s)", HumanSize.format(change.downloadSize()));
             root.out().println();
         }
+        for (var policy : preview.policyChanges()) {
+            root.out().println("  Policy: " + PolicyText.describe(policy));
+        }
+        for (var warning : preview.warnings()) {
+            root.out().println("  Warning: " + PolicyText.describe(warning));
+        }
     }
 }

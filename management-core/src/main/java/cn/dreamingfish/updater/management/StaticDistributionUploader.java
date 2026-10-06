@@ -613,9 +613,9 @@ public final class StaticDistributionUploader {
                 || path.equals(".dreamingfish-static-export.json")) return true;
         if (path.contains("/releases/") || path.contains("/versions/")
                 || path.startsWith("v1/objects/sha256/")) return false;
-        return path.endsWith("/latest") || path.endsWith("/latest.sig")
+        return path.endsWith("/latest") || path.endsWith("/latest.sig") || path.endsWith("/latest.signed")
                 || path.endsWith("/presentation")
-                || path.endsWith("/presentation.sig")
+                || path.endsWith("/presentation.sig") || path.endsWith("/presentation.signed")
                 || path.endsWith("/history");
     }
 

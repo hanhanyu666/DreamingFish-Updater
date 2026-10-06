@@ -52,7 +52,7 @@ class JsonCodecTest {
                 legacy.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                 Branding.class);
 
-        assertEquals("梦鱼服", branding.brandName());
+        assertEquals("梦鱼更新器", branding.brandName());
         assertEquals("DreamingFish", branding.brandEnglishName());
         assertEquals(Branding.DEFAULT_TOP_BAR_OPACITY,
                 branding.topBarOpacity());
@@ -121,7 +121,7 @@ class JsonCodecTest {
                 "0.1.0",
                 "Initial release",
                 Set.of(),
-                new Branding("守望梦屿", "灾变之后，仍有人在这里守望。", "mc.example.test", null,
+                new Branding("Minecraft 整合包", "一起进入游戏。", "mc.example.test", null,
                         "#2ee8df", "#b06cff"),
                 List.of(new ManifestFile("mods/example.jar", "a".repeat(64), 42, FilePolicy.ENFORCED, false))
         );

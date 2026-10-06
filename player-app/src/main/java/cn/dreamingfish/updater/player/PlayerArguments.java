@@ -20,7 +20,7 @@ record PlayerArguments(
     static PlayerArguments parse(List<String> arguments) {
         if (arguments.size() == 1 && arguments.getFirst().equals("--preview")) {
             return new PlayerArguments(true, null, null, null, null,
-                    "Hanyu", "8667ba71b85a4004af54457a9734eed7", "PCL2", "2.9.4");
+                    "Player", "00000000000000000000000000000000", "Preview", "");
         }
         Map<String, String> values = new HashMap<>();
         for (int i = 0; i < arguments.size(); i += 2) {

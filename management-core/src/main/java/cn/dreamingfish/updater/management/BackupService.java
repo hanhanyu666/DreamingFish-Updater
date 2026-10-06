@@ -34,12 +34,19 @@ public final class BackupService {
     private final ManagementPaths paths;
     private final ManagementDatabase database;
     private final JsonCodec json;
+    private final BackupRestoreFaultInjector faultInjector;
     private final EncryptedBackupCodec encryption = new EncryptedBackupCodec();
 
     public BackupService(ManagementPaths paths, ManagementDatabase database, JsonCodec json) {
+        this(paths, database, json, BackupRestoreFaultInjector.NONE);
+    }
+
+    BackupService(ManagementPaths paths, ManagementDatabase database, JsonCodec json,
+                  BackupRestoreFaultInjector faultInjector) {
         this.paths = paths;
         this.database = database;
         this.json = json;
+        this.faultInjector = faultInjector;
     }
 
     public Path create(Path destination, char[] password) {
@@ -81,6 +88,7 @@ public final class BackupService {
         Path rollbackRoot = parent.resolve(paths.root().getFileName() + ".rollback-" + UUID.randomUUID());
         boolean oldMoved = false;
         boolean newMoved = false;
+        boolean preserveRecoveryData = false;
         try {
             Files.createDirectories(restoreRoot);
             encryption.decrypt(source, decryptedZip, password);
@@ -97,6 +105,7 @@ public final class BackupService {
             } else {
                 Files.deleteIfExists(paths.root());
             }
+            faultInjector.beforeInstall(restoreRoot, paths.root());
             AtomicFiles.moveReplace(restoreRoot, paths.root());
             newMoved = true;
             if (oldMoved) {
@@ -106,11 +115,17 @@ public final class BackupService {
         } catch (IOException | RuntimeException e) {
             if (oldMoved && !newMoved) {
                 try {
+                    faultInjector.beforeRollback(rollbackRoot, paths.root());
                     AtomicFiles.moveReplace(rollbackRoot, paths.root());
                     oldMoved = false;
-                } catch (IOException rollbackFailure) {
+                } catch (IOException | RuntimeException rollbackFailure) {
                     e.addSuppressed(rollbackFailure);
+                    preserveRecoveryData = true;
                 }
+            }
+            if (preserveRecoveryData) {
+                throw new ManagementException("Restore and rollback failed. Previous data retained at "
+                        + rollbackRoot + "; verified restored data retained at " + restoreRoot, e);
             }
             if (e instanceof ManagementException managementException) {
                 throw managementException;
@@ -119,8 +134,8 @@ public final class BackupService {
         } finally {
             try {
                 Files.deleteIfExists(decryptedZip);
-                if (!newMoved) AtomicFiles.deleteRecursively(restoreRoot);
-                if (oldMoved) AtomicFiles.deleteRecursively(rollbackRoot);
+                if (!newMoved && !preserveRecoveryData) AtomicFiles.deleteRecursively(restoreRoot);
+                if (oldMoved && newMoved) AtomicFiles.deleteRecursively(rollbackRoot);
             } catch (IOException ignored) {
                 // The primary restore result is more useful than a temporary cleanup failure.
             }
@@ -238,7 +253,8 @@ public final class BackupService {
                         throw new ManagementException("Backup contains an invalid signed release: " + release.releaseId());
                     }
                     ReleaseManifest manifest = json.read(bytes, ReleaseManifest.class);
-                    ManifestValidator.validateRelease(manifest, Set.of());
+                    ManifestValidator.validateRelease(manifest,
+                            cn.dreamingfish.updater.protocol.ProtocolConstants.RELEASE_CAPABILITIES);
                     if (!manifest.projectId().equals(project.id()) || manifest.sequence() != release.sequence()) {
                         throw new ManagementException("Backup release metadata does not match its signed manifest");
                     }

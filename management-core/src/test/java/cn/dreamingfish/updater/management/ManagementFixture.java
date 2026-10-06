@@ -8,6 +8,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 final class ManagementFixture {
+    /** Capabilities of the player program that understands maintenance-policy releases. */
+    static final java.util.Set<String> PLAYER_CAPABILITIES =
+            cn.dreamingfish.updater.protocol.ProtocolConstants.RELEASE_CAPABILITIES;
+
     final Path root;
     final Path source;
     final ManagementPaths paths;
@@ -37,7 +41,7 @@ final class ManagementFixture {
                 "Demo Pack",
                 source,
                 "http://127.0.0.1:8080",
-                new Branding("守望梦屿", "灾变之后，仍有人在这里守望。", "mc.example.test",
+                new Branding("Minecraft 整合包", "一起进入游戏。", "mc.example.test",
                         null, "#2ee8df", "#b06cff"),
                 ProjectRules.defaults()
         );

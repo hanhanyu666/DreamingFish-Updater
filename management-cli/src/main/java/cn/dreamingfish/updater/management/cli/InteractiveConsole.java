@@ -185,7 +185,12 @@ final class InteractiveConsole {
         root.out().println("项目：" + project.displayName() + " (" + project.id() + ")");
         root.out().println("整合包文件目录：" + project.sourceDirectory());
         root.out().println("公共地址：" + project.publicBaseUrl());
-        root.out().println("强制同步目录：" + displayForcedDirectories(project.rules()));
+        ProjectRules rules = project.rules();
+        root.out().println("清理多余文件：" + displayForcedDirectories(rules));
+        root.out().println("维护规则：单独设置 " + rules.presets().size() + " 项 · 可选内容 "
+                + rules.optionalGroups().size() + " 组 · 撤回 " + rules.withdrawals().size()
+                + " 项 · 修正 " + rules.corrections().size() + " 项"
+                + "（详见 project policy show " + project.id() + "）");
         root.out().println("服务器地址：" + displayOrNone(project.branding().serverAddress()));
         root.out().println("下一个发布序号：" + project.nextSequence());
         services.database().latestRelease(project.id()).ifPresentOrElse(
@@ -224,11 +229,10 @@ final class InteractiveConsole {
         String publicUrl = promptRequired("玩家端更新器访问地址（必填）");
 
         root.out().println();
-        root.out().println("[2/3] 同步策略（可选）");
-        root.out().println("强制同步一级目录会与服务器保持一致，玩家不能豁免目录内文件，额外文件会被归档移出。");
-        root.out().println("不确定时请直接按回车留空，创建后仍可在“管理文件”中设置。");
-        String forcedInput = readLine(
-                "强制同步一级目录（逗号分隔，留空不启用，例如 mods, config）：").trim();
+        root.out().println("[2/3] 文件维护方式");
+        root.out().println("所有文件默认“普通同步”：跟随发布更新，玩家可以停用模组或自行管理文件。");
+        root.out().println("需要强制同步、首次提供、可选包或问题处理时，");
+        root.out().println("创建后在 Web 管理界面的“管理内容”页面，或用 project policy 命令设置。");
 
         root.out().println();
         root.out().println("[3/3] 玩家端个性化");
@@ -250,8 +254,7 @@ final class InteractiveConsole {
                 List.of(), null, List.of(), List.of(), welcomeText,
                 Branding.DEFAULT_TOP_BAR_COLOR, Branding.DEFAULT_CARD_COLOR);
         var services = root.services();
-        ProjectRules rules = ProjectRules.defaults().withForcedSyncDirectories(
-                ProjectCreateCommand.parsePaths(forcedInput));
+        ProjectRules rules = ProjectRules.defaults();
         ProjectRecord project = services.projects().create(
                 id, name, source, publicUrl, branding, rules);
         root.saveSettings(root.settings().withDefaultProject(id));
@@ -269,26 +272,15 @@ final class InteractiveConsole {
         root.out().println("直接按回车保留当前值。");
         root.out().println("玩家访问公共 HTTP 地址必须是玩家电脑可访问的公网域名或 IP，"
                 + "不是服务器监听地址。");
-        root.out().println("强制同步目录会清理玩家本地额外文件，修改前请确认影响范围。");
+        root.out().println("三种维护方式、可选包和问题处理请在 Web“管理内容”页面"
+                + "或用 project policy 命令设置。");
         String displayName = prompt("项目显示名称（必填）", current.displayName());
         Path source = promptDirectory("整合包文件目录（必填）", current.sourceDirectory(), false);
-        String currentForced = String.join(",", current.rules().forcedSyncDirectories());
-        String forcedInput = prompt("强制同步一级目录（逗号分隔，输入 - 清空）", currentForced);
-        List<String> forcedDirectories = ProjectCreateCommand.parsePaths(forcedInput);
-        String currentForcedFiles = String.join(
-                ",", current.rules().forcedSyncFiles());
-        String forcedFilesInput = prompt(
-                "强制同步文件（逗号分隔，输入 - 清空）", currentForcedFiles);
-        List<String> forcedFiles = ProjectCreateCommand.parsePaths(
-                forcedFilesInput);
         String publicUrl = prompt("玩家访问公共 HTTP 地址（必填）", current.publicBaseUrl());
         var services = root.services();
-        ProjectRules rules = current.rules()
-                .withForcedSyncDirectories(forcedDirectories)
-                .withForcedSyncFiles(forcedFiles);
         ProjectRecord updated = services.projects().configure(
                 current.id(), displayName, source, publicUrl,
-                current.branding(), rules);
+                current.branding(), current.rules());
         root.out().println("项目设置已更新：" + updated.id());
     }
 
@@ -588,7 +580,8 @@ final class InteractiveConsole {
         printPreview(preview);
         preview = promptRemovalDecisions(project, preview);
         String version = promptRequired("本次显示版本（例如 1.0.1）");
-        String minimumPlayer = prompt("最低玩家端程序版本", "0.1.14");
+        String minimumPlayer = prompt("最低玩家端程序版本",
+                cn.dreamingfish.updater.management.ScanService.POLICY_PLAYER_VERSION);
         String changelog = ChangelogInput.interactive(
                 readLine("更新记录（可留空；输入 @文件路径读取 UTF-8 文本）："),
                 root.settingsFile().getParent());
@@ -596,18 +589,31 @@ final class InteractiveConsole {
         root.out().println("实际将保存的更新记录：");
         root.out().println(changelog.isBlank() ? "（未填写）" : changelog);
         root.out().println();
+        if (preview.requiresPlayerProgramAcknowledgement()
+                && !confirm("项目还没有发布 " + cn.dreamingfish.updater.management.ScanService.POLICY_PLAYER_VERSION
+                + " 或更新版本的玩家端，旧玩家端会拒绝这个版本。仍然继续？", false)) {
+            root.out().println("已取消发布；请先在“玩家端程序”中发布新版玩家端。");
+            return;
+        }
         if (!confirm("确认以上版本和更新记录无误并发布？", false)) {
             root.out().println("已取消发布；扫描预览仍保留，可使用参数式命令继续处理。");
             return;
         }
         var release = root.services().publisher().publish(
-                project.id(), version, minimumPlayer, changelog);
+                project.id(), version, minimumPlayer, changelog,
+                preview.previewId(), preview.confirmationDigest());
         root.out().println("发布完成：" + release.displayVersion() + " / " + release.releaseId());
     }
 
     private void printPreview(PublishPreview preview) {
         root.out().println();
         root.out().println("发布预览 " + preview.previewId());
+        for (var policy : preview.policyChanges()) {
+            root.out().println(PolicyText.describe(policy));
+        }
+        for (var warning : preview.warnings()) {
+            root.out().println(PolicyText.describe(warning));
+        }
         root.out().println("托管文件：" + preview.files().size()
                 + "，总大小：" + HumanSize.format(preview.totalManagedBytes()));
         root.out().println("变更数量：" + preview.changes().size()
@@ -616,8 +622,9 @@ final class InteractiveConsole {
         preview.files().forEach(file -> roots.add(topLevelName(file.path())));
         root.out().println("本次内容范围：" + (roots.isEmpty() ? "（空）" : String.join("、", roots)));
         ProjectRecord project = root.services().database().requireProject(preview.projectId());
-        root.out().println("强制同步目录：" + displayForcedDirectories(project.rules()));
-        root.out().println("强制同步文件：" + displayForcedFiles(project.rules()));
+        root.out().println("完整强制同步的目录：" + (project.rules().cleanupDirectories().isEmpty()
+                ? "未开启" : String.join("、", project.rules().cleanupDirectories())));
+        root.out().println("强制同步的文件：" + displayForcedFiles(project.rules()));
         if (preview.changes().isEmpty()) {
             root.out().println("本次没有修改。");
             return;
@@ -637,11 +644,8 @@ final class InteractiveConsole {
         List<RemovalDecision> decisions = new java.util.ArrayList<>();
         for (var change : preview.changes()) {
             if (change.kind() != ChangeKind.REMOVED) continue;
-            boolean forcedDirectory = project.rules().forcedSyncDirectories().stream()
-                    .anyMatch(directory -> change.path().toLowerCase(Locale.ROOT)
-                            .startsWith(directory.toLowerCase(Locale.ROOT) + "/"));
-            if (forcedDirectory) {
-                root.out().println("强制同步目录内的文件只能从玩家端移除："
+            if (project.rules().insideCleanupDirectory(change.path())) {
+                root.out().println("“清理多余文件”目录内的文件只能从玩家端移除："
                         + change.path());
                 decisions.add(new RemovalDecision(
                         change.path(), RemovalAction.DELETE));
@@ -649,8 +653,8 @@ final class InteractiveConsole {
             }
             root.out().println();
             root.out().println("源目录中已移除：" + change.path());
-            root.out().println("[1] 从玩家端删除");
-            root.out().println("[2] 只放弃管理，保留玩家本地文件");
+            root.out().println("[1] 移除玩家副本（先备份，以后装回仍会移出）");
+            root.out().println("[2] 停止维护，留给玩家");
             while (true) {
                 String choice = readLine("请选择 1 或 2：").trim();
                 if (choice.equals("1")) {
@@ -663,7 +667,7 @@ final class InteractiveConsole {
                             change.path(), RemovalAction.RELEASE));
                     break;
                 }
-                root.out().println("请输入 1 或 2。");
+                root.out().println("请输入 1、2 或 3。");
             }
         }
         return decisions.isEmpty() ? preview
@@ -1146,7 +1150,7 @@ final class InteractiveConsole {
             case MODIFIED -> "修改";
             case REMOVED -> "删除";
             case POLICY_CHANGED -> "策略";
-            case METADATA_CHANGED -> "模组信息";
+            case METADATA_CHANGED -> "只更新模组信息（不下载）";
         };
     }
 
@@ -1155,18 +1159,18 @@ final class InteractiveConsole {
     }
 
     private static String displayForcedDirectories(ProjectRules rules) {
-        return rules.forcedSyncDirectories().isEmpty()
+        return rules.cleanupDirectories().isEmpty()
                 ? "（未启用）"
-                : rules.forcedSyncDirectories().stream()
+                : rules.cleanupDirectories().stream()
                 .map(value -> value + "/")
                 .reduce((left, right) -> left + "、" + right)
                 .orElse("（未启用）");
     }
 
     private static String displayForcedFiles(ProjectRules rules) {
-        return rules.forcedSyncFiles().isEmpty()
+        return rules.requiredFiles().isEmpty()
                 ? "（未启用）"
-                : String.join("、", rules.forcedSyncFiles());
+                : String.join("、", rules.requiredFiles());
     }
 
     private static String usefulMessage(Throwable error) {

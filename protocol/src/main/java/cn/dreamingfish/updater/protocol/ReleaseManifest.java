@@ -18,7 +18,12 @@ public record ReleaseManifest(
         List<String> forcedSyncFiles,
         List<String> releasedPaths,
         Branding branding,
-        List<ManifestFile> files
+        List<ManifestFile> files,
+        List<String> cleanupDirectories,
+        List<OptionalGroup> optionalGroups,
+        List<String> retainedSelfManagedPaths,
+        List<Withdrawal> withdrawals,
+        List<Correction> corrections
 ) {
     public ReleaseManifest {
         requiredCapabilities = requiredCapabilities == null ? Set.of() : Set.copyOf(requiredCapabilities);
@@ -28,6 +33,24 @@ public record ReleaseManifest(
         files = files == null ? List.of() : List.copyOf(files);
         branding = branding == null ? Branding.empty() : branding;
         changelog = changelog == null ? "" : changelog;
+        cleanupDirectories = cleanupDirectories == null ? List.of() : List.copyOf(cleanupDirectories);
+        optionalGroups = optionalGroups == null ? List.of() : List.copyOf(optionalGroups);
+        retainedSelfManagedPaths = retainedSelfManagedPaths == null
+                ? List.of() : List.copyOf(retainedSelfManagedPaths);
+        withdrawals = withdrawals == null ? List.of() : List.copyOf(withdrawals);
+        corrections = corrections == null ? List.of() : List.copyOf(corrections);
+    }
+
+    public ReleaseManifest(int schemaVersion, String projectId, String releaseId, long sequence,
+                           Instant createdAt, String displayVersion, String minimumPlayerVersion,
+                           String changelog, Set<String> requiredCapabilities,
+                           List<String> forcedSyncDirectories, List<String> forcedSyncFiles,
+                           List<String> releasedPaths, Branding branding,
+                           List<ManifestFile> files) {
+        this(schemaVersion, projectId, releaseId, sequence, createdAt, displayVersion,
+                minimumPlayerVersion, changelog, requiredCapabilities, forcedSyncDirectories,
+                forcedSyncFiles, releasedPaths, branding, files,
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public ReleaseManifest(int schemaVersion, String projectId, String releaseId, long sequence,
@@ -47,5 +70,10 @@ public record ReleaseManifest(
         this(schemaVersion, projectId, releaseId, sequence, createdAt, displayVersion,
                 minimumPlayerVersion, changelog, requiredCapabilities, List.of(), List.of(),
                 List.of(), branding, files);
+    }
+
+    /** True when this release uses the preset-based maintenance model. */
+    public boolean usesMaintenancePolicy() {
+        return requiredCapabilities.contains(ProtocolConstants.CAPABILITY_MAINTENANCE_POLICY);
     }
 }

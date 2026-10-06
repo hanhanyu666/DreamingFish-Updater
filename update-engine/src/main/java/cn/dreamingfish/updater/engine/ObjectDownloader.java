@@ -51,7 +51,11 @@ final class ObjectDownloader {
             for (int index = 0; index < objects.size(); index++) {
                 request.cancellationToken().throwIfCancelled();
                 try {
-                    transferred += completed.take().get();
+                    Future<Long> next;
+                    while ((next = completed.poll(50, java.util.concurrent.TimeUnit.MILLISECONDS)) == null) {
+                        request.cancellationToken().throwIfCancelled();
+                    }
+                    transferred += next.get();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new UpdateException(UpdateErrorCode.CANCELLED,
@@ -67,6 +71,13 @@ final class ObjectDownloader {
         } finally {
             for (Future<Long> future : futures) future.cancel(true);
             executor.shutdownNow();
+            boolean interrupted = Thread.interrupted();
+            try {
+                while (!executor.isTerminated()) {
+                    try { executor.awaitTermination(100, java.util.concurrent.TimeUnit.MILLISECONDS); }
+                    catch (InterruptedException ignored) { interrupted = true; }
+                }
+            } finally { if (interrupted) Thread.currentThread().interrupt(); }
         }
     }
 
@@ -74,6 +85,10 @@ final class ObjectDownloader {
                                     ProgressTracker tracker) {
         request.cancellationToken().throwIfCancelled();
         Path cached = paths.cacheObject(hash);
+        try { cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(cached); }
+        catch (IOException | cn.dreamingfish.updater.protocol.ProtocolException unsafe) {
+            throw new UpdateException(UpdateErrorCode.PATH_UNSAFE, "Unsafe object cache path", unsafe);
+        }
         if (isValid(cached, hash, size)) {
             tracker.set(hash, size, "正在使用已验证的本地缓存");
             return 0;
@@ -91,7 +106,8 @@ final class ObjectDownloader {
                              ProgressTracker tracker) {
         Path partial = paths.partialObject(hash);
         try {
-            Files.createDirectories(partial.getParent());
+            cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(partial.getParent());
+            cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(partial);
             if (Files.exists(partial, LinkOption.NOFOLLOW_LINKS)
                     && !Files.isRegularFile(partial, LinkOption.NOFOLLOW_LINKS)) {
                 Files.delete(partial);
@@ -129,8 +145,8 @@ final class ObjectDownloader {
         if (requestedOffset > 0) builder.header("Range", "bytes=" + requestedOffset + "-");
         HttpResponse<InputStream> response;
         try {
-            response = ManifestFetcher.client(request).send(
-                    builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+            response = HttpTransfer.send(ManifestFetcher.client(request), builder.build(),
+                    request.requestTimeout(), request.cancellationToken());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new UpdateException(UpdateErrorCode.CANCELLED,
@@ -187,10 +203,12 @@ final class ObjectDownloader {
                 }
             }
             AtomicFileSupport.force(partial);
+            request.cancellationToken().throwIfCancelled();
             if (!isValid(partial, hash, expectedSize)) {
                 throw new UpdateException(UpdateErrorCode.HASH_MISMATCH,
                         "Downloaded object failed SHA-256 verification: " + hash);
             }
+            request.cancellationToken().throwIfCancelled();
             promote(partial, paths.cacheObject(hash));
             tracker.set(hash, expectedSize, "正在下载更新文件");
             return networkBytes;

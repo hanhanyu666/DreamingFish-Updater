@@ -67,8 +67,8 @@ class LocalFileManagerTest {
         assertThrows(java.io.IOException.class, () -> manager.setManaged(directory, false));
 
         assertTrue(manager.snapshot().overrides().excludesPath("mods/renderer.jar"));
-        assertFalse(manager.snapshot().overrides().withForcedDirectories(List.of("mods"))
-                .excludesPath("mods/renderer.jar"));
+        assertFalse(manager.snapshot().overrides().excludes(file("mods/renderer.jar", FilePolicy.ENFORCED),
+                cn.dreamingfish.updater.protocol.MaintenanceModel.of(forced)));
     }
 
     private static LocalFileEntry entry(List<LocalFileEntry> entries, String path) {

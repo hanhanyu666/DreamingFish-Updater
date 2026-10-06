@@ -1,5 +1,13 @@
 export type FilePolicy = "DEFAULT" | "ENFORCED" | null;
 
+/** How the owner maintains a published file; older releases map to LEGACY_MISSING_ONLY or SYNC. */
+export type MaintenancePreset =
+  | "REQUIRED"
+  | "SYNC"
+  | "INITIAL"
+  | "DEFAULT_CONFIG"
+  | "LEGACY_MISSING_ONLY";
+
 export interface LocalFileEntry {
   path: string;
   displayName: string;
@@ -8,9 +16,18 @@ export interface LocalFileEntry {
   inheritedExclusion: string | null;
   partiallyExcluded: boolean;
   present: boolean;
+  /** Whether the player cannot change it; {@link lockReason} says why. */
   forced: boolean;
   policy: FilePolicy | null;
   managedFileCount: number;
+  componentId?: string | null;
+  preset?: MaintenancePreset | null;
+  group?: string | null;
+  lockReason?: string | null;
+  /** For default configurations: whether the local copy differs from the shipped one. */
+  modified?: boolean | null;
+  /** The player asked the next update to restore the default. */
+  resetPending?: boolean;
 }
 
 export interface LocalModEntry {
@@ -22,6 +39,58 @@ export interface LocalModEntry {
   disabled: boolean;
   active: boolean;
   forced: boolean;
+  version?: string | null;
+  preset?: MaintenancePreset | null;
+  group?: string | null;
+  groupTitle?: string | null;
+  lockReason?: string | null;
+  /** The owner's reason when this exact version was withdrawn. */
+  withdrawnReason?: string | null;
+}
+
+/** An optional content group with the player's effective switch. */
+export interface OptionalGroupView {
+  id: string;
+  title: string;
+  description: string;
+  defaultInstall: boolean;
+  enabled: boolean;
+  /** Whether the player chose explicitly instead of following the owner's default. */
+  explicit: boolean;
+  members: string[];
+}
+
+export type ArchiveReason =
+  | "CLEANUP"
+  | "REMOVED_MODIFIED"
+  | "REMOVED_SELF_MANAGED"
+  | "TAKEOVER"
+  | "REPLACED_MODIFIED"
+  | "DUPLICATE"
+  | "WITHDRAWN"
+  | "CORRECTED"
+  | "RESET_DEFAULT"
+  | "LEGACY";
+
+export interface ArchivedFileDto {
+  path: string;
+  reason: ArchiveReason | string;
+  reasonText: string;
+  detail: string;
+  size: number;
+  componentId: string | null;
+  version: string | null;
+  restoredAt: string | null;
+}
+
+export interface ArchiveDto {
+  id: string;
+  legacy: boolean;
+  createdAt: string | null;
+  releaseId: string | null;
+  displayVersion: string | null;
+  totalBytes: number;
+  files: ArchivedFileDto[];
 }
 
 export type UpdateStage =
@@ -136,7 +205,12 @@ export interface UpdateResultDto {
   releasedPaths: string[];
   archiveDirectory: string | null;
   unmanagedMods: string[];
+  /** Directories where files the player added are moved into the backup. */
   forcedSyncDirectories: string[];
+  archived?: ArchivedFileDto[];
+  keptModifiedPaths?: string[];
+  skippedSelfManagedPaths?: string[];
+  resetPaths?: string[];
 }
 
 export type DialogTone = "INFO" | "WARNING" | "DANGER";
@@ -165,6 +239,8 @@ export type SidecarMessage =
   | { type: "error"; title: string; detail: string; allowContinue: boolean }
   | { type: "mods"; entries: LocalModEntry[] }
   | { type: "files"; entries: LocalFileEntry[] }
+  | { type: "groups"; groups: OptionalGroupView[] }
+  | { type: "archives"; archives: ArchiveDto[] }
   | { type: "countdown"; seconds: number }
   | { type: "launch-kept-open" }
   | { type: "restart-required"; item: string }
@@ -180,8 +256,13 @@ export type SidecarCommand =
   | { command: "restore-mods" }
   | { command: "toggle-file"; entry: LocalFileEntry; managed: boolean }
   | { command: "restore-files" }
+  | { command: "toggle-group"; groupId: string; enabled: boolean | null }
+  | { command: "reset-default"; entry: LocalFileEntry }
+  | { command: "archives" }
+  | { command: "restore-archive"; archiveId: string; path: string }
+  | { command: "delete-archive"; archiveId: string }
   | { command: "open-directory" }
-  | { command: "open-archive" }
+  | { command: "open-archive"; archiveId?: string }
   | { command: "keep-open" }
   | { command: "confirm"; id: number; accepted: boolean }
   | { command: "close" }
@@ -200,8 +281,8 @@ export const STAGE_NAMES: Record<UpdateStage, string> = {
 };
 
 export const DEFAULT_BRANDING: Branding = {
-  productName: "梦屿",
-  subtitle: "灾变之后，仍有人在这里守望。",
+  productName: "Minecraft 整合包",
+  subtitle: "准备好后，一起进入游戏。",
   serverAddress: "",
   coverObject: null,
   accentColor: "#2ee8df",
@@ -211,7 +292,7 @@ export const DEFAULT_BRANDING: Branding = {
   topBarColor: "#030708",
   topBarOpacity: 0.22,
   cardColor: "#030708",
-  brandName: "梦鱼服",
+  brandName: "梦鱼更新器",
   brandEnglishName: "DreamingFish",
   newsArticles: null,
   customPage: null,

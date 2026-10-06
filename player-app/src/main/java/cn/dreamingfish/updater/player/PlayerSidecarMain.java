@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/** Headless JSON-lines sidecar used by the Tauri player window; keeps the same orchestration as the JavaFX app. */
+/** Headless JSON-lines sidecar used by the Tauri player window. */
 public final class PlayerSidecarMain {
     private static final JsonCodec JSON = new JsonCodec();
     private static final ObjectMapper TREES = new ObjectMapper();
@@ -144,8 +144,25 @@ public final class PlayerSidecarMain {
                 controller.changeLocalFilePreference(entry, root.path("managed").asBoolean(false));
             }
             case "restore-files" -> controller.restoreLocalFileDefaults();
+            case "toggle-group" -> {
+                JsonNode enabled = root.path("enabled");
+                controller.changeOptionalGroup(root.path("groupId").asText(""),
+                        enabled.isBoolean() ? enabled.asBoolean() : null);
+            }
+            case "reset-default" -> {
+                LocalFileEntry entry = decode(root.path("entry"), LocalFileEntry.class);
+                controller.requestDefaultReset(entry);
+            }
+            case "archives" -> controller.refreshArchives();
+            case "restore-archive" -> controller.restoreArchivedFile(
+                    root.path("archiveId").asText(""), root.path("path").asText(""));
+            case "delete-archive" -> controller.deleteArchive(root.path("archiveId").asText(""));
             case "open-directory" -> controller.openPlayerDirectory();
-            case "open-archive" -> controller.openArchiveDirectory();
+            case "open-archive" -> {
+                String archiveId = root.path("archiveId").asText("");
+                if (archiveId.isBlank()) controller.openArchiveDirectory();
+                else controller.openArchive(archiveId);
+            }
             case "keep-open" -> controller.keepWindowOpen();
             case "close" -> controller.requestClose();
             case "quit" -> controller.exitApplication();
@@ -171,7 +188,28 @@ public final class PlayerSidecarMain {
                              long downloadedBytes, List<String> installedPaths,
                              List<String> deletedPaths, List<String> archivedFiles,
                              List<String> releasedPaths, String archiveDirectory,
-                             List<String> unmanagedMods, List<String> forcedSyncDirectories) {
+                             List<String> unmanagedMods, List<String> forcedSyncDirectories,
+                             List<ArchivedDto> archived, List<String> keptModifiedPaths,
+                             List<String> skippedSelfManagedPaths, List<String> resetPaths) {
+    }
+
+    private record ArchivedDto(String path, String reason, String reasonText, String detail,
+                               long size, String componentId, String version, String restoredAt) {
+        static ArchivedDto of(cn.dreamingfish.updater.engine.ArchivedFile file) {
+            return new ArchivedDto(file.originalPath(), file.reason().name(),
+                    file.reason().description(), file.detail(), file.size(), file.componentId(),
+                    file.version(), file.restoredAt() == null ? null : file.restoredAt().toString());
+        }
+    }
+
+    private record ArchiveDto(String id, boolean legacy, String createdAt, String releaseId,
+                              String displayVersion, long totalBytes, List<ArchivedDto> files) {
+    }
+
+    private record ArchivesMessage(String type, List<ArchiveDto> archives) {
+    }
+
+    private record GroupsMessage(String type, List<OptionalGroupView> groups) {
     }
 
     private record ResultMessage(String type, ResultDto result) {
@@ -250,12 +288,12 @@ public final class PlayerSidecarMain {
         }
 
         void startPreview() {
-            emit(new IdentityMessage("identity", "Hanyu"));
+            emit(new IdentityMessage("identity", "Player"));
             emit(new BrandingMessage("branding", Branding.empty()));
             emit(new BackgroundMessage("background", null));
             emit(new LogsMessage("logs", List.of(
                     "2026-08-13 12:08:40.210 | START | 启动 | 玩家端 "
-                            + PlayerApplication.VERSION + " · 项目 preview",
+                            + PlayerRuntime.VERSION + " · 项目 preview",
                     "2026-08-13 12:08:41.035 | INFO  | 检查更新 | 已连接到整合包更新服务",
                     "2026-08-13 12:08:42.184 | INFO  | 下载文件 | 正在下载 mods/dreamingfish-core.jar",
                     "2026-08-13 12:08:43.420 | WARN  | 网络 | 当前下载速度较慢，正在继续尝试")));
@@ -279,31 +317,53 @@ public final class PlayerSidecarMain {
         private void emitPreviewResult() {
             emit(new ModsMessage("mods", List.of(
                     new LocalModEntry("component:renderer", "旧版渲染优化",
-                            "mods/legacy-renderer.jar", "renderer", true, true, false, false),
+                            "mods/legacy-renderer.jar", "renderer", true, true, false, false,
+                            "0.9.2", "SYNC", null, null, null, null),
                     new LocalModEntry("component:dreamingfish", "DreamingFish Core",
-                            "mods/dreamingfish-core.jar", "dreamingfish", true, false, true, false),
+                            "mods/dreamingfish-core.jar", "dreamingfish", true, false, true, true,
+                            "2.4.0", "REQUIRED", null, null, "服主设为必需同步，不能在本机停用", null),
+                    new LocalModEntry("component:iris", "Iris Shaders",
+                            "mods/iris.jar", "iris", true, false, true, true,
+                            "1.7.2", "SYNC", "visuals", "光影与美化", "由可选内容“光影与美化”统一开关", null),
                     new LocalModEntry("component:embeddium-options-api", "Embeddium Options API",
                             "mods/embeddium-options-api.jar", "embeddium-options-api",
-                            false, false, true, false),
+                            false, false, true, false, "1.0.3", null, null, null, null, null),
                     new LocalModEntry("component:xaerominimap", "Xaero's Minimap",
                             "mods/xaeros-minimap.jar", "xaerominimap",
-                            false, false, true, false))));
+                            false, false, true, false, "24.2.0", null, null, null, null,
+                            "这个版本会导致进入主城时崩溃，请换用 24.3.0"))));
             emit(new FilesMessage("files", previewFiles()));
             emit(new ResultMessage("result", new ResultDto(
-                    "r000012", 12, "dreamhaven",
+                    "r000012", 12, "preview",
                     Instant.now().minusSeconds(86_400).toString(),
-                    "UPDATED", "1.20.1-r12", "新增梦屿群系探索内容",
+                    "UPDATED", "1.20.1-r12", "更新模组与资源包",
                     271L * 1024 * 1024,
                     List.of("mods/dreamingfish-core.jar", "mods/dreamingfish-world.jar",
                             "config/dreamingfish/client.toml"),
                     List.of("mods/legacy-renderer.jar"),
-                    List.of(), List.of(), null,
+                    List.of("config/dreamingfish/client.toml"), List.of(),
+                    "DreamingFishUpdater/backups/archive/preview",
                     List.of("mods/embeddium-options-api.jar", "mods/xaeros-minimap.jar"),
+                    List.of(), List.of(new ArchivedDto("config/dreamingfish/client.toml",
+                            "REPLACED_MODIFIED",
+                            cn.dreamingfish.updater.engine.ArchiveReason.REPLACED_MODIFIED.description(),
+                            "", 2048, null, null, null)),
+                    List.of("config/xaerominimap.txt"), List.of("mods/xaeros-minimap.jar"),
                     List.of())));
-            emit(new HistoryMessage("history", new ReleaseHistory(1, "dreamhaven", List.of(
+            emit(new GroupsMessage("groups", List.of(
+                    new OptionalGroupView("visuals", "光影与美化", "光影、粒子和动画效果，显卡较弱或内存小于 8G 建议关闭",
+                            true, true, false, List.of("Iris Shaders", "Particle Rain", "Not Enough Animations")),
+                    new OptionalGroupView("minimap", "小地图", "右上角小地图与路径点", false, false, false,
+                            List.of("Xaero's Minimap")))));
+            emit(new ArchivesMessage("archives", List.of(new ArchiveDto("preview", false,
+                    Instant.now().minusSeconds(3_600).toString(), "r000012", "1.20.1-r12", 2048,
+                    List.of(new ArchivedDto("config/dreamingfish/client.toml", "REPLACED_MODIFIED",
+                            cn.dreamingfish.updater.engine.ArchiveReason.REPLACED_MODIFIED.description(),
+                            "", 2048, null, null, null))))));
+            emit(new HistoryMessage("history", new ReleaseHistory(1, "preview", List.of(
                     new cn.dreamingfish.updater.protocol.ReleaseHistoryEntry(
                             "r000012", 12, "1.20.1-r12",
-                            Instant.now().minusSeconds(86_400), "新增梦屿群系探索内容"),
+                            Instant.now().minusSeconds(86_400), "更新模组与资源包"),
                     new cn.dreamingfish.updater.protocol.ReleaseHistoryEntry(
                             "r000011", 11, "1.20.1-r11",
                             Instant.now().minusSeconds(172_800), "修复部分任务无法完成的问题")))));
@@ -319,21 +379,26 @@ public final class PlayerSidecarMain {
                             false, true, false, null, 1),
                     new LocalFileEntry("config/dreamingfish/client.toml", "client.toml", false,
                             false, "config/dreamingfish", false, true, false,
-                            cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0),
+                            cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0, null, "SYNC",
+                            null, null, null, false),
                     new LocalFileEntry("config/voice.toml", "voice.toml", false, false, null,
-                            false, true, false, cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0),
+                            false, true, false, cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0,
+                            null, "DEFAULT_CONFIG", null, null, true, false),
                     new LocalFileEntry("mods", "mods", true, false, null, false, true, false, null, 2),
                     new LocalFileEntry("mods/dreamingfish-core.jar", "DreamingFish Core", false,
-                            false, null, false, true, false,
-                            cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0),
+                            false, null, false, true, true,
+                            cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0, "dreamingfish",
+                            "REQUIRED", null, "服主设为必需同步，不能取消管理", null, false),
                     new LocalFileEntry("mods/dreamingfish-world.jar", "DreamingFish World", false,
                             false, null, false, true, false,
-                            cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0),
+                            cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0, "dreamingfish-world",
+                            "SYNC", null, null, null, false),
                     new LocalFileEntry("defaultconfigs", "defaultconfigs", true, false, null,
                             false, true, true, null, 1),
                     new LocalFileEntry("defaultconfigs/server.toml", "server.toml", false,
                             false, null, false, true, true,
-                            cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0));
+                            cn.dreamingfish.updater.protocol.FilePolicy.ENFORCED, 0, null, "REQUIRED",
+                            null, "服主设为必需同步，不能取消管理", null, false));
         }
 
         @Override
@@ -387,7 +452,27 @@ public final class PlayerSidecarMain {
                     paths(result.installedPaths()), paths(result.deletedPaths()),
                     paths(result.archivedFiles()), paths(result.releasedPaths()),
                     result.archiveDirectory() == null ? null : result.archiveDirectory().toString(),
-                    paths(result.unmanagedMods()), release.forcedSyncDirectories())));
+                    paths(result.unmanagedMods()),
+                    cn.dreamingfish.updater.protocol.MaintenanceModel.of(release).cleanupDirectories(),
+                    result.archived().stream().map(ArchivedDto::of).toList(),
+                    paths(result.keptModifiedPaths()), paths(result.skippedSelfManagedPaths()),
+                    paths(result.resetPaths()))));
+        }
+
+        @Override
+        public void setOptionalGroups(List<OptionalGroupView> groups) {
+            emit(new GroupsMessage("groups", groups == null ? List.of() : List.copyOf(groups)));
+        }
+
+        @Override
+        public void setArchives(List<cn.dreamingfish.updater.engine.ArchiveCatalog.Archive> archives) {
+            List<ArchiveDto> values = archives == null ? List.of() : archives.stream()
+                    .map(archive -> new ArchiveDto(archive.id(), archive.legacy(),
+                            archive.createdAt() == null ? null : archive.createdAt().toString(),
+                            archive.releaseId(), archive.displayVersion(), archive.totalBytes(),
+                            archive.files().stream().map(ArchivedDto::of).toList()))
+                    .toList();
+            emit(new ArchivesMessage("archives", values));
         }
 
         private static List<String> paths(List<Path> values) {

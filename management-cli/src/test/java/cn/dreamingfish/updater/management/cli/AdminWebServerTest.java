@@ -1,11 +1,14 @@
 package cn.dreamingfish.updater.management.cli;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.ReleaseManifest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.StringReader;
+import java.io.ByteArrayInputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -21,6 +24,11 @@ import java.util.HashMap;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.jar.Attributes;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -35,6 +43,40 @@ class AdminWebServerTest {
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
+
+    @Test
+    void operationHistoryPreviewAndUndoKeepAuthenticationAndConfirmation() throws Exception {
+        ManagementCli root = new ManagementCli(temporary.resolve("ops-admin/management-settings.json"), new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("ops-source"));
+        Files.writeString(source.resolve("a.txt"), "a");
+        root.services().projects().create("ops", "Ops", source, "http://127.0.0.1:8080",
+                cn.dreamingfish.updater.protocol.Branding.empty(), cn.dreamingfish.updater.management.ProjectRules.defaults());
+        new WebAuthStore(root.settingsFile().getParent().resolve("management-web-auth.json"))
+                .register("ops-admin", "isolated-test-password".toCharArray(), true);
+        try (AdminWebServer server = new AdminWebServer(root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
+            server.start(); URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            String token = json.read(send(base, "/api/session", "GET", null, null).body().getBytes(StandardCharsets.UTF_8), Map.class).get("token").toString();
+            var body = Map.of("items", List.of(Map.of("path", "a.txt", "directory", false)), "preset", "INITIAL");
+            HttpResponse<String> changed = send(base, "/api/projects/ops/maintenance/presets", "POST", json.writeString(body), token);
+            assertEquals(200, changed.statusCode(), changed.body());
+            HttpResponse<String> history = send(base, "/api/projects/ops/operations", "GET", null, null);
+            assertEquals(200, history.statusCode(), history.body());
+            List<Map<String,Object>> entries = json.read(history.body().getBytes(StandardCharsets.UTF_8), List.class);
+            String id = entries.getFirst().get("id").toString();
+            assertEquals(403, send(base, "/api/projects/ops/operations/undo", "POST", json.writeString(Map.of("id", id, "stamp", "invalid")), null).statusCode());
+            HttpResponse<String> preview = send(base, "/api/projects/ops/operations/undo-preview", "POST", json.writeString(Map.of("id", id)), token);
+            assertEquals(200, preview.statusCode(), preview.body());
+            Map plan = json.read(preview.body().getBytes(StandardCharsets.UTF_8), Map.class);
+            HttpResponse<String> stale = send(base, "/api/projects/ops/operations/undo", "POST", json.writeString(Map.of("id", id, "stamp", "invalid")), token);
+            assertEquals(400, stale.statusCode(), stale.body());
+            HttpResponse<String> restored = send(base, "/api/projects/ops/operations/undo", "POST", json.writeString(Map.of("id", id, "stamp", plan.get("stamp"))), token);
+            assertEquals(200, restored.statusCode(), restored.body());
+            assertEquals(cn.dreamingfish.updater.protocol.MaintenancePreset.SYNC, root.services().database().requireProject("ops").rules().presetFor("a.txt"));
+            assertEquals(200, send(base, "/operation-history.js", "GET", null, null).statusCode());
+            assertEquals(200, send(base, "/icons/folder.svg", "GET", null, null).statusCode());
+            assertEquals(200, send(base, "/icons/file.svg", "GET", null, null).statusCode());
+        }
+    }
 
     @Test
     void servesSecuredAssetsAndCompletesThePublishWorkflow() throws Exception {
@@ -58,7 +100,9 @@ class AdminWebServerTest {
             HttpResponse<String> page = send(base, "/", "GET", null, null);
             assertEquals(200, page.statusCode());
             assertTrue(page.body().contains("梦鱼更新管理"));
-            assertTrue(page.body().contains("管理文件"));
+            assertTrue(page.body().contains("data-view=\"content\""));
+            assertTrue(page.body().contains("管理内容"));
+            assertTrue(page.body().contains("检查并发布"));
             assertTrue(page.body().contains("data-view=\"personalization\""));
             assertTrue(page.body().contains("玩家端预览"));
             assertTrue(page.body().contains("id=\"personalization-form\""));
@@ -78,8 +122,21 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("id=\"import-player-pages-server\""));
             assertTrue(page.body().contains("id=\"create-source-folder\""));
             assertTrue(page.body().contains("id=\"service-restart\""));
-            assertTrue(page.body().contains("管理强制同步目录"));
-            assertTrue(page.body().contains("单文件强制同步"));
+            assertTrue(page.body().contains("id=\"download-deployment-button\""));
+            assertTrue(page.body().contains("清理多余文件"));
+            assertTrue(page.body().contains("id=\"group-pick-dialog\""));
+            assertTrue(page.body().contains("撤回问题版本"));
+            assertTrue(page.body().contains("处理问题文件"));
+            assertTrue(page.body().contains("按发布版本管理"));
+            assertTrue(page.body().contains("id=\"file-history-dialog\""));
+            assertTrue(page.body().contains("id=\"correct-release\""));
+            assertTrue(page.body().contains("后来发现 B 1.0 会崩溃"));
+            assertFalse(page.body().contains("改为可选（让玩家自己决定）"));
+            assertFalse(page.body().contains("删除，但保留自行管理玩家的副本"));
+            assertTrue(page.body().contains("强制同步"));
+            assertFalse(page.body().contains("<option value=\"DEFAULT_CONFIG\">"));
+            assertTrue(page.body().contains("name=\"minimumPlayerVersion\" value=\"0.2.0\""));
+            assertFalse(page.body().contains("至少需要 0.3.0"));
             assertTrue(page.body().contains("id=\"error-dialog\""));
             assertTrue(page.body().contains("操作失败"));
             assertTrue(page.body().contains("id=\"path-browser-dialog\""));
@@ -87,7 +144,7 @@ class AdminWebServerTest {
             assertTrue(page.body().contains("data-path-kind=\"directory\""));
             assertTrue(page.body().contains("id=\"source-target-tree\""));
             assertTrue(page.body().contains("选择文件保存位置"));
-            assertTrue(page.body().contains("或者从管理端所在的服务器本身导入"));
+            assertTrue(page.body().contains("从服务器导入"));
             assertTrue(page.body().contains("name=\"brandName\""));
             assertTrue(page.body().contains("name=\"brandEnglishName\""));
             assertTrue(page.body().contains("name=\"productName\""));
@@ -105,13 +162,13 @@ class AdminWebServerTest {
             assertTrue(!page.body().contains("name=\"targetDirectory\""));
             assertTrue(!page.body().contains("data-view=\"files\""));
             assertTrue(page.body().contains("整合包文件"));
-            assertTrue(page.body().contains("全选当前列表"));
+            assertTrue(page.body().contains("全选当前范围"));
             assertTrue(page.body().indexOf("整合包文件")
-                    < page.body().indexOf("管理强制同步目录"));
-            assertTrue(page.body().indexOf("管理强制同步目录")
-                    < page.body().indexOf("单文件强制同步"));
-            assertTrue(page.body().indexOf("单文件强制同步")
-                    < page.body().indexOf("发布预览"));
+                    < page.body().indexOf("id=\"cleanup-panel\""));
+            assertTrue(page.body().indexOf("id=\"cleanup-panel\"")
+                    < page.body().indexOf("id=\"directive-panel\""));
+            assertTrue(page.body().indexOf("id=\"directive-panel\"")
+                    < page.body().indexOf("发布前检查"));
             assertEquals("text/html; charset=utf-8", page.headers()
                     .firstValue("Content-Type").orElseThrow());
             assertEquals("DENY", page.headers()
@@ -283,27 +340,41 @@ class AdminWebServerTest {
             assertTrue(scanned.body().contains("\"path\":\"mods/example.jar\""));
             assertTrue(scanned.body().contains("\"files\""));
 
-            HttpResponse<String> forcedDirectory = send(
-                    base, "/api/projects/web-demo/forced-directories", "POST",
-                    json.writeString(Map.of(
-                            "directories", new String[]{"mods"})), token);
-            assertEquals(200, forcedDirectory.statusCode(), forcedDirectory.body());
-            assertTrue(forcedDirectory.body().contains(
-                    "\"forcedSyncDirectories\":[\"mods\"]"));
+            assertTrue(scanned.body().contains("\"cleanupDirectories\":[\"mods\"]"),
+                    "the historical forced directory becomes a cleanup directory");
 
-            HttpResponse<String> forcedFile = send(
-                    base, "/api/projects/web-demo/forced-files", "POST",
+            HttpResponse<String> requiredFile = send(
+                    base, "/api/projects/web-demo/maintenance/presets", "POST",
                     json.writeString(Map.of(
-                            "files", new String[]{"mods/example.jar"})), token);
-            assertEquals(200, forcedFile.statusCode(), forcedFile.body());
-            assertTrue(forcedFile.body().contains(
-                    "\"forcedSyncFiles\":[\"mods/example.jar\"]"));
+                            "items", List.of(Map.of("path", "mods/example.jar", "directory", false)),
+                            "preset", "REQUIRED")), token);
+            assertEquals(200, requiredFile.statusCode(), requiredFile.body());
+            assertTrue(requiredFile.body().contains("\"previewStale\":true"), requiredFile.body());
+            assertTrue(requiredFile.body().contains("\"presetSource\":\"FILE\""));
+            HttpResponse<String> rescannedRules = send(
+                    base, "/api/projects/web-demo/scan", "POST", "{}", token);
+            assertEquals(200, rescannedRules.statusCode(), rescannedRules.body());
+            assertTrue(rescannedRules.body().contains("PLAYER_PROGRAM_REQUIRED"));
+            assertTrue(rescannedRules.body().contains("\"requiresPlayerUpgrade\":true"));
 
-            String publishBody = json.writeString(Map.of(
+            Map<String, Object> unacknowledged = new HashMap<>(Map.of(
+                    "displayVersion", "1.0.0",
+                    "minimumPlayerVersion", "0.1.13",
+                    "changelog", "Web 管理端首次发布",
+                    "acknowledgePlayerUpgrade", false));
+            HttpResponse<String> refused = send(base, "/api/projects/web-demo/publish", "POST",
+                    publication(base, "web-demo", unacknowledged, token), token);
+            assertEquals(409, refused.statusCode(), refused.body());
+            assertTrue(refused.body().contains("player_upgrade_required"));
+
+            String publishBody = publication(base, "web-demo", Map.of(
                     "displayVersion", "1.0.0",
                     "minimumPlayerVersion", "0.1.13",
                     "changelog", "Web 管理端首次发布"
-            ));
+            ), token);
+            HttpResponse<String> unbound = send(base, "/api/projects/web-demo/publish", "POST",
+                    json.writeString(Map.of("displayVersion", "1.0.0")), token);
+            assertEquals(400, unbound.statusCode(), unbound.body());
             HttpResponse<String> published = send(
                     base, "/api/projects/web-demo/publish",
                     "POST", publishBody, token);
@@ -369,13 +440,16 @@ class AdminWebServerTest {
             HttpResponse<String> rescanned = send(
                     base, "/api/projects/web-demo/scan", "POST", "{}", token);
             assertEquals(200, rescanned.statusCode(), rescanned.body());
+            HttpResponse<String> stale = send(base, "/api/projects/web-demo/publish", "POST", publishBody, token);
+            assertEquals(400, stale.statusCode(), stale.body());
+            assertTrue(stale.body().contains("preview changed"), stale.body());
             HttpResponse<String> republished = send(
                     base, "/api/projects/web-demo/publish", "POST",
-                    json.writeString(Map.of(
+                    publication(base, "web-demo", Map.of(
                             "displayVersion", "1.1.0",
                             "minimumPlayerVersion", "0.1.14",
                             "changelog", "验证 HTTP 服务自动重启"
-                    )), token);
+                    ), token), token);
             assertEquals(201, republished.statusCode(), republished.body());
             assertTrue(republished.body().contains(
                     "\"publicServiceRestarted\":true"), republished.body());
@@ -615,17 +689,19 @@ class AdminWebServerTest {
             assertEquals(200, send(base,
                     "/api/projects/files-demo/scan", "POST", "{}", token)
                     .statusCode());
-            HttpResponse<String> forced = send(base,
-                    "/api/projects/files-demo/forced-files", "POST",
+            HttpResponse<String> required = send(base,
+                    "/api/projects/files-demo/maintenance/presets", "POST",
                     json.writeString(Map.of(
-                            "files", new String[]{"mods/example.jar"})), token);
-            assertEquals(200, forced.statusCode(), forced.body());
-            assertTrue(forced.body().contains("mods/example.jar"));
+                            "items", List.of(Map.of("path", "mods/example.jar")),
+                            "preset", "REQUIRED")), token);
+            assertEquals(200, required.statusCode(), required.body());
+            assertTrue(required.body().contains("mods/example.jar"));
 
             HttpResponse<String> fileList = send(
                     base, "/api/projects/files-demo/files", "GET", null, null);
             assertEquals(200, fileList.statusCode(), fileList.body());
-            assertTrue(fileList.body().contains("\"forcedByFile\":true"));
+            assertTrue(fileList.body().contains("\"preset\":\"REQUIRED\""));
+            assertTrue(fileList.body().contains("\"presetSource\":\"FILE\""));
 
             HttpResponse<String> uploaded = sendBytes(base,
                     "/api/projects/files-demo/files/upload?path=config%2Fnew.toml"
@@ -645,10 +721,10 @@ class AdminWebServerTest {
 
             HttpResponse<String> published = send(base,
                     "/api/projects/files-demo/publish", "POST",
-                    json.writeString(Map.of(
+                    publication(base, "files-demo", Map.of(
                             "displayVersion", "1.0",
                             "minimumPlayerVersion", "0.1.13",
-                            "changelog", "Web files")), token);
+                            "changelog", "Web files"), token), token);
             assertEquals(201, published.statusCode(), published.body());
 
             HttpResponse<String> removed = send(base,
@@ -676,22 +752,185 @@ class AdminWebServerTest {
                     source.resolve("server-added.jar")));
 
             HttpResponse<String> script = send(base, "/app.js", "GET", null, null);
-            assertTrue(script.body().contains("单文件强制"));
+            assertTrue(script.body().contains("applyPresets"));
+            assertTrue(script.body().contains("maintenance/${action}"));
+            assertTrue(script.body().contains("acknowledgePlayerUpgrade"));
+            assertTrue(!script.body().contains("forced-files"));
             assertTrue(script.body().contains("bindSourceFiles"));
             assertTrue(script.body().contains("app.sourceFiles?.files"));
             assertTrue(script.body().contains("fileTreeRows"));
             assertTrue(script.body().contains("uploadTargetDirectory"));
             assertTrue(script.body().contains("beforeunload"));
-            assertTrue(script.body().contains("capturePublishPosition"));
+            assertTrue(script.body().contains("captureContentPosition"));
             assertTrue(script.body().contains("remove-batch"));
             assertTrue(script.body().contains("本次没有修改"));
             assertTrue(script.body().contains("expandedPlayerPages"));
             assertTrue(script.body().contains("player-editor-card-actions"));
+            assertTrue(script.body().contains("deployment/download"));
 
             HttpResponse<String> stylesheet = send(
                     base, "/app.css", "GET", null, null);
             assertTrue(stylesheet.body().contains(".player-page-card.collapsed"));
             assertTrue(stylesheet.body().contains(".player-editor-card-heading"));
+        }
+    }
+
+    @Test
+    void managesMaintenanceRulesThroughTheWebApi() throws Exception {
+        ManagementCli root = new ManagementCli(
+                temporary.resolve("rules-admin/management-settings.json"),
+                new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("rules-pack"));
+        Files.createDirectories(source.resolve("mods"));
+        Files.createDirectories(source.resolve("config"));
+        writeMod(source.resolve("mods/alpha.jar"), "alpha", "1.0.0");
+        writeMod(source.resolve("mods/shader.jar"), "shader", "2.0.0");
+        Files.writeString(source.resolve("config/alpha.toml"), "speed=1");
+
+        try (AdminWebServer server = new AdminWebServer(
+                root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
+            server.start();
+            URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            String token = json.read(send(base, "/api/session", "GET", null, null)
+                    .body().getBytes(StandardCharsets.UTF_8), Map.class)
+                    .get("token").toString();
+            assertEquals(201, send(base, "/api/projects", "POST", json.writeString(Map.of(
+                    "id", "rules-demo", "displayName", "Rules Demo",
+                    "sourceDirectory", source.toString(),
+                    "publicBaseUrl", "http://127.0.0.1:8080")), token).statusCode());
+            String project = "/api/projects/rules-demo";
+
+            assertEquals(200, send(base, project + "/scan", "POST", "{}", token).statusCode());
+            assertEquals(201, send(base, project + "/publish", "POST", publication(base, "rules-demo",
+                    Map.of("displayVersion", "1.0", "changelog", "first"), token), token).statusCode());
+            writeMod(source.resolve("mods/alpha.jar"), "alpha", "1.1.0");
+            Files.writeString(source.resolve("config/alpha.toml"), "speed=2");
+            assertEquals(200, send(base, project + "/scan", "POST", "{}", token).statusCode());
+            assertEquals(201, send(base, project + "/publish", "POST", publication(base, "rules-demo",
+                    Map.of("displayVersion", "1.1", "changelog", "second"), token), token).statusCode());
+
+            assertEquals(200, send(base, project + "/scan", "POST", "{}", token).statusCode());
+            assertTrue(send(base, project, "GET", null, null).body().contains("\"previewStale\":false"));
+
+            HttpResponse<String> history = send(base, project + "/history", "GET", null, null);
+            assertEquals(200, history.statusCode(), history.body());
+            Map<?, ?> alpha = historyOf(history.body(), "mods/alpha.jar");
+            List<?> alphaVersions = (List<?>) alpha.get("versions");
+            assertEquals(2, alphaVersions.size());
+            Map<?, ?> oldAlpha = (Map<?, ?>) alphaVersions.getFirst();
+            Map<?, ?> currentAlpha = (Map<?, ?>) alphaVersions.getLast();
+            assertEquals("1.0.0", oldAlpha.get("version"));
+            assertEquals(Boolean.TRUE, currentAlpha.get("currentlyPublished"));
+            String oldConfig = ((Map<?, ?>) ((List<?>) historyOf(history.body(), "config/alpha.toml")
+                    .get("versions")).getFirst()).get("sha256").toString();
+
+            HttpResponse<String> current = send(base, project + "/maintenance/withdraw", "POST",
+                    json.writeString(Map.of("reason", "崩服", "versions", List.of(Map.of(
+                            "path", "mods/alpha.jar", "sha256", "0".repeat(64))))), token);
+            assertEquals(400, current.statusCode(), current.body());
+            assertTrue(current.body().contains("只能撤回本项目发布过的版本"), current.body());
+            HttpResponse<String> withdrawn = send(base, project + "/maintenance/withdraw", "POST",
+                    json.writeString(Map.of("reason", "1.0.0 会导致崩服", "versions", List.of(Map.of(
+                            "path", "mods/alpha.jar", "sha256", oldAlpha.get("sha256"))))), token);
+            assertEquals(200, withdrawn.statusCode(), withdrawn.body());
+            assertTrue(withdrawn.body().contains("1.0.0 会导致崩服"));
+            String withdrawalId = json.read(withdrawn.body().getBytes(StandardCharsets.UTF_8), Map.class)
+                    .get("withdrawalId").toString();
+
+            HttpResponse<String> corrected = send(base, project + "/maintenance/correct", "POST",
+                    json.writeString(Map.of("path", "config/alpha.toml", "mode", "KNOWN_BAD",
+                            "reason", "旧配置导致卡顿", "badSha256", List.of(oldConfig))), token);
+            assertEquals(200, corrected.statusCode(), corrected.body());
+            assertTrue(corrected.body().contains("旧配置导致卡顿"));
+
+            HttpResponse<String> group = send(base, project + "/maintenance/group", "POST",
+                    json.writeString(Map.of("title", "光影与美化", "description", "显卡较弱建议关闭",
+                            "defaultInstall", false)), token);
+            assertEquals(200, group.statusCode(), group.body());
+            String groupId = json.read(group.body().getBytes(StandardCharsets.UTF_8), Map.class)
+                    .get("groupId").toString();
+            HttpResponse<String> member = send(base, project + "/maintenance/group-members", "POST",
+                    json.writeString(Map.of("groupId", groupId, "add", true,
+                            "items", List.of(Map.of("path", "mods/shader.jar")))), token);
+            assertEquals(200, member.statusCode(), member.body());
+            assertTrue(member.body().contains("\"modIds\":[\"shader\"]"), member.body());
+            assertTrue(member.body().contains("\"optionalGroup\":\"" + groupId + "\""), member.body());
+
+            HttpResponse<String> requiredFolder = send(base, project + "/maintenance/presets", "POST",
+                    json.writeString(Map.of("items", List.of(Map.of("path", "mods", "directory", true)),
+                            "preset", "REQUIRED")), token);
+            assertEquals(400, requiredFolder.statusCode(), requiredFolder.body());
+            HttpResponse<String> requiredMember = send(base, project + "/maintenance/presets", "POST",
+                    json.writeString(Map.of("items", List.of(Map.of("path", "mods/shader.jar")),
+                            "preset", "REQUIRED")), token);
+            assertEquals(400, requiredMember.statusCode(), requiredMember.body());
+            assertEquals(200, send(base, project + "/maintenance/presets", "POST",
+                    json.writeString(Map.of("items", List.of(Map.of("path", "mods/alpha.jar")),
+                            "preset", "REQUIRED")), token).statusCode());
+            HttpResponse<String> refusedMember = send(base, project + "/maintenance/group-members", "POST",
+                    json.writeString(Map.of("groupId", groupId, "add", true,
+                            "items", List.of(Map.of("path", "mods/alpha.jar")))), token);
+            assertEquals(400, refusedMember.statusCode(), refusedMember.body());
+            assertTrue(refusedMember.body().contains("普通同步"), refusedMember.body());
+
+            HttpResponse<String> defaults = send(base, project + "/maintenance/presets", "POST",
+                    json.writeString(Map.of("items", List.of(Map.of("path", "config", "directory", true)),
+                            "preset", "INITIAL")), token);
+            assertEquals(200, defaults.statusCode(), defaults.body());
+            assertTrue(defaults.body().contains("\"presetSource\":\"DIRECTORY:config\""), defaults.body());
+            HttpResponse<String> cleanup = send(base, project + "/maintenance/cleanup", "POST",
+                    json.writeString(Map.of("directory", "config", "enabled", true)), token);
+            assertEquals(200, cleanup.statusCode(), cleanup.body());
+            assertTrue(cleanup.body().contains("\"cleanupDirectories\":[\"config\"]"));
+
+            HttpResponse<String> stale = send(base, project, "GET", null, null);
+            assertTrue(stale.body().contains("\"previewStale\":true"), "rule edits outdate the last check");
+            HttpResponse<String> checked = send(base, project + "/scan", "POST", "{}", token);
+            assertEquals(200, checked.statusCode(), checked.body());
+            assertTrue(checked.body().contains("\"kind\":\"CLEANUP_DIRECTORY\""), checked.body());
+            assertTrue(checked.body().contains("\"kind\":\"WITHDRAWAL\""), checked.body());
+            assertTrue(checked.body().contains("\"kind\":\"OPTIONAL_GROUP\""), checked.body());
+            assertTrue(send(base, project, "GET", null, null).body().contains("\"previewStale\":false"));
+
+            HttpResponse<String> removed = send(base, project + "/files/remove-batch", "POST",
+                    json.writeString(Map.of("paths", List.of("mods/shader.jar"), "action", "DELETE")), token);
+            assertEquals(200, removed.statusCode(), removed.body());
+            assertTrue(removed.body().contains("\"insideCleanup\":false"), removed.body());
+            assertTrue(removed.body().contains("\"componentId\":\"shader\""), removed.body());
+            HttpResponse<String> optional = send(base, project + "/maintenance/make-optional", "POST",
+                    json.writeString(Map.of("path", "mods/shader.jar", "groupId", groupId)), token);
+            assertEquals(200, optional.statusCode(), optional.body());
+            assertTrue(Files.isRegularFile(source.resolve("mods/shader.jar")));
+
+            assertEquals(200, send(base, project + "/maintenance/withdrawal-revoke", "POST",
+                    json.writeString(Map.of("id", withdrawalId)), token).statusCode());
+            assertEquals(200, send(base, project + "/maintenance/group-members", "POST",
+                    json.writeString(Map.of("groupId", groupId, "add", false,
+                            "items", List.of(Map.of("modId", "shader")))), token).statusCode());
+            HttpResponse<String> deleted = send(base, project + "/maintenance/group-delete", "POST",
+                    json.writeString(Map.of("id", groupId)), token);
+            assertEquals(200, deleted.statusCode(), deleted.body());
+            assertTrue(deleted.body().contains("\"optionalGroups\":[]"), deleted.body());
+            assertTrue(deleted.body().contains("\"withdrawals\":[]"), deleted.body());
+            assertEquals(404, send(base, project + "/maintenance/unknown", "POST", "{}", token)
+                    .statusCode());
+        }
+    }
+
+    private Map<?, ?> historyOf(String body, String path) throws Exception {
+        Map<?, ?> result = json.read(body.getBytes(StandardCharsets.UTF_8), Map.class);
+        return ((List<?>) result.get("files")).stream()
+                .map(Map.class::cast)
+                .filter(file -> path.equals(file.get("path")))
+                .findFirst().orElseThrow();
+    }
+
+    private static void writeMod(Path jar, String id, String version) throws Exception {
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            output.putNextEntry(new java.util.jar.JarEntry("fabric.mod.json"));
+            output.write(("{\"schemaVersion\":1,\"id\":\"" + id + "\",\"name\":\"" + id
+                    + "\",\"version\":\"" + version + "\"}").getBytes(StandardCharsets.UTF_8));
+            output.closeEntry();
         }
     }
 
@@ -747,6 +986,153 @@ class AdminWebServerTest {
         }
     }
 
+    @Test
+    void downloadsThinDeploymentToTheBrowserAndCleansTemporaryFiles()
+            throws Exception {
+        Path admin = temporary.resolve("download-admin");
+        ManagementCli root = new ManagementCli(
+                admin.resolve("management-settings.json"),
+                new StringReader(""));
+        Path source = Files.createDirectories(
+                temporary.resolve("download-pack/mods"));
+        Files.writeString(source.resolve("example.jar"), "managed");
+        Path program = Files.createDirectories(temporary.resolve("download-player"));
+        Files.writeString(program.resolve("DreamingFishUpdater.exe"), "launcher");
+        Files.createDirectories(program.resolve("runtime/bin"));
+        Files.writeString(program.resolve("runtime/bin/java.dll"), "runtime");
+        Path support = Files.createDirectories(admin.resolve("support"));
+        writeBootstrapAgent(support.resolve("bootstrap-agent.jar"));
+
+        try (AdminWebServer server = new AdminWebServer(
+                root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
+            server.start();
+            URI base = URI.create(
+                    "http://127.0.0.1:" + server.address().getPort());
+            String token = json.read(send(base, "/api/session", "GET", null, null)
+                    .body().getBytes(StandardCharsets.UTF_8), Map.class)
+                    .get("token").toString();
+            assertEquals(201, send(base, "/api/projects", "POST", json.writeString(Map.of(
+                    "id", "download-demo",
+                    "displayName", "Download Demo",
+                    "sourceDirectory", source.getParent().toString(),
+                    "publicBaseUrl", "http://127.0.0.1:8080")), token).statusCode());
+
+            assertEquals(200, send(base, "/api/projects/download-demo/scan",
+                    "POST", "{}", token).statusCode());
+            HttpResponse<String> published = send(base,
+                    "/api/projects/download-demo/publish", "POST",
+                    publication(base, "download-demo", Map.of(
+                            "displayVersion", "1.0",
+                            "minimumPlayerVersion", "0.1.0",
+                            "changelog", "download test"), token), token);
+            assertEquals(201, published.statusCode(), published.body());
+            String releaseId = json.read(published.body()
+                    .getBytes(StandardCharsets.UTF_8), Map.class)
+                    .get("releaseId").toString();
+
+            HttpResponse<String> player = send(base,
+                    "/api/projects/download-demo/programs", "POST",
+                    json.writeString(Map.of(
+                            "platform", "windows-x64",
+                            "version", "0.1.0",
+                            "sourceDirectory", program.toString(),
+                            "launchPath", "DreamingFishUpdater.exe",
+                            "minimumBootstrapVersion", "0.1.2")), token);
+            assertEquals(201, player.statusCode(), player.body());
+
+            HttpResponse<byte[]> download = sendBinary(base,
+                    "/api/projects/download-demo/deployment/download", "POST",
+                    json.writeString(Map.of(
+                            "platform", "windows-x64",
+                            "releaseId", releaseId)), token);
+            assertEquals(200, download.statusCode());
+            assertEquals("application/zip", download.headers()
+                    .firstValue("Content-Type").orElseThrow());
+            assertTrue(download.headers().firstValue("Content-Disposition")
+                    .orElseThrow().contains("download-demo-player-deployment-1.0-0.1.0.zip"));
+            assertTrue(download.body().length > 0);
+
+            boolean binding = false;
+            boolean launcher = false;
+            boolean managedFile = false;
+            try (ZipInputStream zip = new ZipInputStream(
+                    new ByteArrayInputStream(download.body()))) {
+                ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) {
+                    binding |= entry.getName().equals(
+                            ".dreamingfish-bootstrap/project-binding.json");
+                    launcher |= entry.getName().equals(
+                            "DreamingFishUpdater/app/0.1.0/DreamingFishUpdater.exe");
+                    managedFile |= entry.getName().startsWith("mods/");
+                }
+            }
+            assertTrue(binding);
+            assertTrue(launcher);
+            assertTrue(!managedFile,
+                    "thin deployment download must not contain managed modpack files");
+            Path tmp = root.services().paths().temporary();
+            try (var files = Files.list(tmp)) {
+                assertEquals(0, files.count(),
+                        "browser deployment download must clean temporary files");
+            }
+        }
+    }
+
+    private static void writeBootstrapAgent(Path output) throws Exception {
+        Manifest manifest = new Manifest();
+        Attributes attributes = manifest.getMainAttributes();
+        attributes.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        attributes.putValue("Premain-Class",
+                "cn.dreamingfish.updater.bootstrap.BootstrapAgent");
+        try (JarOutputStream ignored = new JarOutputStream(
+                Files.newOutputStream(output), manifest)) {
+            // The web endpoint uses the same manifest validation as the CLI.
+        }
+    }
+
+    @Test
+    void stagedImportApiKeepsContentUntilConfirmationAndProtectsMutationToken() throws Exception {
+        ManagementCli root = new ManagementCli(temporary.resolve("transfer-admin/management-settings.json"), new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("transfer-pack"));
+        Files.writeString(source.resolve("client.txt"), "old");
+        root.services().projects().create("transfer-demo", "Transfer", source, "http://127.0.0.1:6806", null,
+                cn.dreamingfish.updater.management.ProjectRules.defaults());
+        try (AdminWebServer server = new AdminWebServer(root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
+            server.start(); URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            Map<?, ?> session = json.read(send(base, "/api/session", "GET", null, null).body().getBytes(StandardCharsets.UTF_8), Map.class);
+            String token = session.get("token").toString();
+            var denied = sendBytes(base, "/api/projects/transfer-demo/files/stage?path=client.txt", "new".getBytes(), "wrong-token");
+            assertEquals(403, denied.statusCode()); assertEquals("old", Files.readString(source.resolve("client.txt")));
+            var staged = sendBytes(base, "/api/projects/transfer-demo/files/stage?path=client.txt", "new".getBytes(), token);
+            assertEquals(201, staged.statusCode(), staged.body());
+            Map<?, ?> plan = json.read(staged.body().getBytes(StandardCharsets.UTF_8), Map.class);
+            assertEquals("old", Files.readString(source.resolve("client.txt")));
+            var committed = send(base, "/api/projects/transfer-demo/files/commit", "POST", json.writeString(Map.of(
+                    "id", plan.get("id"), "stamp", plan.get("stamp"), "action", "OVERWRITE")), token);
+            assertEquals(200, committed.statusCode(), committed.body()); assertEquals("new", Files.readString(source.resolve("client.txt")));
+            var history = send(base, "/api/projects/transfer-demo/files/import-history", "GET", null, token);
+            assertEquals(1, json.read(history.body().getBytes(StandardCharsets.UTF_8), List.class).size());
+            var undo = send(base, "/api/projects/transfer-demo/files/undo-import", "POST", json.writeString(Map.of("id", plan.get("id"))), token);
+            assertEquals(200, undo.statusCode(), undo.body()); assertEquals("old", Files.readString(source.resolve("client.txt")));
+            for (String asset : List.of("/file-workspace.js", "/file-transfer.js", "/admin-workflow.js", "/workspace.css"))
+                assertEquals(200, send(base, asset, "GET", null, null).statusCode(), asset);
+        }
+    }
+
+    private String publication(URI base, String projectId, Map<String, ?> fields, String token) throws Exception {
+        HttpResponse<String> details = send(base, "/api/projects/" + projectId, "GET", null, token);
+        assertEquals(200, details.statusCode(), details.body());
+        Map<?, ?> project = json.read(details.body().getBytes(StandardCharsets.UTF_8), Map.class);
+        Map<?, ?> preview = (Map<?, ?>) project.get("preview");
+        org.junit.jupiter.api.Assertions.assertNotNull(preview);
+        Map<String, Object> bound = new java.util.LinkedHashMap<>(fields);
+        // These tests publish no player program, so every release needs the explicit upgrade acknowledgement.
+        bound.putIfAbsent("acknowledgePlayerUpgrade", true);
+        bound.put("previewId", preview.get("previewId"));
+        bound.put("previewDigest", preview.get("previewDigest"));
+        return json.writeString(bound);
+    }
+
     private HttpResponse<String> send(
             URI base, String path, String method, String body, String token)
             throws Exception {
@@ -787,6 +1173,19 @@ class AdminWebServerTest {
                 .build();
         return client.send(request,
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private HttpResponse<byte[]> sendBinary(
+            URI base, String path, String method, String body, String token)
+            throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(base.resolve(path))
+                .timeout(Duration.ofSeconds(20))
+                .header("Accept", "application/zip")
+                .header("Content-Type", "application/json")
+                .header("X-DFS-Token", token)
+                .method(method, HttpRequest.BodyPublishers.ofString(body));
+        return client.send(builder.build(),
+                HttpResponse.BodyHandlers.ofByteArray());
     }
 
     private static int availablePort() throws Exception {

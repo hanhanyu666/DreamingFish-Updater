@@ -274,11 +274,17 @@ final class PlayerProgramVerifier {
         if (!candidate.startsWith(absoluteRoot)) {
             throw new BootstrapException("Player program path escapes its directory: " + relative);
         }
-        Path current = absoluteRoot;
-        for (Path segment : absoluteRoot.relativize(candidate)) {
+        Path current = candidate.getRoot();
+        for (Path segment : candidate) {
             current = current.resolve(segment);
-            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
-                throw new BootstrapException("Player program path traverses a symbolic link: " + relative);
+            try {
+                if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)
+                        && (Files.isSymbolicLink(current)
+                        || !current.toRealPath(LinkOption.NOFOLLOW_LINKS).equals(current.toRealPath()))) {
+                    throw new BootstrapException("Player program path traverses a directory alias: " + relative);
+                }
+            } catch (IOException e) {
+                throw new BootstrapException("Unable to validate player program path: " + relative, e);
             }
         }
         return candidate;

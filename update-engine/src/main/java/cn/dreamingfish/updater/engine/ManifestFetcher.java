@@ -35,7 +35,8 @@ final class ManifestFetcher {
                 .header("Accept-Encoding", "identity")
                 .build();
         try {
-            HttpResponse<InputStream> response = client(request).send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = HttpTransfer.send(client(request), httpRequest,
+                    request.requestTimeout(), request.cancellationToken());
             try (InputStream input = response.body()) {
                 if (response.statusCode() >= 500 || response.statusCode() == 408
                         || response.statusCode() == 429) {
@@ -48,10 +49,10 @@ final class ManifestFetcher {
                             "Latest release request failed with HTTP " + response.statusCode());
                 }
                 byte[] bytes = readLimited(input, MAX_MANIFEST_BYTES);
-                String signature = SignedPayloadSupport.resolveSignature(
-                                client(request), response, uri, request.requestTimeout())
-                        .orElseThrow(() -> new UpdateException(UpdateErrorCode.INVALID_SIGNATURE,
-                                "Release response does not contain a signature"));
+                var document = SignedPayloadSupport.resolvePayload(client(request), response, uri,
+                        request.requestTimeout(), request.cancellationToken(), bytes, MAX_MANIFEST_BYTES);
+                bytes = document.payload();
+                String signature = document.signature();
                 LocalInstallationStore.verifySignature(bytes, signature, publicKey);
                 ReleaseManifest manifest;
                 try {
