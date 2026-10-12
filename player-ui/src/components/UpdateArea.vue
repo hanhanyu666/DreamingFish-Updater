@@ -1,19 +1,65 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { getBridge } from "../lib/bridge";
-import {
-  ellipsize,
-  formatBytes,
-  formatUpdateFileDetails,
-} from "../lib/format";
+import { computed, ref, watch } from "vue";
+import { ellipsize, formatUpdateFileDetails } from "../lib/format";
 import { entryManaged } from "../lib/fileTree";
-import { usePlayerStore } from "../stores/player";
+import type { IconName } from "../lib/icons";
+import type { UpdateStage } from "../lib/types";
+import { usePlayerStore, type DrawerMode } from "../stores/player";
+import AppIcon from "./AppIcon.vue";
+
+type UpdateStatus = "working" | "done" | "error" | "offline";
+type StepState = "done" | "active" | "error" | "pending";
+
+const STEPS: ReadonlyArray<{ key: string; label: string; stages: readonly UpdateStage[] }> = [
+  { key: "check", label: "检查", stages: ["RECOVERING", "CHECKING", "SCANNING", "OFFLINE"] },
+  { key: "download", label: "下载", stages: ["DOWNLOADING"] },
+  { key: "install", label: "安装", stages: ["PREPARING", "INSTALLING", "VERIFYING"] },
+  { key: "launch", label: "启动", stages: ["COMPLETE"] },
+];
+
+const QUICK_LINKS: ReadonlyArray<{ mode: DrawerMode; label: string; icon: IconName }> = [
+  { mode: "HISTORY", label: "更新记录", icon: "history" },
+  { mode: "LOGS", label: "运行记录", icon: "logs" },
+  { mode: "FILES", label: "本地文件", icon: "files" },
+];
 
 const store = usePlayerStore();
-const bridge = getBridge();
 const tooltipVisible = ref(false);
+/** The last stage seen, so a failure can point at the step that stopped. */
+const lastStage = ref<UpdateStage | null>(null);
+
+watch(
+  () => store.state.progress?.stage,
+  (stage) => {
+    if (stage != null) lastStage.value = stage;
+  },
+  { immediate: true },
+);
 
 const result = computed(() => store.state.result);
+
+const status = computed<UpdateStatus>(() => {
+  if (store.state.error != null) return "error";
+  if (store.state.working || (!store.state.launchPermitted && result.value == null)) {
+    return "working";
+  }
+  if (store.state.unverifiedOffline || store.state.localContentOverride
+      || result.value?.outcome === "OFFLINE_ALLOWED") {
+    return "offline";
+  }
+  return "done";
+});
+
+const releaseLabel = computed(() => {
+  switch (result.value?.outcome) {
+    case "UPDATED":
+      return "本次更新";
+    case "OFFLINE_ALLOWED":
+      return "离线版本";
+    default:
+      return "当前版本";
+  }
+});
 const summaryVersion = computed(() =>
   result.value == null ? "" : "版本 " + result.value.displayVersion,
 );
@@ -26,30 +72,6 @@ const summaryChangelog = computed(() => {
   const firstLine = changelog.split("\n")[0] ?? "";
   return ellipsize(firstLine, 74);
 });
-const summaryCounts = computed(() => {
-  if (result.value == null) return "";
-  const counts: string[] = [];
-  if (result.value.installedPaths.length > 0) {
-    counts.push("安装 / 更新 " + result.value.installedPaths.length + " 项");
-  }
-  if (result.value.deletedPaths.length > 0) {
-    counts.push("删除 " + result.value.deletedPaths.length + " 项");
-  }
-  if (result.value.archivedFiles.length > 0) {
-    counts.push("备份 " + result.value.archivedFiles.length + " 项");
-  }
-  if ((result.value.resetPaths ?? []).length > 0) {
-    counts.push("恢复默认 " + (result.value.resetPaths ?? []).length + " 项");
-  }
-  if (result.value.releasedPaths.length > 0) {
-    counts.push("保留并放弃管理 " + result.value.releasedPaths.length + " 项");
-  }
-  if (locallyDisabledMods.value > 0) counts.push("本地停用 " + locallyDisabledMods.value + " 项");
-  if (locallyExcludedFiles.value > 0) {
-    counts.push("本地不管理 " + locallyExcludedFiles.value + " 项");
-  }
-  return counts.length === 0 ? "本次无需修改本地文件" : counts.join("  ·  ");
-});
 
 const locallyDisabledMods = computed(
   () => store.state.mods.filter((entry) => entry.disabled && !entry.forced).length,
@@ -61,6 +83,20 @@ const locallyExcludedFiles = computed(
         !entry.directory && entry.present && !entryManaged(entry) && !entry.forced,
     ).length,
 );
+
+const releaseStats = computed(() => {
+  const value = result.value;
+  if (value == null) return [];
+  return [
+    { label: "安装 / 更新", count: value.installedPaths.length, tone: "install" },
+    { label: "删除", count: value.deletedPaths.length, tone: "delete" },
+    { label: "备份", count: value.archivedFiles.length, tone: "archive" },
+    { label: "恢复默认", count: (value.resetPaths ?? []).length, tone: "install" },
+    { label: "保留并放弃管理", count: value.releasedPaths.length, tone: "local" },
+    { label: "本地停用", count: locallyDisabledMods.value, tone: "local" },
+    { label: "本地不管理", count: locallyExcludedFiles.value, tone: "local" },
+  ].filter((stat) => stat.count > 0);
+});
 
 const tooltipText = computed(() => {
   if (result.value == null) return "";
@@ -77,7 +113,33 @@ const tooltipText = computed(() => {
   );
 });
 
-const percentText = computed(() => store.state.percent);
+const percentParts = computed(() => {
+  const text = store.state.percent;
+  return text.endsWith("%")
+    ? { value: text.slice(0, -1), unit: "%" }
+    : { value: text, unit: "" };
+});
+const percentVisible = computed(() =>
+  (status.value === "working" || status.value === "done") && percentParts.value.unit !== "",
+);
+
+const activeStep = computed(() => {
+  const stage = status.value === "working"
+    ? store.state.progress?.stage ?? null
+    : lastStage.value;
+  if (stage == null) return 0;
+  return Math.max(0, STEPS.findIndex((step) => step.stages.includes(stage)));
+});
+/** Steps explain where a running or stopped check is; a finished one says so in its title. */
+const stepsVisible = computed(() => status.value === "working" || status.value === "error");
+const steps = computed(() =>
+  STEPS.map((step, index) => {
+    let state: StepState = "pending";
+    if (index < activeStep.value) state = "done";
+    else if (index === activeStep.value) state = status.value === "error" ? "error" : "active";
+    return { ...step, state };
+  }),
+);
 
 /** A finished check fills the bar; a stopped one (error or offline start) leaves it still. */
 const progressFinished = computed(() =>
@@ -92,11 +154,20 @@ const progressIndeterminate = computed(() => {
 
 const progressStyle = computed(() => {
   if (progressFinished.value) return { width: "100%" };
-  if (progressStopped.value) return { width: "0%" };
+  if (progressStopped.value) return { width: status.value === "done" ? "100%" : "0%" };
   const event = store.state.progress;
   if (event == null || event.totalBytes <= 0) return {};
   return { width: Math.round(event.fraction * 100) + "%" };
 });
+
+const noticeText = computed(() =>
+  (store.state.unmanaged?.text ?? "").replace(/\s*›\s*$/, ""),
+);
+const noticeActionable = computed(() => (store.state.unmanaged?.mods.length ?? 0) > 0);
+
+function linkActive(mode: DrawerMode): boolean {
+  return store.state.drawerOpen && store.state.drawerMode === mode;
+}
 
 function openSummaryDrawer(): void {
   tooltipVisible.value = false;
@@ -121,32 +192,55 @@ function openBackups(): void {
 </script>
 
 <template>
-  <div class="update-area">
+  <div class="update-area" :class="'update-' + status">
     <div
-      v-if="result != null"
+      v-if="result != null && status !== 'error'"
       class="update-summary"
+      role="button"
       tabindex="0"
+      :aria-label="summaryVersion + '，查看本次更新的文件变更'"
       @mouseenter="tooltipVisible = true"
       @mouseleave="tooltipVisible = false"
       @click="openSummaryDrawer"
       @keydown.enter="openSummaryDrawer"
       @keydown.space.prevent="openSummaryDrawer"
     >
-      <div class="update-summary-version">{{ summaryVersion }}</div>
+      <div class="update-summary-head">
+        <span class="update-summary-label">{{ releaseLabel }}</span>
+        <span class="update-summary-version">{{ summaryVersion }}</span>
+        <span class="update-summary-more">文件变更<AppIcon name="chevron" /></span>
+      </div>
       <div class="update-summary-changelog">{{ summaryChangelog }}</div>
-      <div class="update-summary-counts">{{ summaryCounts }}</div>
+      <div class="update-summary-counts">
+        <span
+          v-for="stat in releaseStats"
+          :key="stat.label"
+          class="update-stat"
+          :class="'update-stat-' + stat.tone"
+        >{{ stat.label }}<b>{{ stat.count }}</b></span>
+        <span v-if="releaseStats.length === 0" class="update-stat-empty">本次无需修改本地文件</span>
+      </div>
       <div v-if="tooltipVisible" class="update-file-tooltip">{{ tooltipText }}</div>
     </div>
 
     <div class="progress-region">
       <div class="progress-heading">
+        <span class="status-orb" :class="'status-orb-' + status" aria-hidden="true">
+          <AppIcon v-if="status === 'done'" name="check" />
+          <AppIcon v-else-if="status === 'error'" name="alert" />
+          <AppIcon v-else-if="status === 'offline'" name="offline" />
+        </span>
         <div class="stage-label">{{ store.state.stageTitle }}</div>
-        <div class="progress-spacer"></div>
-        <div class="percent-label">{{ percentText }}</div>
+        <div v-if="percentVisible" class="percent-label">
+          {{ percentParts.value }}<small>{{ percentParts.unit }}</small>
+        </div>
+        <div class="current-path" :class="{ 'error-detail': store.state.error != null }">
+          {{ store.state.currentPathText }}
+        </div>
+        <div v-if="status !== 'error'" class="byte-summary">{{ store.state.byteSummary }}</div>
+        <div v-else class="error-status">{{ store.state.byteSummary }}</div>
       </div>
-      <div class="current-path" :class="{ 'error-detail': store.state.error != null }">
-        {{ store.state.currentPathText }}
-      </div>
+
       <div class="update-progress-track">
         <div
           class="update-progress-bar"
@@ -154,59 +248,49 @@ function openBackups(): void {
           :style="progressStyle"
         ></div>
       </div>
-      <div class="progress-summary">
-        <div class="byte-summary">{{ store.state.byteSummary }}</div>
-        <div class="progress-spacer"></div>
-        <button
-          type="button"
-          class="link-button"
-          :class="{ collapsed: store.state.drawerOpen && store.state.drawerMode === 'HISTORY' }"
-          @click="store.toggleDrawer('HISTORY')"
+
+      <ol v-if="stepsVisible" class="stage-steps" aria-label="更新阶段">
+        <li
+          v-for="step in steps"
+          :key="step.key"
+          class="stage-step"
+          :class="'stage-step-' + step.state"
+          :aria-current="step.state === 'active' ? 'step' : undefined"
         >
-          {{ store.state.drawerOpen && store.state.drawerMode === "HISTORY" ? "收起记录  ‹" : "更新记录  ›" }}
-        </button>
-        <button
-          type="button"
-          class="link-button"
-          :class="{ collapsed: store.state.drawerOpen && store.state.drawerMode === 'LOGS' }"
-          @click="store.toggleDrawer('LOGS')"
-        >
-          {{ store.state.drawerOpen && store.state.drawerMode === "LOGS" ? "收起记录  ‹" : "运行记录  ›" }}
-        </button>
-        <button
-          type="button"
-          class="link-button"
-          :class="{ collapsed: store.state.drawerOpen && store.state.drawerMode === 'FILES' }"
-          @click="store.toggleDrawer('FILES')"
-        >
-          {{ store.state.drawerOpen && store.state.drawerMode === "FILES" ? "收起管理  ‹" : "本地文件  ›" }}
-        </button>
-      </div>
+          <span class="stage-step-dot"></span>
+          <span class="stage-step-label">{{ step.label }}</span>
+        </li>
+      </ol>
+
       <div
-        v-if="store.state.unmanaged != null"
+        v-if="store.state.unmanaged != null && status !== 'error'"
         class="unmanaged-notice"
-        :class="{ 'unmanaged-action': store.state.unmanaged.mods.length > 0 }"
+        :class="{ 'unmanaged-action': noticeActionable }"
         :title="store.state.unmanaged.contextLines.join('\n')"
-        :role="store.state.unmanaged.mods.length > 0 ? 'button' : undefined"
-        :tabindex="store.state.unmanaged.mods.length > 0 ? 0 : undefined"
+        :role="noticeActionable ? 'button' : undefined"
+        :tabindex="noticeActionable ? 0 : undefined"
         @click="store.openPlayerModPage()"
         @keydown.enter="store.openPlayerModPage()"
         @keydown.space.prevent="store.openPlayerModPage()"
       >
-        {{ store.state.unmanaged.text }}
+        <AppIcon name="info" class="notice-icon" />
+        <span class="unmanaged-text">{{ noticeText }}</span>
+        <AppIcon v-if="noticeActionable" name="chevron" class="notice-chevron" />
       </div>
       <button
-        v-if="store.state.result != null && store.state.result.archivedFiles.length > 0"
+        v-if="status !== 'error' && store.state.result != null
+          && store.state.result.archivedFiles.length > 0"
         type="button"
         class="archive-button"
         @click="openBackups"
-      >
-        查看备份与恢复
-      </button>
+      ><AppIcon name="archive" />查看备份与恢复<AppIcon name="chevron" class="archive-chevron" /></button>
+
       <div v-if="store.state.error != null" class="action-row">
-        <button type="button" class="secondary-button" @click="openDirectory">打开目录</button>
+        <button type="button" class="secondary-button" @click="openDirectory">
+          <AppIcon name="folder" />打开目录
+        </button>
         <button type="button" class="secondary-button" :disabled="store.state.working" @click="retry">
-          重试
+          <AppIcon name="retry" />重试
         </button>
         <button
           v-if="store.state.error.allowContinue"
@@ -214,21 +298,24 @@ function openBackups(): void {
           class="primary-button"
           @click="continueLaunch"
         >
-          仍然启动
+          <AppIcon name="play" />仍然启动
         </button>
       </div>
+
+      <nav class="quick-links" aria-label="更新详情">
+        <button
+          v-for="link in QUICK_LINKS"
+          :key="link.mode"
+          type="button"
+          class="link-button"
+          :class="{ active: linkActive(link.mode) }"
+          :aria-pressed="linkActive(link.mode)"
+          :title="linkActive(link.mode) ? '收起' + link.label : '查看' + link.label"
+          @click="store.toggleDrawer(link.mode)"
+        >
+          <AppIcon :name="link.icon" />{{ link.label }}
+        </button>
+      </nav>
     </div>
   </div>
 </template>
-
-<style scoped>
-.progress-heading,
-.progress-summary {
-  display: flex;
-  align-items: center;
-}
-
-.progress-spacer {
-  flex: 1;
-}
-</style>

@@ -1,0 +1,6 @@
+{
+  "identifier": "launcher",
+  "description": "Only the bundled connection chooser has native access.",
+  "windows": ["main"],
+  "permissions": ["core:default", "launcher-actions", "window-frame"]
+}

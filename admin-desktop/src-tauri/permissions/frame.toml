@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "window-frame"
+description = "Operate only the invoking window's custom frame; no data or service commands."
+commands.allow = ["desktop_window_action"]

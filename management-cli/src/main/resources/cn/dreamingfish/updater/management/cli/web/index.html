@@ -4,14 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DreamingFish Admin</title>
-  <script>
-    try {
-      document.documentElement.dataset.theme =
-        localStorage.getItem("dfs-admin-theme") === "light" ? "light" : "dark";
-    } catch (_) {
-      document.documentElement.dataset.theme = "dark";
-    }
-  </script>
+  <script src="/interface-mode.js"></script>
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/workspace.css">
 </head>
@@ -19,7 +12,7 @@
   <section class="auth-screen" id="auth-screen" aria-live="polite">
     <div class="auth-card">
       <div class="auth-brand"><div class="brand-mark">DF</div><div><div class="brand-name">梦鱼更新管理</div><div class="brand-en"><span>Dreaming</span><strong>Fish</strong></div></div></div>
-      <button class="icon-button auth-theme-toggle" id="auth-theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式">☀</button>
+      <button class="icon-button auth-theme-toggle" id="auth-theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式"><svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM12 2.75v2M12 19.25v2M21.25 12h-2M4.75 12h-2M18.5 5.5l-1.4 1.4M6.9 17.1l-1.4 1.4M18.5 18.5l-1.4-1.4M6.9 6.9 5.5 5.5"/></svg><svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.6A7.8 7.8 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1z"/></svg></button>
       <div id="auth-loading" class="auth-loading"><div class="busy-spinner"></div><span>正在检查账户状态</span></div>
       <form id="register-form" class="auth-form" hidden>
         <div><span class="page-kicker">FIRST TIME SETUP</span><h1>创建管理员账户</h1><p>此账户用于从公网访问管理界面。</p></div>
@@ -51,16 +44,16 @@
 
       <nav class="navigation" aria-label="管理功能">
         <span class="nav-heading">日常维护</span>
-        <button class="nav-button active" data-view="dashboard"><span>⌂</span>概览</button>
-        <button class="nav-button requires-project" data-view="content"><span>▤</span>管理内容</button>
-        <button class="nav-button requires-project" data-view="publish"><span>↑</span>检查并发布<small class="nav-badge" id="publish-nav-badge" hidden></small></button>
-        <button class="nav-button requires-project" data-view="project"><span>◫</span>项目设置</button>
-        <button class="nav-button requires-project" data-view="personalization"><span>✦</span>玩家端个性化</button>
+        <button class="nav-button active" data-view="dashboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6.5v7H4zM13.5 4H20v4.5h-6.5zM13.5 11.5H20V20h-6.5zM4 14h6.5v6H4z"/></svg>概览</button>
+        <button class="nav-button requires-project" data-view="content"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/></svg>管理内容</button>
+        <button class="nav-button requires-project" data-view="publish"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4.5M7.5 9 12 4.5 16.5 9M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg>检查并发布<small class="nav-badge" id="publish-nav-badge" hidden></small></button>
+        <button class="nav-button requires-project" data-view="project"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h9M17.5 6.5h2M4.5 12h3M11.5 12h8M4.5 17.5h11M19.5 17.5h0M15.5 4.5v4M9.5 10v4M17.5 15.5v4"/></svg>项目设置</button>
+        <button class="nav-button requires-project" data-view="personalization"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3.5l1.9 4.6 4.6 1.9-4.6 1.9L11 16.5l-1.9-4.6L4.5 10l4.6-1.9zM17.5 14.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg>玩家端个性化</button>
         <span class="nav-heading">发放与部署</span>
-        <button class="nav-button requires-project" data-view="player"><span>▣</span>玩家端程序</button>
-        <button class="nav-button requires-project" data-view="distribution"><span>⇄</span>外部托管</button>
-        <button class="nav-button requires-project" data-view="instance"><span>◇</span>玩家实例</button>
-        <span class="nav-heading">系统</span><button class="nav-button" data-view="settings"><span>⚙</span>系统设置</button>
+        <button class="nav-button requires-project" data-view="player"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5zM4 9h16M7 6.5h.01M9.5 6.5h.01"/></svg>玩家端程序</button>
+        <button class="nav-button requires-project" data-view="distribution"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4.5 4.5 0 0 1-.7-8.95 6 6 0 0 1 11.6 1.7 3.7 3.7 0 0 1-.4 7.25z"/></svg>外部托管</button>
+        <button class="nav-button requires-project" data-view="instance"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 4.5 7.7v8.6L12 20.5l7.5-4.2V7.7zM4.5 7.7 12 12l7.5-4.3M12 12v8.5"/></svg>玩家实例</button>
+        <span class="nav-heading">系统</span><button class="nav-button" data-view="settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4h13A1.5 1.5 0 0 1 20 5.5v4A1.5 1.5 0 0 1 18.5 11h-13A1.5 1.5 0 0 1 4 9.5v-4A1.5 1.5 0 0 1 5.5 4zM5.5 13h13a1.5 1.5 0 0 1 1.5 1.5v4a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-4A1.5 1.5 0 0 1 5.5 13zM8 7.5h.01M8 16.5h.01"/></svg>系统设置</button>
       </nav>
 
       <div class="sidebar-account">
@@ -90,15 +83,16 @@
         <div>
           <div class="page-kicker">MANAGEMENT CONSOLE</div>
           <h1 id="page-title">运行概览</h1>
-          <span class="workspace-status" id="workspace-status" aria-live="polite"></span>
+          <button class="workspace-status" id="workspace-status" type="button" aria-live="polite" hidden></button>
         </div>
         <div class="topbar-actions">
-          <button class="icon-button theme-toggle" id="theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式">☀</button>
+          <button class="secondary-button" id="use-new-interface" type="button">新版界面</button>
+          <button class="icon-button theme-toggle" id="theme-toggle" type="button" title="切换到白天模式" aria-label="切换到白天模式"><svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM12 2.75v2M12 19.25v2M21.25 12h-2M4.75 12h-2M18.5 5.5l-1.4 1.4M6.9 17.1l-1.4 1.4M18.5 18.5l-1.4-1.4M6.9 6.9 5.5 5.5"/></svg><svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.6A7.8 7.8 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1z"/></svg></button>
           <label class="project-picker">
             <span>当前项目</span>
             <select id="project-select" aria-label="当前项目"></select>
           </label>
-          <button class="icon-button" id="refresh-button" title="刷新数据" aria-label="刷新数据">↻</button>
+          <button class="icon-button" id="refresh-button" title="刷新数据" aria-label="刷新数据"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.5H15"/></svg></button>
         </div>
       </header>
 
@@ -124,18 +118,22 @@
 
           <div class="metrics">
             <div class="metric">
+              <i class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/></svg></i>
               <span>项目</span>
               <strong id="metric-projects">0</strong>
             </div>
             <div class="metric">
+              <i class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4 3.5 8.5 12 13l8.5-4.5zM3.5 12.5 12 17l8.5-4.5M3.5 16.5 12 21l8.5-4.5"/></svg></i>
               <span>不可变发布</span>
               <strong id="metric-releases">0</strong>
             </div>
             <div class="metric">
+              <i class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6V5.5A1.5 1.5 0 0 1 5.5 4h7.1l7.4 7.4a1.5 1.5 0 0 1 0 2.1l-6.5 6.5a1.5 1.5 0 0 1-2.1 0zM8.5 8.5h.01"/></svg></i>
               <span>当前版本</span>
               <strong id="metric-current">--</strong>
             </div>
             <div class="metric">
+              <i class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.5 4 8 20M16 4l-1.5 16M4.5 9h15M4 15h15"/></svg></i>
               <span>下次序号</span>
               <strong id="metric-sequence">--</strong>
             </div>
@@ -479,7 +477,7 @@
               <div><span>更新</span><strong>--</strong></div>
               <div><span>移除</span><strong>--</strong></div>
               <div><span>规则变化</span><strong>--</strong></div>
-              <div><span>玩家预计下载</span><strong>--</strong></div>
+              <div><span>新增 / 更新文件大小</span><strong>--</strong></div>
             </div>
             <div class="removal-bulk" id="removal-bulk" hidden>
               <span id="removal-bulk-label">移除的文件</span>
@@ -491,7 +489,7 @@
             </div>
             <div class="table-wrap preview-table">
               <table>
-                <thead><tr><th>变化</th><th>文件</th><th>维护方式</th><th>下载量</th><th>移除后怎么处理</th></tr></thead>
+                <thead><tr><th>变化</th><th>文件</th><th>维护方式</th><th>文件大小</th><th>移除后怎么处理</th></tr></thead>
                 <tbody id="preview-table"></tbody>
               </table>
               <div class="empty-state" id="preview-empty">点击“检查整合包内容”，查看这次发布会给玩家带来哪些变化</div>
@@ -510,8 +508,8 @@
             <div class="form-grid">
               <label class="field">
                 <span>本次显示版本（必填）</span>
-                <input name="displayVersion" placeholder="1.0.1" required>
-                <small class="field-help">建议使用清晰递增的版本，例如 1.0.1、2026.08.01；同一项目内不要重复。</small>
+                <input name="displayVersion" placeholder="例如 1.0.1" required>
+                <small class="field-help" id="version-suggestion">建议使用清晰递增的版本，例如 1.0.1、2026.08.01；同一项目内不要重复。</small>
               </label>
               <details class="advanced-controls span-2"><summary>高级兼容设置 · 默认自动计算最低版本</summary><label class="field">
                 <span>最低玩家端程序版本（必填）</span>
@@ -527,7 +525,7 @@
                 <span>我已确认玩家会获得 0.2.0 或更新版本的玩家端（已在“玩家端程序”中发布新版，或会重新分发整合包下载包）</span>
               </label>
             </div>
-            <div class="form-footer"><span>已保存的文件和规则会在这次发布后到达玩家。</span><button class="primary-button" id="publish-submit" type="submit">发布整合包</button></div>
+            <div class="form-footer"><span id="publish-footer-hint">已保存的文件和规则会在这次发布后到达玩家。</span><button class="primary-button" id="publish-submit" type="submit">发布整合包</button></div>
           </form>
 
           <section class="panel">
@@ -590,7 +588,13 @@
           </section>
         </section>
 
-        <section class="view" id="view-distribution"><label class="hosting-choice field"><span>选择分发方式</span><select id="hosting-method"><option value="export">仅导出静态目录</option><option value="webdav">WebDAV / HTTP PUT</option><option value="s3">对象存储 OSS / S3 / R2</option></select></label>
+        <section class="view" id="view-distribution">
+          <div class="hosting-choice" role="radiogroup" aria-label="选择分发方式">
+            <label class="hosting-option"><input type="radio" name="hostingMethod" value="export" checked><span><strong>仅导出静态目录</strong><small>导出后自行上传到任意 HTTP 空间、对象存储或 CDN</small></span></label>
+            <label class="hosting-option"><input type="radio" name="hostingMethod" value="webdav"><span><strong>WebDAV / HTTP PUT</strong><small>管理端直接上传到网盘、NAS 或支持 PUT 的空间</small></span></label>
+            <label class="hosting-option"><input type="radio" name="hostingMethod" value="s3"><span><strong>对象存储 OSS / S3 / R2</strong><small>使用 S3 签名直接上传到存储桶，无需云厂商 SDK</small></span></label>
+          </div>
+          <select id="hosting-method" hidden aria-hidden="true"><option value="export">仅导出静态目录</option><option value="webdav">WebDAV / HTTP PUT</option><option value="s3">对象存储 OSS / S3 / R2</option></select>
           <form class="panel form-panel" id="distribution-form">
             <div class="panel-header">
               <div><h2>导出外部托管目录</h2><span>适用于普通 HTTP、对象存储（OSS）和 CDN</span></div>

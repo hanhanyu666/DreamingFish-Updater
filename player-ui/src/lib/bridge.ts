@@ -32,6 +32,7 @@ let singleton: PlayerBridge | null = null;
 export function getBridge(): PlayerBridge {
   if (singleton == null) {
     singleton = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+      && window.parent === window && !window.location.pathname.startsWith("/player-preview/")
       ? new TauriBridge()
       : new MockBridge();
   }
@@ -272,7 +273,7 @@ class MockBridge implements PlayerBridge {
     this.emit({ type: "branding", branding: {
       productName: "Minecraft 整合包",
       subtitle: "准备好后，一起进入游戏。",
-      serverAddress: "",
+      serverAddress: "play.example.com",
       coverObject: null,
       accentColor: "#2ee8df",
       secondaryAccentColor: "#b06cff",

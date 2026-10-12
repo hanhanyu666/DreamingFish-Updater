@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-connect-profile"
+description = "Enables the connect_profile command without any pre-configured scope."
+commands.allow = ["connect_profile"]
+
+[[permission]]
+identifier = "deny-connect-profile"
+description = "Denies the connect_profile command without any pre-configured scope."
+commands.deny = ["connect_profile"]

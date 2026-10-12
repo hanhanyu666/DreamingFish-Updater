@@ -71,6 +71,7 @@ final class AdminWebServer implements AutoCloseable {
     private static final String SESSION_COOKIE = "DFS_ADMIN_SESSION";
     private static final String LOGGED_OUT_COOKIE = "DFS_ADMIN_LOGGED_OUT";
     private static final Map<String, StaticAsset> STATIC_ASSETS = loadAssets();
+    private static final boolean WORKBENCH_AVAILABLE = AdminWebServer.class.getResource("web/workbench/index.html") != null;
 
     private final ManagementCli root;
     private final JsonCodec json = new JsonCodec();
@@ -156,7 +157,11 @@ final class AdminWebServer implements AutoCloseable {
                 && !exchange.getRequestMethod().equals("HEAD")) {
             throw new WebApiException(405, "method_not_allowed", "此资源只允许读取");
         }
-        String resourcePath = path.equals("/") ? "/index.html" : path;
+        String resourcePath = path.equals("/") || path.equals("/legacy") || path.equals("/legacy/") ? "/index.html" : path;
+        if (resourcePath.equals("/workbench") || resourcePath.startsWith("/workbench/")) {
+            sendWorkbenchAsset(exchange, resourcePath);
+            return;
+        }
         if (resourcePath.startsWith("/player-preview/")) {
             sendPlayerPreviewAsset(exchange, resourcePath);
             return;
@@ -166,7 +171,32 @@ final class AdminWebServer implements AutoCloseable {
         securityHeaders(exchange.getResponseHeaders());
         exchange.getResponseHeaders().set("Content-Type", asset.contentType);
         exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-        sendBytes(exchange, 200, asset.bytes);
+        byte[] bytes = asset.bytes;
+        if (resourcePath.equals("/index.html")) {
+            bytes = new String(bytes, StandardCharsets.UTF_8)
+                    .replace("<html lang=", "<html data-workbench-available=\"" + WORKBENCH_AVAILABLE + "\" lang=")
+                    .getBytes(StandardCharsets.UTF_8);
+        }
+        sendBytes(exchange, 200, bytes);
+    }
+
+    private void sendWorkbenchAsset(HttpExchange exchange, String path) throws IOException {
+        String resource = path.equals("/workbench") || path.equals("/workbench/") ? "/workbench/index.html" : path;
+        if (resource.contains("..") || resource.contains("\\")
+                || !resource.matches("/workbench/[A-Za-z0-9_./-]+")) {
+            throw new WebApiException(404, "not_found", "新版界面资源不存在");
+        }
+        try (InputStream input = AdminWebServer.class.getResourceAsStream("web" + resource)) {
+            if (input == null) throw new WebApiException(404, "not_found", "新版界面资源不存在");
+            securityHeaders(exchange.getResponseHeaders());
+            exchange.getResponseHeaders().set("Content-Security-Policy",
+                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                            + "img-src 'self' data: blob: https:; font-src 'self'; media-src 'self' blob:; "
+                            + "connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'");
+            exchange.getResponseHeaders().set("Content-Type", assetContentType(resource));
+            exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+            sendBytes(exchange, 200, input.readAllBytes());
+        }
     }
 
     private void sendPlayerPreviewAsset(
@@ -1827,6 +1857,11 @@ final class AdminWebServer implements AutoCloseable {
         result.put("managedFiles", preview.files().size());
         result.put("totalManagedBytes", preview.totalManagedBytes());
         result.put("estimatedDownloadBytes", preview.estimatedDownloadBytes());
+        result.put("changedFileBytes", preview.changes().stream()
+                .filter(change -> change.kind() == cn.dreamingfish.updater.management.ChangeKind.ADDED
+                        || change.kind() == cn.dreamingfish.updater.management.ChangeKind.MODIFIED)
+                .map(change -> current.get(ManagedPaths.fold(change.path())))
+                .filter(java.util.Objects::nonNull).mapToLong(ScannedFile::size).sum());
         result.put("changes", preview.changes().stream()
                 .map(change -> changeView(change, current, previous, preview.rules())).toList());
         result.put("files", preview.files().stream().map(file -> {
@@ -1851,6 +1886,8 @@ final class AdminWebServer implements AutoCloseable {
         result.put("kind", change.kind().name());
         result.put("path", change.path());
         result.put("downloadSize", change.downloadSize());
+        if (now != null) result.put("fileSize", now.size());
+        else if (before != null) result.put("fileSize", before.size());
         result.put("removalAction", change.removalAction() == null
                 ? null : change.removalAction().name());
         result.put("displayName", now != null && now.displayName() != null ? now.displayName()
@@ -2186,7 +2223,7 @@ final class AdminWebServer implements AutoCloseable {
     }
 
     private static Map<String, StaticAsset> loadAssets() {
-        return Map.of(
+        Map<String, StaticAsset> assets = new java.util.HashMap<>(Map.of(
                 "/index.html", loadAsset(
                         "web/index.html", "text/html; charset=utf-8"),
                 "/app.css", loadAsset(
@@ -2200,7 +2237,9 @@ final class AdminWebServer implements AutoCloseable {
                 "/icons/folder.svg", loadAsset("web/icons/folder.svg", "image/svg+xml"),
                 "/icons/file.svg", loadAsset("web/icons/file.svg", "image/svg+xml"),
                 "/operation-history.js", loadAsset("web/operation-history.js", "text/javascript; charset=utf-8")
-        );
+        ));
+        assets.put("/interface-mode.js", loadAsset("web/interface-mode.js", "text/javascript; charset=utf-8"));
+        return Map.copyOf(assets);
     }
 
     private static StaticAsset loadAsset(
@@ -2224,6 +2263,17 @@ final class AdminWebServer implements AutoCloseable {
         publicService.close();
         server.stop(0);
         executor.shutdownNow();
+    }
+
+    boolean closeForDesktop(java.time.Duration timeout) {
+        try {
+            if (!mutationLock.tryLock(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)) return false;
+            try { close(); return true; }
+            finally { mutationLock.unlock(); }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     private record StaticAsset(byte[] bytes, String contentType) {

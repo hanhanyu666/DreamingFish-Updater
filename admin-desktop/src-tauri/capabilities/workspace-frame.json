@@ -1,0 +1,8 @@
+{
+  "identifier": "workspace-frame",
+  "description": "Remote management pages can operate their own frame, with an active-origin guard in Rust.",
+  "windows": ["workspace"],
+  "local": false,
+  "remote": {"urls": ["http://*:*/*", "https://*:*/*"]},
+  "permissions": ["window-frame"]
+}

@@ -126,6 +126,8 @@ interface PlayerState {
   confirm: ConfirmRequest | null;
   launchNotice: string | null;
   countdownRemaining: number | null;
+  /** Seconds the current auto-close countdown started with. */
+  countdownTotal: number | null;
   latestNewsVisible: boolean;
   stageTitle: string;
   currentPathText: string;
@@ -179,6 +181,7 @@ const state = reactive<PlayerState>({
   confirm: null,
   launchNotice: null,
   countdownRemaining: null,
+  countdownTotal: null,
   latestNewsVisible: true,
   stageTitle: "正在启动更新器",
   currentPathText: "准备本地环境",
@@ -281,6 +284,7 @@ export function handleSidecarMessage(message: SidecarMessage): void {
       break;
     case "countdown":
       state.countdownRemaining = message.seconds;
+      state.countdownTotal = message.seconds;
       state.launchNotice = "Minecraft 已开始启动 · " + message.seconds + " 秒后自动关闭";
       break;
     case "launch-kept-open":

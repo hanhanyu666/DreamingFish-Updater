@@ -33,6 +33,7 @@ import java.nio.file.Path;
                 PlayerProgramCommand.class,
                 ServeCommand.class,
                 WebCommand.class,
+                DesktopCommand.class,
                 BackupCommand.class,
                 InteractiveCommand.class
         }

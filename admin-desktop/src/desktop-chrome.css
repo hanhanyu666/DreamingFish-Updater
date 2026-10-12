@@ -1,0 +1,35 @@
+html.dfs-desktop { --dfs-frame-height:40px; }
+.dfs-desktop body { padding-top:var(--dfs-frame-height); box-sizing:border-box; }
+#dfs-desktop-frame {
+  --frame-bg:#101419; --frame-line:#242c34; --frame-text:#a1adb9;
+  position:fixed; inset:0 0 auto; height:var(--dfs-frame-height); z-index:2147483646;
+  display:flex; align-items:center; gap:10px; padding-left:16px;
+  background:var(--frame-bg); border-bottom:1px solid var(--frame-line); color:var(--frame-text);
+  font:12px "Segoe UI","Microsoft YaHei UI",sans-serif; user-select:none;
+}
+html[data-theme="light"] #dfs-desktop-frame { --frame-bg:#f5f7fa; --frame-line:#dfe5ed; --frame-text:#677489; }
+#dfs-desktop-frame * { box-sizing:border-box; }
+#dfs-desktop-frame .dfs-frame-mark {
+  width:22px; height:22px; display:grid; place-items:center; flex:none;
+  color:#82d8d4; background:#123632; border:1px solid #24645d; border-radius:6px;
+  font-size:9px; font-weight:800; letter-spacing:-.3px;
+}
+html[data-theme="light"] #dfs-desktop-frame .dfs-frame-mark { color:#12675f; background:#e4f2ef; border-color:#b2d7cc; }
+#dfs-desktop-frame .dfs-frame-title { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45vw; }
+#dfs-desktop-frame .dfs-frame-badge { font-size:10px; color:var(--frame-text); opacity:.68; flex:none; }
+#dfs-desktop-frame .dfs-frame-space { flex:1; min-width:10px; align-self:stretch; }
+#dfs-desktop-frame .dfs-frame-controls { display:flex; height:100%; flex:none; gap:0; }
+#dfs-desktop-frame .dfs-frame-button {
+  border:0; border-radius:0; box-shadow:none; padding:0; margin:0; min-height:0;
+  width:46px; height:100%; display:flex; align-items:center; justify-content:center;
+  background:transparent; color:var(--frame-text); cursor:default; font:inherit;
+}
+#dfs-desktop-frame .dfs-frame-button:hover { background:color-mix(in srgb,var(--frame-text) 12%,transparent); color:var(--text,#e7eef5); }
+#dfs-desktop-frame .dfs-frame-button:focus-visible { outline:2px solid #54c8bc; outline-offset:-3px; }
+#dfs-desktop-frame .dfs-frame-button svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:1.3; stroke-linecap:round; stroke-linejoin:round; }
+#dfs-desktop-frame .dfs-frame-close:hover { background:#c94453; color:#fff; }
+#dfs-desktop-frame .dfs-frame-maximize.is-maximized svg { width:11px; height:11px; transform:translate(-1px,1px); filter:drop-shadow(3px -3px 0 var(--frame-bg)); }
+#dfs-desktop-frame .dfs-frame-connections { width:auto; height:27px; gap:6px; padding:0 9px; border-radius:5px; margin-left:8px; font-size:11px; }
+#dfs-desktop-frame[data-error] .dfs-frame-badge { color:#eaa2a9; opacity:1; }
+.dfs-workspace .auth-screen { top:var(--dfs-frame-height); }
+.dfs-workspace .app-shell { height:100%; }

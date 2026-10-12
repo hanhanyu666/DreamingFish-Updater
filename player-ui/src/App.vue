@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import AppIcon from "./components/AppIcon.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import ContentPages from "./components/ContentPages.vue";
 import DetailsDrawer from "./components/DetailsDrawer.vue";
@@ -35,6 +36,19 @@ const latestNewsVisible = computed(
 const backgroundUrl = computed(
   () => store.state.backgroundUrl ?? `${import.meta.env.BASE_URL}images/hero-default.webp`,
 );
+const playerInitial = computed(() => {
+  const first = Array.from(store.state.playerName.trim())[0] ?? "";
+  return /^[A-Za-z0-9_]$/.test(first) ? first.toUpperCase() : first || "?";
+});
+const serverAddress = computed(() => store.state.branding.serverAddress?.trim() ?? "");
+const serverAddressCopied = ref(false);
+let serverAddressCopiedTimer: number | null = null;
+const countdownProgress = computed(() => {
+  const remaining = store.state.countdownRemaining;
+  const total = store.state.countdownTotal;
+  if (remaining == null || total == null || total <= 0) return null;
+  return Math.max(0, Math.min(1, remaining / total));
+});
 
 function onPreviewMessage(event: MessageEvent): void {
   if (!adminPreview || event.origin !== window.location.origin
@@ -60,8 +74,33 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", updateLatestNewsVisibility);
   window.removeEventListener("message", onPreviewMessage);
   if (countdownTimer != null) window.clearInterval(countdownTimer);
+  if (serverAddressCopiedTimer != null) window.clearTimeout(serverAddressCopiedTimer);
   store.disableStartupMusic();
 });
+
+async function copyServerAddress(): Promise<void> {
+  const address = serverAddress.value;
+  if (!address) return;
+  try {
+    await navigator.clipboard.writeText(address);
+  } catch {
+    // Older WebView builds may refuse the async clipboard; fall back to a selection copy.
+    const field = document.createElement("textarea");
+    field.value = address;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.append(field);
+    field.select();
+    document.execCommand("copy");
+    field.remove();
+  }
+  serverAddressCopied.value = true;
+  if (serverAddressCopiedTimer != null) window.clearTimeout(serverAddressCopiedTimer);
+  serverAddressCopiedTimer = window.setTimeout(() => {
+    serverAddressCopied.value = false;
+  }, 1800);
+}
 
 function updateLatestNewsVisibility(): void {
   windowHeight.value = window.innerHeight;
@@ -184,11 +223,27 @@ function formatNewsDate(value: string): string {
         class="player-identity reveal"
         style="--reveal-delay: 230ms; --from-x: -14px; --from-y: 10px"
       >
-        <div class="player-accent"></div>
+        <div class="player-avatar" aria-hidden="true">{{ playerInitial }}</div>
         <div class="player-labels">
           <div class="player-caption">当前玩家</div>
           <div class="player-name">{{ store.state.playerName }}</div>
         </div>
+        <template v-if="serverAddress">
+          <div class="player-identity-divider" aria-hidden="true"></div>
+          <button
+            type="button"
+            class="server-address"
+            :class="{ copied: serverAddressCopied }"
+            :title="'复制服务器地址 ' + serverAddress"
+            @click="copyServerAddress"
+          >
+            <span class="player-caption">{{ serverAddressCopied ? "已复制到剪贴板" : "服务器地址" }}</span>
+            <span class="server-address-value">
+              <span class="server-address-text">{{ serverAddress }}</span>
+              <AppIcon :name="serverAddressCopied ? 'check' : 'copy'" />
+            </span>
+          </button>
+        </template>
       </div>
 
       <div
@@ -231,8 +286,22 @@ function formatNewsDate(value: string): string {
         }"
       >
         <div class="launch-notice">
-          <span class="launch-notice-glyph">✓</span>
+          <span class="launch-notice-glyph"><AppIcon name="check" /></span>
           <span class="launch-notice-text">{{ store.state.launchNotice }}</span>
+          <button
+            v-if="store.state.countdownRemaining != null"
+            type="button"
+            class="launch-notice-action"
+            @click="store.keepWindowOpen()"
+          >
+            保持打开
+          </button>
+          <span
+            v-if="countdownProgress != null"
+            class="launch-notice-timer"
+            :style="{ transform: `scaleX(${countdownProgress})` }"
+            aria-hidden="true"
+          ></span>
         </div>
       </div>
 

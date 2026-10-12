@@ -1,0 +1,39 @@
+[package]
+name = "dreamingfish-admin-desktop"
+version = "0.2.0"
+description = "DreamingFish management desktop"
+authors = ["DreamingFish"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+tauri-codegen = "=2.6.3"
+
+[dependencies]
+tauri = { version = "=2.11.5", features = ["tray-icon"] }
+tauri-runtime = "=2.11.3"
+tauri-runtime-wry = { version = "=2.11.4", default-features = false }
+tauri-utils = "=2.9.3"
+tauri-macros = "=2.6.3"
+tauri-plugin-dialog = "=2.7.3"
+tauri-plugin-single-instance = "=2.4.5"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+uuid = { version = "=1.24.0", features = ["v4"] }
+url = "2"
+open = "=5.4.0"
+dunce = "=1.0.5"
+tiny_http = "=0.12.0"
+reqwest = { version = "=0.12.24", default-features = false, features = ["blocking", "cookies", "rustls-tls"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

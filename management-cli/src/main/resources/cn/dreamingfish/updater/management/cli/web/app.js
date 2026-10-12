@@ -118,6 +118,7 @@ async function api(path, options = {}) { return AdminTransport.request(path, opt
 
 async function initialize() {
   initializeTheme();
+  renderProjectNavigation();
   bindEvents();
   try {
     await refreshAuth();
@@ -155,6 +156,13 @@ async function enterManagement() {
   byId("app-shell").hidden = false;
   setConnection(true);
   await refreshState();
+  const landing = window.AdminInterface?.landing();
+  if (landing?.get("project") && (app.state.projects || []).some(project => project.id === landing.get("project"))) {
+    await loadProject(landing.get("project"));
+  }
+  if (landing?.get("view") && Object.hasOwn(titles, landing.get("view"))) {
+    showView(landing.get("view"));
+  }
   startServicePolling();
 }
 
@@ -308,9 +316,15 @@ function renderState() {
   renderService();
   renderDashboard();
   renderSettings();
-  const hasProject = (app.state.projects || []).length > 0;
+  renderProjectNavigation();
+}
+
+function renderProjectNavigation() {
+  const hasProject = Boolean(app.project && app.project.id === app.selectedProjectId);
   document.querySelectorAll(".requires-project").forEach((button) => {
     button.disabled = !hasProject;
+    button.title = hasProject ? titles[button.dataset.view]
+      : app.state && !(app.state.projects || []).length ? "先创建一个项目" : "正在加载项目…";
   });
 }
 
@@ -393,6 +407,7 @@ function renderDashboard() {
 }
 
 function renderProjectDependentViews() {
+  renderProjectNavigation();
   renderProjectForm();
   renderPersonalizationForm();
   renderContent();
@@ -469,12 +484,10 @@ function presetSelect(path, directory, file = null) {
     : inheritedPreset(path, directory);
   const inheritedLabel = PRESETS[inherited.preset]?.label || inherited.preset;
   select.append(option("", inherited.optional
-    ? `可选内容：${inheritedLabel}`
+    ? `${inheritedLabel} · 可选内容`
     : inherited.source
-      ? `随 ${inherited.source}/：${inheritedLabel}`
-      : directory
-        ? `不单独设置（${inheritedLabel}）`
-        : `默认：${inheritedLabel}`));
+      ? `${inheritedLabel} · 随文件夹`
+      : `${inheritedLabel} · 默认`));
   Object.entries(PRESETS).filter(([key]) => key !== "DEFAULT_CONFIG").forEach(([value, preset]) => {
     const choice = option(value, preset.label);
     choice.disabled = inherited.preset === "REQUIRED" && value !== "REQUIRED";
@@ -2201,7 +2214,7 @@ function renderPreview() {
   summary[1].textContent = String(count("MODIFIED"));
   summary[2].textContent = String(removals.length);
   summary[3].textContent = String(policies.length);
-  summary[4].textContent = formatBytes(preview.estimatedDownloadBytes);
+  summary[4].textContent = formatBytes(preview.changedFileBytes ?? preview.estimatedDownloadBytes);
   byId("preview-time").textContent =
     `检查于 ${formatDate(preview.createdAt)} · 共 ${preview.managedFiles} 个文件，`
       + formatBytes(preview.totalManagedBytes)
@@ -2267,7 +2280,7 @@ function previewRow(change) {
     badge,
     file,
     maintenanceCell,
-    change.downloadSize > 0 ? formatBytes(change.downloadSize) : "--",
+    typeof change.fileSize === "number" ? formatBytes(change.fileSize) : "--",
     action
   ]);
 }
@@ -2561,7 +2574,7 @@ function bindPublish() {
     ];
     const accepted = await ask("发布新版本", lines.join("\n"), "确认发布");
     if (!accepted) return;
-    await runBusy("正在签名并发布整合包", async () => {
+    const publishConfirmed = async () => {
       if (removals.length > 0) {
         const savedPreview = await api(
           `/api/projects/${encodeURIComponent(confirmedProjectId)}/removals`,
@@ -2585,9 +2598,27 @@ function bindPublish() {
       );
       form.reset();
       form.elements.minimumPlayerVersion.value = "0.2.0";
+      delete form.elements.minimumPlayerVersion.dataset.edited;
+      delete form.elements.displayVersion.dataset.edited;
       app.history = null;
       await refreshState(confirmedProjectId);
       showPublishedToast(release, `版本 ${release.displayVersion} 已发布`);
+    };
+    await runBusy("正在签名并发布整合包", async () => {
+      try {
+        await publishConfirmed();
+      } catch (error) {
+        // Files edited directly on the server, or settings saved meanwhile, make the
+        // confirmed preview outdated; check again instead of leaving a raw server error.
+        if (!/changed after the preview|scan again/i.test(error.message || "")) throw error;
+        await api(
+          `/api/projects/${encodeURIComponent(confirmedProjectId)}/scan`,
+          { method: "POST", body: {} }
+        );
+        await loadProject(confirmedProjectId);
+        showErrorDialog("整合包目录或项目设置在检查之后发生了变化，本次没有发布。"
+          + "已经重新检查，请确认最新的改动后再发布。");
+      }
     });
   });
 }
@@ -2595,13 +2626,18 @@ function bindPublish() {
 function renderReleases() {
   const releases = app.project?.releases || [];
   byId("release-count-label").textContent = `${releases.length} 条记录`;
-  const rows = releases.map((release) => {
+  const rows = releases.map((release, index) => {
     const rollback = actionButton("回滚", () => openRollback(release));
     const changelog = textCell(release.changelog || "未填写");
     changelog.title = release.changelog || "未填写";
+    const version = document.createElement("td");
+    version.className = "version-cell";
+    version.textContent = release.displayVersion;
+    version.title = release.displayVersion;
+    if (index === 0) version.append(tag("当前", "current", "玩家下次启动会更新到这个版本"));
     return row([
       `#${release.sequence}`,
-      release.displayVersion,
+      version,
       formatDate(release.createdAt),
       changelog,
       rollback
@@ -2771,12 +2807,10 @@ function applyTheme(theme, persist) {
   document.documentElement.dataset.theme = normalized;
   const toggle = byId("theme-toggle");
   const light = normalized === "light";
-  toggle.textContent = light ? "☾" : "☀";
   toggle.title = light ? "切换到夜间模式" : "切换到白天模式";
   toggle.setAttribute("aria-label", toggle.title);
   toggle.setAttribute("aria-pressed", String(light));
   const authToggle = byId("auth-theme-toggle");
-  authToggle.textContent = light ? "☾" : "☀";
   authToggle.title = light ? "切换到夜间模式" : "切换到白天模式";
   authToggle.setAttribute("aria-label", authToggle.title);
   if (!persist) return;
@@ -3164,7 +3198,7 @@ function renderPathBrowser() {
     entryButton.className = "path-browser-entry";
     entryButton.title = `${entry.directory ? "文件夹" : "文件"}：${entry.name}`;
     const entryIcon = document.createElement("span");
-    entryIcon.className = `path-entry-icon ${entry.directory ? "folder" : "file"}`;
+    entryIcon.className = `tree-entry-icon ${entry.directory ? "folder" : "file"}`;
     entryIcon.setAttribute("aria-hidden", "true");
     const entryName = document.createElement("span");
     entryName.textContent = entry.name;
@@ -3798,6 +3832,27 @@ function showView(view) {
   if (view === "personalization") {
     requestAnimationFrame(resizePlayerPreview);
   }
+  if (view === "publish" && changed) window.setTimeout(autoCheckProject, 0);
+}
+
+/** Opening the publish page re-checks a missing or outdated preview, so publishing needs no extra click. */
+async function autoCheckProject() {
+  const project = app.project;
+  if (!project || app.view !== "publish" || app.busy || app.transferBusy) return;
+  if (project.preview && !project.previewStale) return;
+  await runBusy("正在检查整合包内容", async () => {
+    try {
+      await api(
+        `/api/projects/${encodeURIComponent(project.id)}/scan`,
+        { method: "POST", body: {} }
+      );
+      await loadProject(project.id);
+    } catch (error) {
+      // A failed automatic check stays on the page; the manual check reports details in a dialog.
+      byId("preview-empty").textContent =
+        `自动检查未完成：${error.message}。处理后可点击“检查整合包内容”重试。`;
+    }
+  });
 }
 
 async function runBusy(label, operation) {
@@ -4258,7 +4313,13 @@ function toast(message, error = false) {
   const stack = byId("toast-stack");
   const element = document.createElement("div");
   element.className = "toast";
-  element.textContent = message;
+  element.setAttribute("role", "status");
+  element.title = "点击关闭";
+  element.innerHTML = '<svg class="toast-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12.5l3.2 3.2L17 8.8"/></svg>';
+  const text = document.createElement("span");
+  text.textContent = message;
+  element.append(text);
+  element.addEventListener("click", () => element.remove());
   stack.append(element);
   window.setTimeout(() => element.remove(), 4200);
 }

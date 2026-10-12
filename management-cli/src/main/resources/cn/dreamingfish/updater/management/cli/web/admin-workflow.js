@@ -33,29 +33,30 @@ const AdminTransport = Object.freeze({
 function confirmAction(...args) { return ask(...args); }
 
 function renderWorkflow() {
-  const project=app.project, preview=project?.preview;
+  const project=app.project, preview=project?.preview, releases=project?.releases || [];
   const changes=(preview?.changes || []).filter(change=>change.kind!=="POLICY_CHANGED").length + (preview?.policyChanges || []).length;
-  const status=!project ? "先创建整合包项目" : app.transferBusy ? "文件任务进行中" : app.packageBusy ? "玩家端包检查中"
-    : project.previewStale ? "已保存 · 需要重新检查" : !preview ? "尚未检查整合包" : changes ? `已保存 · ${changes} 项待发布` : "与当前发布一致";
-  byId("workspace-status").textContent=status;
-  byId("workspace-status").classList.toggle("pending",Boolean(changes || project?.previewStale));
+  const state=!project ? "none" : app.transferBusy || app.packageBusy ? "busy" : project.previewStale ? "stale" : !preview ? "unchecked" : changes ? "pending" : "ok";
+  const status=byId("workspace-status");
+  status.textContent={none:"先创建整合包项目",busy:app.transferBusy ? "文件任务进行中" : "玩家端包检查中",stale:"已保存 · 需要重新检查",
+    unchecked:"尚未检查整合包",pending:`已保存 · ${changes} 项待发布`,ok:"与当前发布一致"}[state];
+  status.dataset.state=state;
+  status.title=project ? "前往检查并发布" : "新建整合包项目";
+  status.hidden=false;
+  status.classList.toggle("pending",["pending","stale"].includes(state));
   byId("transfer-running").hidden=app.transferProjectId!==project?.id || !app.transferBusy;
   byId("transfer-running-label").textContent=app.transferBusy ? "文件任务正在进行，已成功导入的文件会保留。" : "";
-  const dashboard=byId("dashboard-next");
-  const heading=document.createElement("h2"); heading.textContent="下一步";
-  const text=document.createElement("p"); text.textContent=!project ? "新建项目，选择要管理的文件目录。" : project.previewStale || !preview ? "检查已保存的文件和维护设置，再发布给玩家。"
-    : changes ? `有 ${changes} 项待发布改动。先查看文件和规则变化，再发布新版本。` : "当前没有待发布改动，可以继续整理文件或下载部署包。";
-  const actions=document.createElement("div"); actions.className="button-row";
-  if(project) {
-    actions.append(workspaceButton(changes || project.previewStale ? "查看改动并发布" : "整理文件",async()=>{
-      if(changes || project.previewStale || !preview) showView("publish");
-      else {if(!app.sourceFiles) await loadSourceFiles(); showView("content");}
-    },"primary-button"), workspaceButton("发放部署包",()=>showView("instance"),"secondary-button"));
-  } else actions.append(workspaceButton("新建项目",()=>byId("open-create-project").click(),"primary-button"));
-  dashboard.replaceChildren(heading,text,actions);
+  renderNextSteps(state,changes,releases[0]);
   const submit=byId("publish-submit");
   if(app.transferBusy || app.packageBusy) submit.disabled=true;
   else submit.disabled=!project || !preview || Boolean(project.previewStale);
+  byId("publish-footer-hint").textContent={none:"",busy:"文件任务进行中，完成后才能发布。",unchecked:"进入本页会自动检查；检查完成后即可发布。",
+    stale:"检查结果已过期，请重新检查后再发布。",pending:`将发布 ${changes} 项改动，玩家下次启动时自动更新。`,
+    ok:"本次没有内容或规则改动；发布会创建内容相同的新版本。"}[state];
+  const version=byId("publish-form").elements.displayVersion;
+  if(version.dataset.edited!==project?.id) version.value=project ? suggestNextVersion(releases) : "";
+  byId("version-suggestion").textContent=releases[0]
+    ? `上一版本是 ${releases[0].displayVersion}，已按顺序建议下一个版本号，可以直接修改；同一项目内不要重复。`
+    : "这是第一次发布，可以从 1.0.0 开始；以后会按上一版本自动建议。";
   const minimum=byId("publish-form").elements.minimumPlayerVersion;
   if (!minimum.dataset.edited) minimum.value=preview?.policyPlayerVersion || "0.2.0";
   byId("project-select").disabled=Boolean(app.transferBusy || app.packageBusy) || !(app.state?.projects || []).length;
@@ -66,6 +67,71 @@ function renderWorkflow() {
   }
   const table=byId("preview-table");
   if(table?.closest(".table-wrap")) table.closest(".table-wrap").classList.toggle("empty-preview", !(preview?.changes || []).filter(change=>change.kind!=="POLICY_CHANGED").length);
+}
+
+/** The dashboard walks through the daily path: organize files, check the changes, publish. */
+function renderNextSteps(state,changes,latest) {
+  const panel=byId("dashboard-next");
+  const head=document.createElement("div"); head.className="next-action-head";
+  const intro=document.createElement("div");
+  const kicker=document.createElement("span"); kicker.className="page-kicker"; kicker.textContent="NEXT STEP";
+  const heading=document.createElement("h2"), text=document.createElement("p");
+  const actions=document.createElement("div"); actions.className="button-row";
+  intro.append(kicker,heading,text); head.append(intro,actions);
+  if(state==="none") {
+    heading.textContent="创建第一个整合包项目";
+    text.textContent="新建项目并选择要管理的文件目录，之后按“整理文件 → 检查改动 → 发布”完成第一次发布。";
+    actions.append(workspaceButton("新建项目",()=>byId("open-create-project").click(),"primary-button"));
+    panel.replaceChildren(head);
+    return;
+  }
+  heading.textContent={busy:"文件任务进行中",stale:"下一步：重新检查改动",unchecked:"下一步：检查改动",
+    pending:`下一步：发布 ${changes} 项改动`,ok:"整合包已是最新"}[state];
+  text.textContent={busy:"已成功导入的文件会保留；任务完成后再检查并发布。",
+    stale:"检查之后又修改过文件或维护设置，重新检查后再发布给玩家。",
+    unchecked:"检查已保存的文件和维护设置，确认这次会给玩家带来哪些变化。",
+    pending:"改动已经检查完毕。确认文件和规则变化，填写更新记录后即可发布。",
+    ok:latest ? `玩家下次启动会获得版本 ${latest.displayVersion}。可以继续整理文件，或下载首次部署包发给新玩家。` : "当前没有待发布的改动。"}[state];
+  const openView=(view)=>document.querySelector(`.nav-button[data-view="${view}"]`)?.click();
+  actions.append(
+    workspaceButton(state==="ok" || state==="busy" ? "整理文件" : "查看改动并发布",()=>openView(state==="ok" || state==="busy" ? "content" : "publish"),"primary-button"),
+    workspaceButton("发放部署包",()=>openView("instance"),"secondary-button"));
+  const steps=[
+    {title:"整理文件",view:"content",state:state==="busy" ? "current" : "done",
+      detail:state==="busy" ? "文件任务进行中" : "添加、替换文件并设置维护方式"},
+    {title:"检查改动",view:"publish",state:state==="stale" || state==="unchecked" ? "current" : state==="busy" ? "pending" : "done",
+      detail:state==="stale" ? "文件或设置有变化，需要重新检查" : state==="unchecked" || state==="busy" ? "尚未检查" : changes ? `发现 ${changes} 项改动` : "没有新的改动"},
+    {title:"发布给玩家",view:"publish",state:state==="pending" ? "current" : state==="ok" ? "done" : "pending",
+      detail:state==="pending" ? "填写版本与更新记录后发布" : latest ? `当前版本 ${latest.displayVersion}` : "尚未发布"}
+  ];
+  const list=document.createElement("ol"); list.className="workflow-steps";
+  steps.forEach((step,index)=>{
+    const item=document.createElement("li"); item.className=`workflow-step ${step.state}`;
+    if(step.state==="current") item.setAttribute("aria-current","step");
+    const button=workspaceButton("",()=>openView(step.view),"workflow-step-button");
+    const marker=document.createElement("span"); marker.className="workflow-step-marker"; marker.setAttribute("aria-hidden","true");
+    if(step.state==="done") marker.innerHTML='<svg viewBox="0 0 24 24"><path d="M6.5 12.5l3.5 3.5 7.5-8"/></svg>';
+    else marker.textContent=String(index+1);
+    const copy=document.createElement("span"); copy.className="workflow-step-copy";
+    const title=document.createElement("strong"); title.textContent=step.title;
+    const detail=document.createElement("small"); detail.textContent=step.detail;
+    copy.append(title,detail); button.append(marker,copy); item.append(button); list.append(item);
+  });
+  panel.replaceChildren(head,list);
+}
+
+/** Suggests the version after the newest release by counting up its last number, skipping used ones. */
+function suggestNextVersion(releases) {
+  const latest=releases[0]?.displayVersion;
+  if(!latest) return "1.0.0";
+  const match=/^(.*?)(\d+)(\D*)$/.exec(latest);
+  if(!match) return "";
+  const [,prefix,digits,suffix]=match, used=new Set(releases.map(release=>release.displayVersion));
+  for(let step=1n; step<=100n; step++) {
+    const candidate=`${prefix}${String(BigInt(digits)+step).padStart(digits.length,"0")}${suffix}`;
+    if(!used.has(candidate)) return candidate;
+  }
+  return "";
 }
 
 function selectPersonalPane(name) {
@@ -113,6 +179,11 @@ function bindWorkspaceWorkflow() {
     }));
   });
   byId("publish-form").elements.minimumPlayerVersion.addEventListener("input",event=>{event.target.dataset.edited="true";});
+  byId("publish-form").elements.displayVersion.addEventListener("input",event=>{event.target.dataset.edited=app.project?.id || "";});
+  byId("workspace-status").addEventListener("click",()=>{
+    if(!app.project) byId("open-create-project").click();
+    else document.querySelector('.nav-button[data-view="publish"]')?.click();
+  });
   byId("personalization-form").addEventListener("invalid",event=>{
     const pane=event.target.closest("[data-personal-pane]"); if(pane) selectPersonalPane(pane.dataset.personalPane);
   },true);
@@ -129,6 +200,9 @@ function bindWorkspaceWorkflow() {
     requestAnimationFrame(resizePlayerPreview);
   });
   byId("hosting-method").addEventListener("change",selectHostingMethod); selectHostingMethod();
+  document.querySelectorAll('input[name="hostingMethod"]').forEach(choice=>choice.addEventListener("change",()=>{
+    byId("hosting-method").value=choice.value; selectHostingMethod();
+  }));
   for(const form of [byId("distribution-form"),byId("webdav-upload-form"),byId("s3-upload-form")]) {
     form.elements.outputDirectory.addEventListener("input",()=>{
       for(const other of [byId("distribution-form"),byId("webdav-upload-form"),byId("s3-upload-form")]) if(other!==form) other.elements.outputDirectory.value=form.elements.outputDirectory.value;

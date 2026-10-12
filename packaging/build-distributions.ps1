@@ -310,6 +310,14 @@ if (-not $PlayerOnly) {
     } finally {
         Pop-Location
     }
+    $adminUi = Join-Path $repoRoot "admin-desktop"
+    Push-Location $adminUi
+    try {
+        if (-not (Test-Path -LiteralPath (Join-Path $adminUi "node_modules"))) {
+            Invoke-Checked "npm.cmd" @("ci")
+        }
+        Invoke-Checked "npm.cmd" @("run", "build:web")
+    } finally { Pop-Location }
 }
 
 # Only clean module outputs: the root target directory may contain a running

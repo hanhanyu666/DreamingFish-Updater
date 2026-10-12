@@ -45,6 +45,11 @@
         <targetPath>cn/dreamingfish/updater/management/cli/web/player-preview</targetPath>
         <filtering>false</filtering>
       </resource>
+      <resource>
+        <directory>${project.basedir}/../admin-desktop/web-dist</directory>
+        <targetPath>cn/dreamingfish/updater/management/cli/web/workbench</targetPath>
+        <filtering>false</filtering>
+      </resource>
     </resources>
     <plugins>
       <plugin>

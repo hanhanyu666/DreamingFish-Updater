@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-load-desktop"
+description = "Enables the load_desktop command without any pre-configured scope."
+commands.allow = ["load_desktop"]
+
+[[permission]]
+identifier = "deny-load-desktop"
+description = "Denies the load_desktop command without any pre-configured scope."
+commands.deny = ["load_desktop"]

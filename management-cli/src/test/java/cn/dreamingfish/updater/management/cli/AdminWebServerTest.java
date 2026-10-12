@@ -45,6 +45,75 @@ class AdminWebServerTest {
             .build();
 
     @Test
+    void servesNewAndLegacyInterfacesFromSameOriginWithoutDesktopCredentials() throws Exception {
+        ManagementCli root = new ManagementCli(temporary.resolve("dual-ui/management-settings.json"), new StringReader(""));
+        boolean frontendBuilt = AdminWebServer.class.getResource("web/workbench/index.html") != null;
+        try (AdminWebServer server = new AdminWebServer(root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
+            server.start(); URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            HttpResponse<String> chooser = send(base, "/", "GET", null, null);
+            assertEquals(200, chooser.statusCode());
+            assertTrue(chooser.body().contains("data-workbench-available=\"" + frontendBuilt + "\""));
+            assertTrue(chooser.body().contains("/interface-mode.js"));
+            HttpResponse<String> legacy = send(base, "/legacy/", "GET", null, null);
+            assertEquals(200, legacy.statusCode());
+            assertTrue(legacy.body().contains("open-workspace-history"));
+            assertTrue(legacy.body().contains("use-new-interface"));
+            HttpResponse<String> workbench = send(base, "/workbench/", "GET", null, null);
+            if (!frontendBuilt) {
+                assertEquals(404, workbench.statusCode());
+                assertEquals(200, send(base, "/api/session", "GET", null, null).statusCode());
+                return;
+            }
+            assertEquals(200, workbench.statusCode());
+            assertTrue(workbench.body().contains("workbench-app"));
+            assertFalse(workbench.body().contains("__DFS_DESKTOP_TOKEN__"));
+            assertTrue(workbench.headers().firstValue("Content-Security-Policy").orElseThrow().contains("script-src 'self'"));
+            assertFalse(workbench.headers().firstValue("Content-Security-Policy").orElseThrow().contains("unsafe-eval"));
+            var matcher = java.util.regex.Pattern.compile("src=\"(/workbench/assets/[^\"]+\\.js)\"").matcher(workbench.body());
+            assertTrue(matcher.find());
+            assertEquals(200, send(base, matcher.group(1), "GET", null, null).statusCode());
+            assertEquals(200, send(base, "/interface-mode.js", "GET", null, null).statusCode());
+            assertEquals(404, send(base, "/workbench/%2e%2e/pom.xml", "GET", null, null).statusCode());
+            assertEquals(200, send(base, "/api/session", "GET", null, null).statusCode());
+        }
+    }
+
+    @Test
+    void previewFileSizeDescribesEmptyAndRemovedFilesIndependentlyOfDownloadBytes() throws Exception {
+        ManagementCli root = new ManagementCli(temporary.resolve("sizes-admin/management-settings.json"), new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("sizes-source"));
+        Files.write(source.resolve("empty.txt"), new byte[0]);
+        Files.writeString(source.resolve("content.txt"), "hello world");
+        root.services().projects().create("sizes", "Sizes", source, "http://127.0.0.1:8080",
+                cn.dreamingfish.updater.protocol.Branding.empty(), cn.dreamingfish.updater.management.ProjectRules.defaults());
+        new WebAuthStore(root.settingsFile().getParent().resolve("management-web-auth.json"))
+                .register("sizes-admin", "isolated-test-password".toCharArray(), true);
+        try (AdminWebServer server = new AdminWebServer(root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
+            server.start(); URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            String token = json.read(send(base, "/api/session", "GET", null, null).body().getBytes(StandardCharsets.UTF_8), Map.class).get("token").toString();
+            var first = send(base, "/api/projects/sizes/scan", "POST", "{}", token);
+            assertEquals(200, first.statusCode(), first.body());
+            Map firstView = json.read(first.body().getBytes(StandardCharsets.UTF_8), Map.class);
+            List<Map<String,Object>> added = (List<Map<String,Object>>) firstView.get("changes");
+            assertEquals(0L, ((Number)added.stream().filter(v -> v.get("path").equals("empty.txt")).findFirst().orElseThrow().get("fileSize")).longValue());
+            assertEquals(11L, ((Number)firstView.get("changedFileBytes")).longValue());
+            var preview = root.services().scanner().load("sizes");
+            root.services().publisher().publish("sizes", "1.0.0", "0.2.0", "",
+                    preview.previewId(), preview.confirmationDigest());
+            Files.delete(source.resolve("content.txt"));
+            var second = send(base, "/api/projects/sizes/scan", "POST", "{}", token);
+            assertEquals(200, second.statusCode(), second.body());
+            Map secondView = json.read(second.body().getBytes(StandardCharsets.UTF_8), Map.class);
+            List<Map<String,Object>> removed = (List<Map<String,Object>>) secondView.get("changes");
+            Map<String,Object> file = removed.stream().filter(v -> v.get("path").equals("content.txt")).findFirst().orElseThrow();
+            assertEquals("REMOVED", file.get("kind"));
+            assertEquals(11L, ((Number)file.get("fileSize")).longValue());
+            assertEquals(0L, ((Number)file.get("downloadSize")).longValue());
+            assertEquals(0L, ((Number)secondView.get("changedFileBytes")).longValue());
+        }
+    }
+
+    @Test
     void operationHistoryPreviewAndUndoKeepAuthenticationAndConfirmation() throws Exception {
         ManagementCli root = new ManagementCli(temporary.resolve("ops-admin/management-settings.json"), new StringReader(""));
         Path source = Files.createDirectories(temporary.resolve("ops-source"));
