@@ -19,6 +19,18 @@ export function policyPresentation(change:Data,maintenance:Data={}):PolicyPresen
  }
 }
 export const operationKinds:Record<string,string>={FILES:'文件操作',SETTINGS:'设置修改',PUBLISH:'版本发布'};
+// Source codes come from SourceFileService: DEFAULT, FILE, GROUP or DIRECTORY:<path>.
+export function presetSourceLabel(source:string|null|undefined){
+ if(!source||source==='DEFAULT')return '未单独设置，按默认普通同步';
+ if(source==='FILE')return '单独为这个文件设置';
+ if(source==='GROUP')return '属于可选内容，按普通同步';
+ if(source.startsWith('DIRECTORY:'))return `继承自文件夹 ${source.slice('DIRECTORY:'.length)}/`;
+ return '来自项目维护设置';
+}
+// The same server warning can repeat once per removed file; show each distinct message once.
+export function distinctWarnings(warnings:Data[]=[]){return [...new Set(warnings.map(w=>String(w.message||w.description||w.code||w)))];}
+// With the project sidebar open, sections are listed there and the view shows only the current title.
+export function sectionLabel(view:string,section:string){return viewSections[view]?.find(item=>item.id===section)?.label||'';}
 export const viewSections:Record<string,{id:string;label:string}[]>={
  changes:[{id:'changes',label:'待发布改动'},{id:'releases',label:'发布版本'},{id:'operations',label:'操作记录'},{id:'problems',label:'历史问题文件'}],
  delivery:[{id:'deployment',label:'发放整合包'},{id:'programs',label:'玩家端程序'},{id:'hosting',label:'外部托管'}],

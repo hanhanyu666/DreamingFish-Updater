@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {policyPresentation,viewSections} from '../src/workbench/presentation.ts';
+import {policyPresentation,viewSections,presetSourceLabel,distinctWarnings} from '../src/workbench/presentation.ts';
 import {interfaceLanding} from '../src/workbench/interface-state.ts';
 
 test('actual PRESET DTO renders the file and Chinese before/after values',()=>{
@@ -28,4 +28,11 @@ test('interface links retain project and view but reject unknown sections',()=>{
  assert.deepEqual(interfaceLanding('?project=test&view=changes&section=operations'),{projectId:'test',view:'changes',section:'operations'});
  assert.equal(interfaceLanding('?view=changes&section=unknown').section,'changes');
  assert.equal(interfaceLanding('?view=__proto__').view,'files');
+});
+test('rule sources render in Chinese instead of raw service codes',()=>{
+ assert.equal(presetSourceLabel('DIRECTORY:config/jei'),'继承自文件夹 config/jei/');
+ for(const source of ['DEFAULT','FILE','GROUP',null,'FUTURE'])assert.doesNotMatch(presetSourceLabel(source),/[A-Z]{3,}/);
+});
+test('publish warnings repeated per removed file are shown once',()=>{
+ assert.deepEqual(distinctWarnings([{message:'移除模组后会清理存档'},{message:'移除模组后会清理存档'},{code:'PLAYER_PROGRAM_REQUIRED',message:'需要新玩家端'}]),['移除模组后会清理存档','需要新玩家端']);
 });

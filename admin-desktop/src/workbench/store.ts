@@ -1,4 +1,4 @@
-import { reactive } from 'vue';
+import { computed,reactive } from 'vue';
 import type { Data,Entry,SourceFile,Task } from './model';
 import { nameOf,newestReleases,authRequiresForm } from './model';
 import {interfaceLanding} from './interface-state';
@@ -8,13 +8,18 @@ declare global {interface Window {__DFS_DESKTOP_TOKEN__?:string;__DFS_DESKTOP_ME
 export const desk=reactive({
  ready:false,auth:{} as Data,state:{} as Data,project:null as Data|null,projectId:landing.projectId,view:landing.view,section:landing.section,
  files:[] as SourceFile[],directories:[] as string[],directory:'',search:'',filter:'all',group:'',selection:[] as Entry[],
- inspector:true,sidebar:true,historyPaths:[''],historyIndex:0,busy:false,busyText:'',notice:'',error:'',
+ inspector:localStorage.getItem('dfs-workbench-inspector')==='on',sidebar:localStorage.getItem('dfs-workbench-sidebar')!=='off',historyPaths:[''],historyIndex:0,busy:false,busyText:'',notice:'',error:'',
  tasks:[] as Task[],tasksOpen:false,uploading:false,uploadPaused:false,transferTarget:'',
  dialog:'',dialogData:{} as Data,menu:'',palette:false,theme:(localStorage.getItem('dfs-admin-theme')||localStorage.getItem('dfs-desktop-theme')||'light'),
  releaseVersion:'',releaseNotes:'',operations:[] as Data[],releaseFiles:[] as Data[],operationPlan:null as Data|null,
  browse:{} as Data,browsePath:'',browseKind:'directory',browseSelected:'',browseAction:'',
  settingsDirty:false,browseValues:{} as Data,historyLoading:false,
 });
+// Shared by the project sidebar, the command bar and the file view.
+export const places=computed(()=>{const tops=new Set(desk.directories.filter(p=>!p.includes('/')));for(const f of desk.files)if(f.path.includes('/'))tops.add(f.path.split('/')[0]);return [...tops].sort((a,b)=>a.localeCompare(b,'zh-CN',{numeric:true})).map(path=>({path,count:desk.files.filter(f=>f.path.startsWith(path+'/')).length}));});
+export const groups=computed(()=>(desk.project?.maintenance?.optionalGroups||[]).map((g:Data)=>({...g,count:desk.files.filter(f=>f.optionalGroup===g.id).length})));
+export const publishState=computed(()=>!desk.project?.releases?.length?'未发布':desk.project?.previewStale||!desk.project.preview?'待检查':desk.project.preview.changes?.length||desk.project.preview.policyChanges?.length?'待发布':desk.files.some(f=>!f.published)?'待检查':'已发布');
+export const latestVersion=computed(()=>newestReleases(desk.project?.releases)[0]?.displayVersion||'');
 let sessionToken='';
 let suggestedFor='';
 export const apiPath=(suffix='')=>`/api/projects/${encodeURIComponent(desk.projectId)}${suffix}`;

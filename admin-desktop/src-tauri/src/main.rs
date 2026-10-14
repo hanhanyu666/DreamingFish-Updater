@@ -355,6 +355,7 @@ async fn connect_profile(
         })
         .build()
         .map_err(|e| format!("无法打开管理工作区：{e}"))?;
+    frame::round_corners(&workspace);
     let workspace_handle = workspace.clone();
     workspace.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -643,6 +644,7 @@ fn main() {
                 })
                 .build(app)?;
             let main = app.get_webview_window("main").ok_or("缺少连接选择窗口")?;
+            frame::round_corners(&main);
             let clone = main.clone();
             main.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { api, .. } = event {

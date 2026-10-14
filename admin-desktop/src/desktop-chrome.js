@@ -22,7 +22,8 @@
     frame.id = 'dfs-desktop-frame';
     frame.setAttribute('aria-label', '桌面窗口');
     const mark = document.createElement('span');
-    mark.className = 'dfs-frame-mark'; mark.textContent = 'DF';
+    // The DreamingFish mark: a small white fish on the brand tile.
+    mark.className = 'dfs-frame-mark'; mark.innerHTML = '<svg viewBox="0 0 32 32" aria-hidden="true"><path fill="#fff" d="M10.4 16 4.8 11.6c-.7-.6-1.8-.1-1.8.8v7.2c0 .9 1.1 1.4 1.8.8l5.6-4.4Z"/><path fill="#fff" fill-rule="evenodd" d="M9 16c2.8-4.6 6.6-7 10.6-7 4 0 7 2.6 8.4 7-1.4 4.4-4.4 7-8.4 7-4 0-7.8-2.4-10.6-7Zm14.7-1.6a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Z"/></svg>';
     const title = document.createElement('span');
     title.className = 'dfs-frame-title'; title.textContent = meta.name || '梦鱼更新管理';
     title.title = title.textContent;

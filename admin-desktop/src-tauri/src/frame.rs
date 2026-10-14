@@ -34,6 +34,28 @@ pub fn allowed(label: &str, url: &Url, active_origin: Option<&Origin>) -> bool {
         || (label == "workspace" && active_origin.is_some_and(|origin| *origin == url.origin()))
 }
 
+// Windows 11 leaves undecorated windows square; ask DWM for the system's rounded corners.
+// Earlier Windows versions ignore the attribute, and maximized windows stay square as usual.
+pub fn round_corners(window: &WebviewWindow) {
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        use windows_sys::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+        };
+        let preference = DWMWCP_ROUND;
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd.0 as _,
+                DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+                &preference as *const _ as *const _,
+                std::mem::size_of_val(&preference) as u32,
+            );
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = window;
+}
+
 pub fn operate(window: &WebviewWindow, action: Action) -> Result<FrameState, String> {
     let result = match action {
         Action::Status | Action::Connections => Ok(()),

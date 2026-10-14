@@ -37,7 +37,7 @@ npm --prefix admin-desktop run tauri -- dev
 
 Vite 使用 `127.0.0.1:1421`。仅内置 `main` 窗口拥有连接和生命周期命令权限；外部 `workspace` 仅能通过 `desktop_window_action` 操作当前窗框。所有命令同时检查调用窗口和页面来源，工作区窗框还检查当前连接的 origin。
 
-标题栏样式位于 `src/desktop-chrome.css`，初始化脚本为 `src/desktop-chrome.js`。`src/Launcher.vue` 和 `src/launcher.css` 实现连接库，`src/workbench/` 实现工作区的界面、状态与接口调用。文件与目录资源和真实玩家预览在 Vite 构建结束时复制到输出目录。标题栏初始化等待 DOM 就绪，播放器预览 iframe 不加载桌面窗框。
+标题栏样式位于 `src/desktop-chrome.css`，初始化脚本为 `src/desktop-chrome.js`。`src/Launcher.vue` 和 `src/launcher.css` 实现连接库，`src/workbench/` 实现工作区的界面、状态与接口调用。文件与目录资源和真实玩家预览在 Vite 构建结束时复制到输出目录。标题栏初始化等待 DOM 就绪，播放器预览 iframe 不加载桌面窗框。无边框窗口的圆角由 `src-tauri/src/frame.rs` 的 `round_corners` 向 Windows 11 DWM 申请。
 
 `src-tauri/src/workbench.rs` 为每次连接创建只监听 `127.0.0.1` 的工作区服务。静态资源来自 Tauri 内置资产；只有 `/api/` 转发到选定管理端，校验 Host、Origin 和每次连接的随机令牌。管理会话 cookie 留在连接客户端的内存中，不下发到浏览器；保留管理端自己的认证、CSRF 和恢复预览校验。上传和接口响应以流传输，断开时释放工作区监听端口与连接客户端。
 
