@@ -25,7 +25,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.2.1"));
+        assertTrue(version.out().contains("0.2.2"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -196,7 +196,7 @@ class ManagementCliTest {
         assertTrue(invocation.out().contains("[3/3] 玩家端个性化"));
         assertTrue(invocation.out().contains(
                 "主菜单 [12]“修改玩家端个性化设置”继续调整"));
-        assertTrue(invocation.out().contains("玩家端更新器访问地址（必填）"));
+        assertTrue(invocation.out().contains("玩家端更新器访问地址（可留空）"));
         assertTrue(invocation.out().contains("显示在首页左侧的大号标题区域"));
         assertTrue(invocation.out().contains("显示在主标题下方"));
         assertTrue(invocation.out().contains(
@@ -536,6 +536,31 @@ class ManagementCliTest {
             assertTrue(output.has("result"));
             assertEquals(null, parser.nextToken());
         }
+    }
+
+    @Test
+    void projectCreatedWithoutAnAddressPublishesOnceItIsSet() throws Exception {
+        String data = temporary.resolve("data").toString();
+        Path source = Files.createDirectories(temporary.resolve("source/mods")).getParent();
+        Files.writeString(source.resolve("mods/a.jar"), "a");
+        assertEquals(0, invoke("--data", data, "init").exitCode());
+        Invocation create = invoke("--data", data, "project", "create", "later",
+                "--name", "Later", "--source", source.toString());
+        assertEquals(0, create.exitCode(), create.err());
+        assertTrue(create.out().contains("not set"), create.out());
+        String[] publish = {"--data", data, "project", "publish", "later", "--version", "1.0.0",
+                "--confirm-player-upgrade", "--yes"};
+
+        assertEquals(0, invoke("--data", data, "project", "scan", "later").exitCode());
+        Invocation refused = invoke(publish);
+        assertTrue(refused.exitCode() != 0);
+        assertTrue(refused.err().contains("玩家更新地址"), refused.err());
+
+        assertEquals(0, invoke("--data", data, "project", "configure", "later",
+                "--public-url", "http://play.example.test:8080").exitCode());
+        assertEquals(0, invoke("--data", data, "project", "scan", "later").exitCode());
+        Invocation published = invoke(publish);
+        assertEquals(0, published.exitCode(), published.err());
     }
 
     private Invocation invoke(String... args) {

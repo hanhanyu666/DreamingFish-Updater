@@ -16,7 +16,8 @@ final class CliOutput {
         } else {
             root.out().printf("%s  %s%n", project.id(), project.displayName());
             root.out().println("  Source: " + project.sourceDirectory());
-            root.out().println("  Public URL: " + project.publicBaseUrl());
+            root.out().println("  Public URL: " + (project.publicBaseUrl().isBlank()
+                    ? "(not set; required before publishing)" : project.publicBaseUrl()));
             root.out().println("  Forced sync: " + (project.rules().lockedCleanupDirectories().isEmpty()
                     ? "disabled"
                     : String.join(", ", project.rules().lockedCleanupDirectories())));

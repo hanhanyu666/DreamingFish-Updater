@@ -20,7 +20,8 @@ public record ProjectSettingsSnapshot(String displayName, String sourceDirectory
         List<Change> result = new ArrayList<>();
         add(result, "项目名称", displayName, next.displayName);
         add(result, "整合包目录", sourceDirectory, next.sourceDirectory);
-        add(result, "玩家下载地址", publicBaseUrl, next.publicBaseUrl);
+        add(result, "玩家下载地址", publicBaseUrl.isBlank() ? "未填写" : publicBaseUrl,
+                next.publicBaseUrl.isBlank() ? "未填写" : next.publicBaseUrl);
         if (!Objects.equals(branding, next.branding)) {
             add(result,"玩家端标题",branding.productName(),next.branding.productName());
             add(result,"玩家端副标题",branding.subtitle(),next.branding.subtitle());

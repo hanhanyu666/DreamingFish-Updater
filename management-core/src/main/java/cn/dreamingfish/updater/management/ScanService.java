@@ -425,6 +425,9 @@ public final class ScanService {
                 }
                 try { PathSafety.assertSafePathTree(path); }
                 catch (IOException unsafe) { throw new java.io.UncheckedIOException(unsafe); }
+                catch (cn.dreamingfish.updater.protocol.ProtocolException alias) {
+                    throw SourceDirectoryCheck.linked(project.sourceDirectory(), path);
+                }
                 if (Files.isSymbolicLink(path)) {
                     throw new ManagementException("Managed source path cannot be a symbolic link: " + relative);
                 }
@@ -433,10 +436,8 @@ public final class ScanService {
                 }
                 files.add(hashStable(path, relative, projectRules));
             });
-        } catch (IOException e) {
-            throw new ManagementException("Unable to scan standard modpack directory " + project.sourceDirectory(), e);
-        } catch (java.io.UncheckedIOException e) {
-            throw new ManagementException("Unable to scan standard modpack directory " + project.sourceDirectory(), e);
+        } catch (IOException | java.io.UncheckedIOException e) {
+            throw SourceDirectoryCheck.unreadable(project.sourceDirectory(), e);
         }
         files.sort(Comparator.comparing(ScannedFile::path));
         PathSafety.validateDistinctPaths(files.stream().map(ScannedFile::path).toList());

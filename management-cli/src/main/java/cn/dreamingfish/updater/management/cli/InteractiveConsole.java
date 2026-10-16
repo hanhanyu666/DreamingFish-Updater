@@ -184,7 +184,8 @@ final class InteractiveConsole {
         root.out().println();
         root.out().println("项目：" + project.displayName() + " (" + project.id() + ")");
         root.out().println("整合包文件目录：" + project.sourceDirectory());
-        root.out().println("公共地址：" + project.publicBaseUrl());
+        root.out().println("公共地址：" + (project.publicBaseUrl().isBlank()
+                ? "未填写（发布版本和生成部署包前需要填写）" : project.publicBaseUrl()));
         ProjectRules rules = project.rules();
         root.out().println("清理多余文件：" + displayForcedDirectories(rules));
         root.out().println("维护规则：单独设置 " + rules.presets().size() + " 项 · 可选内容 "
@@ -212,7 +213,7 @@ final class InteractiveConsole {
         root.out().println("创建整合包项目");
         root.out().println("================================");
         root.out().println("[1/3] 创建必备设置");
-        root.out().println("以下四项用于创建项目、定位管理目录并让玩家端连接更新服务。");
+        root.out().println("以下前三项必填；玩家端更新器访问地址可以先留空，发布版本前再填写。");
         root.out().println();
         root.out().println("【必填】项目 ID：用于目录、接口和玩家端绑定；创建后不应随意更改。");
         root.out().println("  格式：小写字母或数字开头，可包含点、下划线和连字符，例如 build-server。");
@@ -223,10 +224,11 @@ final class InteractiveConsole {
         root.out().println("【必填】要管理的文件目录：只放准备交给更新器管理的内容，例如 mods、config。");
         root.out().println("  不需要复制完整 .minecraft；该目录必须与管理端 data 目录分开。");
         Path source = promptDirectory("要管理的文件目录（必填）", null, true);
-        root.out().println("【必填】玩家端更新器访问地址：写入玩家部署包，必须能从玩家电脑访问。");
+        root.out().println("【可稍后填写】玩家端更新器访问地址：写入玩家部署包，必须能从玩家电脑访问。");
+        root.out().println("  还没确定可以直接回车跳过，发布版本和生成部署包前需要填写。");
         root.out().println("  示例：http://example.com:39988；不要填写 0.0.0.0、127.0.0.1 或 localhost。");
         root.out().println("  请确认公网端口已经映射或转发到管理端下载服务端口。");
-        String publicUrl = promptRequired("玩家端更新器访问地址（必填）");
+        String publicUrl = prompt("玩家端更新器访问地址", "");
 
         root.out().println();
         root.out().println("[2/3] 文件维护方式");
@@ -260,6 +262,9 @@ final class InteractiveConsole {
         root.saveSettings(root.settings().withDefaultProject(id));
         root.out().println("项目已创建：" + project.displayName() + " (" + project.id() + ")");
         root.out().println("项目签名私钥已保存在管理数据目录，请通过加密备份保护它。");
+        if (project.publicBaseUrl().isBlank()) {
+            root.out().println("玩家端更新器访问地址还没填写，发布版本前请从主菜单 [3]“修改项目设置”或 Web 设置页补上。");
+        }
         root.out().println("建议下一步在 Web 管理界面添加整合包文件、扫描差异并创建首次发布。");
         if (confirm("是否现在启动 Web 管理界面继续配置？", true)) {
             serveWeb(false);
@@ -276,7 +281,7 @@ final class InteractiveConsole {
                 + "或用 project policy 命令设置。");
         String displayName = prompt("项目显示名称（必填）", current.displayName());
         Path source = promptDirectory("整合包文件目录（必填）", current.sourceDirectory(), false);
-        String publicUrl = prompt("玩家访问公共 HTTP 地址（必填）", current.publicBaseUrl());
+        String publicUrl = prompt("玩家访问公共 HTTP 地址（发布前必填）", current.publicBaseUrl());
         var services = root.services();
         ProjectRecord updated = services.projects().configure(
                 current.id(), displayName, source, publicUrl,

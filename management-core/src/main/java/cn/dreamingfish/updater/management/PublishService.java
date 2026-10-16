@@ -68,6 +68,7 @@ public final class PublishService {
                                   String previewId, String previewDigest) {
         try (ProjectLock ignored = ProjectLock.acquire(PathSafety.resolveInside(paths.locks(), projectId + ".lock"))) {
             ProjectRecord project = database.requireProject(projectId);
+            ProjectService.requirePublicBaseUrl(project, "发布版本");
             PublishPreview preview = scanner.requireConfirmation(projectId, previewId, previewDigest);
             ensurePreviewBaseIsCurrent(preview);
             ensureRemovalDecisions(preview, project.rules());

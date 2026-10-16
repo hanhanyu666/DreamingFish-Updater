@@ -1,6 +1,6 @@
 # DreamingFish Admin Desktop
 
-Tauri 2 管理端桌面版，版本 0.2.1，Windows x64。
+Tauri 2 管理端桌面版，版本 0.2.2，Windows x64。
 
 连接页和工作区使用 Vue 3 / TypeScript / Vite，作为独立桌面前端随程序打包。本机、HTTPS 和 SSH 连接都加载同一套桌面资源，再调用当前管理端的业务接口。Rust 负责本机核心、连接代理、SSH 隧道、窗口与托盘；文件维护、认证、签名、发布与历史恢复继续由 Java 管理核心处理。
 
@@ -21,8 +21,8 @@ Tauri 2 管理端桌面版，版本 0.2.1，Windows x64。
 输出位于仓库 `dist/`：
 
 - `dfs-admin-desktop-windows-x64/DreamingFishAdminDesktop.exe`
-- `dfs-admin-desktop-windows-x64-0.2.1.zip`
-- `dfs-admin-desktop-windows-x64-0.2.1-setup.exe`
+- `dfs-admin-desktop-windows-x64-0.2.2.zip`
+- `dfs-admin-desktop-windows-x64-0.2.2-setup.exe`
 
 只生成便携包可加 `-PortableOnly`。已构建核心可加 `-SkipBuildCore`；`-SkipTests` 仅用于已经验证过的构建。公开包只包含程序、Java 和 Bootstrap Agent，不包含管理账户、项目或密钥。
 

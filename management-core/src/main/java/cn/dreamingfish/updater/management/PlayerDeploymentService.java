@@ -36,6 +36,7 @@ public final class PlayerDeploymentService {
                                      String releaseId, Path outputParent,
                                      Path bootstrapAgent) {
         ProjectRecord project = database.requireProject(projectId);
+        ProjectService.requirePublicBaseUrl(project, "生成玩家部署包");
         StoredRelease release = database.findRelease(projectId, releaseId)
                 .orElseThrow(() -> new ManagementException(
                         "Unknown release: " + releaseId));

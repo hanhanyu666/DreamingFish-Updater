@@ -90,9 +90,10 @@ async function revoke(id:string,correction=false){if(!confirm('结束这个处�
   <aside v-if="desk.section==='changes'" class="side-card composer" :class="{open:composing}" aria-label="发布新版本">
    <header class="card-header plain"><span class="header-icon accent"><Rocket :size="17"/></span><div><strong>准备新版本</strong><small>{{total?`${total} 项改动将发给玩家`:'没有待发布的改动'}}</small></div><button class="icon-button narrow-only" aria-label="收起" title="收起" @click="composing=false"><X :size="16"/></button></header>
    <div class="card-scroll"><label>版本号<input v-model="desk.releaseVersion" placeholder="例如 1.0.1" required></label><label>更新说明<textarea v-model="desk.releaseNotes" rows="7" placeholder="告诉玩家，这次更新了什么"></textarea></label>
+    <div v-if="!desk.project?.publicBaseUrl" class="notice-card warning compact"><TriangleAlert :size="16"/><div><p>还没有填写玩家更新地址。发布前请先填写，玩家端要从这个地址获取更新。</p><p><button class="text-action" @click="safely(()=>openView('settings','project'))">去填写<ArrowRight :size="13"/></button></p></div></div>
     <div v-if="warnings.length" class="notice-card warning compact"><TriangleAlert :size="16"/><div><p v-for="(warning,i) in warnings" :key="i">{{warning}}</p></div></div>
     <label v-if="preview?.requiresPlayerUpgrade" class="check"><input v-model="ack" type="checkbox">玩家将获得 {{preview.policyPlayerVersion}} 或更新的玩家端</label></div>
-   <footer class="card-footer stacked"><button class="accent large full" :disabled="desk.busy||!preview||!desk.releaseVersion||(preview.requiresPlayerUpgrade&&!ack)" @click="safely(()=>publish(ack))"><Upload :size="16"/>发布{{desk.releaseVersion?` ${desk.releaseVersion}`:'新版本'}}</button><span>最低玩家端 {{preview?.policyPlayerVersion||'0.2.0'}} · 发布后玩家下次启动时更新</span></footer>
+   <footer class="card-footer stacked"><button class="accent large full" :disabled="desk.busy||!preview||!desk.releaseVersion||!desk.project?.publicBaseUrl||(preview.requiresPlayerUpgrade&&!ack)" @click="safely(()=>publish(ack))"><Upload :size="16"/>发布{{desk.releaseVersion?` ${desk.releaseVersion}`:'新版本'}}</button><span>最低玩家端 {{preview?.policyPlayerVersion||'0.2.0'}} · 发布后玩家下次启动时更新</span></footer>
   </aside>
  </div>
 </template>

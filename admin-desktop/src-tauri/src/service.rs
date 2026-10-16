@@ -92,9 +92,26 @@ fn tail(path: &Path) -> String {
     read_tail().unwrap_or_default()
 }
 
+/// The management home receives project keys and releases, so it must not be a folder of unrelated files.
+pub fn require_management_home(home: &Path) -> Result<(), String> {
+    if home.join("management-settings.json").is_file()
+        || home.join("data").join("management.db").is_file()
+    {
+        return Ok(());
+    }
+    let occupied = fs::read_dir(home).is_ok_and(|mut entries| entries.next().is_some());
+    if occupied {
+        return Err(format!(
+            "“{}”里已有其他文件。管理数据目录会写入项目记录、签名密钥和发布文件，请选择一个空文件夹，或以前用过的管理端目录。",
+            home.display()
+        ));
+    }
+    Ok(())
+}
+
 fn ready_url(message: &serde_json::Value, child_id: u32) -> Result<Url, String> {
     if message["type"] != "ready"
-        || message["version"] != "0.2.1"
+        || message["version"] != "0.2.2"
         || message["pid"].as_u64() != Some(child_id.into())
     {
         return Err("管理核心就绪信息无效".into());
@@ -189,6 +206,7 @@ pub fn connect(
         }),
         Connection::Local { home } => {
             let home = PathBuf::from(home);
+            require_management_home(&home)?;
             fs::create_dir_all(&home).map_err(|e| format!("无法打开管理数据目录：{e}"))?;
             let packaged = core(app)?;
             let (path, mut log) = logs(root, profile)?;
@@ -391,7 +409,7 @@ mod tests {
     use super::*;
     #[test]
     fn only_the_owned_process_can_report_loopback_ready() {
-        let good = serde_json::json!({"type":"ready","version":"0.2.1","pid":42,"port":20080,"url":"http://127.0.0.1:20080/"});
+        let good = serde_json::json!({"type":"ready","version":"0.2.2","pid":42,"port":20080,"url":"http://127.0.0.1:20080/"});
         assert!(ready_url(&good, 42).is_ok());
         assert!(ready_url(&good, 43).is_err());
         let mut bad = good.clone();
@@ -400,5 +418,25 @@ mod tests {
         bad = good;
         bad["port"] = serde_json::json!(0);
         assert!(ready_url(&bad, 42).is_err());
+    }
+
+    #[test]
+    fn management_home_must_be_empty_or_already_managed() {
+        let root = std::env::temp_dir().join(format!("dfs-home-check-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        assert!(require_management_home(&root.join("missing")).is_ok());
+        let downloads = root.join("downloads");
+        fs::create_dir_all(&downloads).unwrap();
+        assert!(require_management_home(&downloads).is_ok());
+        fs::write(downloads.join("setup.exe"), b"x").unwrap();
+        assert!(require_management_home(&downloads).is_err());
+        fs::write(downloads.join("management-settings.json"), b"{}").unwrap();
+        assert!(require_management_home(&downloads).is_ok());
+        let legacy = root.join("legacy");
+        fs::create_dir_all(legacy.join("data")).unwrap();
+        fs::write(legacy.join("data").join("management.db"), b"").unwrap();
+        fs::write(legacy.join("dfs-admin.jar"), b"").unwrap();
+        assert!(require_management_home(&legacy).is_ok());
+        let _ = fs::remove_dir_all(&root);
     }
 }

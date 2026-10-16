@@ -21,7 +21,8 @@ final class ProjectCreateCommand implements Runnable {
     @CommandLine.Option(names = "--source", required = true, description = "Dedicated standard modpack directory")
     Path source;
 
-    @CommandLine.Option(names = "--public-url", required = true, description = "Public HTTP base URL")
+    @CommandLine.Option(names = "--public-url",
+            description = "Public HTTP base URL; may be set later with project configure, before publishing")
     String publicUrl;
 
     @CommandLine.Option(names = "--subtitle", defaultValue = "Minecraft modpack update")

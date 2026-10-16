@@ -29,6 +29,7 @@ import cn.dreamingfish.updater.protocol.ManifestFile;
 import cn.dreamingfish.updater.protocol.PlayerCustomPage;
 import cn.dreamingfish.updater.protocol.PlayerContentPage;
 import cn.dreamingfish.updater.protocol.PlayerNewsArticle;
+import cn.dreamingfish.updater.protocol.ProtocolException;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -136,16 +137,25 @@ final class AdminWebServer implements AutoCloseable {
                     "error", e.code,
                     "message", e.getMessage()
             ));
-        } catch (ManagementException | IllegalArgumentException e) {
+        } catch (ManagementException | IllegalArgumentException | ProtocolException e) {
             sendJson(exchange, 400, Map.of(
                     "error", "invalid_request",
                     "message", usefulMessage(e)
             ));
         } catch (Exception e) {
-            if (Boolean.getBoolean("dfs.debug")) e.printStackTrace(root.err());
+            // The desktop shell has no terminal: stderr is its run log, so always record the cause.
+            Throwable cause = e instanceof java.io.UncheckedIOException ? e.getCause() : e;
+            synchronized (root.err()) {
+                root.err().println(java.time.Instant.now() + " " + exchange.getRequestMethod()
+                        + " " + exchange.getRequestURI().getPath() + " 处理失败");
+                cause.printStackTrace(root.err());
+                root.err().flush();
+            }
             sendJson(exchange, 500, Map.of(
                     "error", "internal_error",
-                    "message", "管理端处理请求时发生错误，请查看终端日志"
+                    "message", "管理端处理请求时发生意外错误（" + cause.getClass().getSimpleName()
+                            + (cause.getMessage() == null ? "" : "：" + cause.getMessage())
+                            + "），详细信息已写入管理端日志"
             ));
         } finally {
             exchange.close();
@@ -711,8 +721,9 @@ final class AdminWebServer implements AutoCloseable {
         if (segments.size() == 4 && segments.get(3).equals("check-address")) {
             requireMethod(exchange, "POST");
             AddressCheckRequest request = readJson(exchange, AddressCheckRequest.class);
-            sendJson(exchange, 200, new ProjectConnectionService(root.services().json()).check(projectId,
-                    defaultValue(request.url, root.services().database().requireProject(projectId).publicBaseUrl())));
+            String url = defaultValue(request.url, root.services().database().requireProject(projectId).publicBaseUrl());
+            if (url.isBlank()) throw new WebApiException(400, "address_missing", "请先填写玩家更新地址，再检测");
+            sendJson(exchange, 200, new ProjectConnectionService(root.services().json()).check(projectId, url));
             return;
         }
         if (segments.size() == 5 && segments.get(3).equals("deployment")
@@ -972,7 +983,7 @@ final class AdminWebServer implements AutoCloseable {
                 id,
                 displayName,
                 Path.of(required(request.sourceDirectory, "整合包目录")),
-                required(request.publicBaseUrl, "玩家访问地址"),
+                request.publicBaseUrl == null ? "" : request.publicBaseUrl.trim(),
                 branding,
                 rules
         );

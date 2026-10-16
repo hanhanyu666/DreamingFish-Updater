@@ -1,4 +1,4 @@
-DreamingFish 管理端桌面版 0.2.1（Windows x64）
+DreamingFish 管理端桌面版 0.2.2（Windows x64）
 
 双击 DreamingFishAdminDesktop.exe，选择本机管理或远程连接。
 程序内置 Java，无需另外安装 Java。Windows 使用系统 WebView2；安装版会在缺少 WebView2 时联网安装。

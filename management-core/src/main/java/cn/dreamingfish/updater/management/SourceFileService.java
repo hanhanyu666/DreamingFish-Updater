@@ -94,9 +94,8 @@ public final class SourceFileService {
                         mod == null ? null : mod.displayName(),
                         mod == null ? null : mod.version()));
             }
-        } catch (IOException e) {
-            throw new ManagementException(
-                    "Unable to read standard modpack directory " + project.sourceDirectory(), e);
+        } catch (IOException | java.io.UncheckedIOException e) {
+            throw SourceDirectoryCheck.unreadable(project.sourceDirectory(), e);
         }
         result.sort(Comparator.comparing(SourceFileEntry::path));
         return List.copyOf(result);
@@ -142,10 +141,8 @@ public final class SourceFileService {
                     result.add(relative);
                 }
             }
-        } catch (IOException e) {
-            throw new ManagementException(
-                    "Unable to read standard modpack directories "
-                            + project.sourceDirectory(), e);
+        } catch (IOException | java.io.UncheckedIOException e) {
+            throw SourceDirectoryCheck.unreadable(project.sourceDirectory(), e);
         }
         result.sort(String::compareTo);
         return List.copyOf(result);

@@ -16,7 +16,7 @@
       <div id="auth-loading" class="auth-loading"><div class="busy-spinner"></div><span>正在检查账户状态</span></div>
       <form id="register-form" class="auth-form" hidden>
         <div><span class="page-kicker">FIRST TIME SETUP</span><h1>创建管理员账户</h1><p>此账户用于从公网访问管理界面。</p></div>
-        <label class="field"><span>用户名</span><input name="username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" required autofocus><small class="field-help">3–32 位，只能使用字母、数字、点、下划线或连字符。</small></label>
+        <label class="field"><span>用户名</span><input name="username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,31}" required autofocus><small class="field-help">3–32 位，只能使用字母、数字、点、下划线或连字符。</small></label>
         <label class="field"><span>密码</span><input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="256" required><small class="field-help">至少 10 位，建议使用 14 位以上且不与其他网站重复的密码。</small></label>
         <label class="field"><span>确认密码</span><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="256" required></label>
         <label class="check-field auth-check"><input name="allowLocalBypass" type="checkbox"><span>允许在管理服务本机访问时免登录</span></label>
@@ -189,8 +189,8 @@
                 <small class="field-help">选择服务器上用于存放 mods、config 等待管理文件的目录，不需要放入完整 .minecraft。</small>
               </label>
               <label class="field span-2">
-                <span>玩家端更新器访问地址（必填）</span>
-                <div class="path-input-row"><input name="publicBaseUrl" type="url" placeholder="例如 https://update.example.com" required><button class="secondary-button" id="check-project-address" type="button">检测地址</button></div><output id="address-check-result" class="field-help" aria-live="polite"></output>
+                <span>玩家端更新器访问地址（发布前必填）</span>
+                <div class="path-input-row"><input name="publicBaseUrl" type="url" placeholder="例如 https://update.example.com"><button class="secondary-button" id="check-project-address" type="button">检测地址</button></div><output id="address-check-result" class="field-help" aria-live="polite"></output>
                 <small class="field-help">填写玩家电脑上的更新器实际访问的地址。请先确认公网端口已映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
               </label>
               <p class="notice-line span-2">文件的维护方式、可选内容和问题处理都在“管理内容”页面中设置。</p>
@@ -845,7 +845,7 @@
     <form method="dialog" id="account-form">
       <div class="modal-header"><div><span>ACCOUNT SECURITY</span><h2>账户安全设置</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button></div>
       <div class="form-grid one-column">
-        <label class="field"><span>用户名</span><input name="username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" required></label>
+        <label class="field"><span>用户名</span><input name="username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,31}" required></label>
         <label class="field"><span>当前密码（必填）</span><input name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
         <label class="field"><span>新密码（留空则不修改）</span><input name="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="256"></label>
         <label class="field"><span>确认新密码</span><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="256"></label>
@@ -864,11 +864,11 @@
       <div class="form-grid">
         <div class="form-section-heading span-2">
           <strong>创建必备设置</strong>
-          <small>以下四项用于创建项目、定位管理目录并让玩家端连接更新服务。</small>
+          <small>前三项必填；玩家端更新器访问地址可以先留空，发布版本前再填写。</small>
         </div>
         <label class="field">
           <span>项目 ID（必填）</span>
-          <input name="id" pattern="[a-z0-9][a-z0-9._-]{0,63}" placeholder="build-server" title="小写字母或数字开头，可包含点、下划线和连字符" required>
+          <input name="id" pattern="[a-z0-9][a-z0-9._\-]{0,63}" placeholder="build-server" title="小写字母或数字开头，可包含点、下划线和连字符" required>
           <small class="field-help">用于接口、目录和玩家端绑定，创建后不应随意更改。</small>
         </label>
         <label class="field">
@@ -885,9 +885,9 @@
           <small class="field-help">选择服务器上用于存放 mods、config 等待管理文件的目录；必须与管理端 data 目录分开。</small>
         </label>
         <label class="field span-2">
-          <span>玩家端更新器访问地址（必填）</span>
-          <input name="publicBaseUrl" type="url" placeholder="例如 http://您的公网IP或域名:公网端口" required>
-          <small class="field-help">填写玩家电脑上的更新器实际访问地址。请确认公网端口已经映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。</small>
+          <span>玩家端更新器访问地址（可稍后填写）</span>
+          <input name="publicBaseUrl" type="url" placeholder="例如 http://您的公网IP或域名:公网端口">
+          <small class="field-help">填写玩家电脑上的更新器实际访问地址。请确认公网端口已经映射或转发到本管理端的下载服务端口；不要填写 0.0.0.0、127.0.0.1 或内网地址。还没确定可以先留空，发布版本和生成部署包前需要填写。</small>
         </label>
         <div class="form-section-heading span-2">
           <strong>玩家端个性化</strong>

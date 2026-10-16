@@ -37,7 +37,8 @@ def inspect(archive: zipfile.ZipFile, prefix: str, issues: list[dict], marker_by
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="0.2.1")
+    parser.add_argument("--version", default="0.2.1", help="Player version")
+    parser.add_argument("--admin-version", default="0.2.2")
     parser.add_argument("--dist", type=Path, default=Path(__file__).resolve().parent.parent / "dist")
     parser.add_argument("--report", type=Path)
     parser.add_argument("--markers", type=Path, help="Local JSON array of private strings; keep this file outside public source control")
@@ -46,9 +47,9 @@ def main() -> int:
     if not isinstance(markers, list) or any(not isinstance(m, str) or not m for m in markers):
         parser.error("--markers must contain a JSON array of nonempty strings")
     marker_bytes = [(marker, marker.encode(encoding)) for marker in markers for encoding in ("utf-8", "utf-16le")]
-    names = [f"dfs-admin-windows-x64-{args.version}.zip", f"dfs-admin-linux-x64-{args.version}.zip",
+    names = [f"dfs-admin-windows-x64-{args.admin_version}.zip", f"dfs-admin-linux-x64-{args.admin_version}.zip",
              f"dreamingfish-player-windows-x64-{args.version}.zip"]
-    report = {"version": args.version, "archives": [], "issues": []}
+    report = {"version": args.version, "adminVersion": args.admin_version, "archives": [], "issues": []}
     for name in names:
         path = args.dist / name
         if not path.is_file():

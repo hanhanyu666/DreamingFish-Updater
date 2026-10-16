@@ -133,7 +133,7 @@ fn load_desktop(window: WebviewWindow, state: State<Desktop>) -> Result<Snapshot
             .map_err(|e| e.to_string())?
             .as_ref()
             .map(|a| a.profile.id.clone()),
-        version: "0.2.1",
+        version: "0.2.2",
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -146,6 +146,9 @@ fn save_profile(
 ) -> Result<Profile, String> {
     launcher(&window)?;
     profile.normalize()?;
+    if let profiles::Connection::Local { home } = &profile.connection {
+        service::require_management_home(std::path::Path::new(home))?;
+    }
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
     if profile.id.is_empty() {
         profile.id = config
@@ -504,7 +507,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.2.1", "success":true,
+            Ok::<_, String>(serde_json::json!({"version":"0.2.2", "success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,

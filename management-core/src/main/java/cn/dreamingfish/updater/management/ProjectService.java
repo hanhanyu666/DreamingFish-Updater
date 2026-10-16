@@ -38,7 +38,8 @@ public final class ProjectService {
         validateProjectId(id);
         String name = normalizeDisplayName(displayName);
         Path source = validateSource(sourceDirectory);
-        String baseUrl = normalizeBaseUrl(publicBaseUrl);
+        String baseUrl = normalizeOptionalBaseUrl(publicBaseUrl);
+        SourceDirectoryCheck.requireReadable(source);
         ProjectKeyStore.KeyMaterial key = keys.create(id);
         ProjectRecord project = new ProjectRecord(
                 id,
@@ -53,7 +54,7 @@ public final class ProjectService {
                 Instant.now()
         );
         try {
-            ManifestValidator.validateBinding(bindingFor(project, "DreamingFishUpdater", null));
+            validateBinding(project);
             database.insertProject(project);
             return project;
         } catch (RuntimeException e) {
@@ -85,20 +86,22 @@ public final class ProjectService {
         String name = displayName == null
                 ? current.displayName() : normalizeDisplayName(displayName);
         Path source = sourceDirectory == null ? current.sourceDirectory() : validateSource(sourceDirectory);
-        String url = publicBaseUrl == null ? current.publicBaseUrl() : normalizeBaseUrl(publicBaseUrl);
+        String url = publicBaseUrl == null ? current.publicBaseUrl() : normalizeOptionalBaseUrl(publicBaseUrl);
+        if (!source.equals(current.sourceDirectory())) SourceDirectoryCheck.requireReadable(source);
         Branding nextBranding = branding == null ? current.branding() : branding;
         ProjectRules nextRules = rules == null ? current.rules() : rules;
         ProjectRecord candidate = new ProjectRecord(
                 current.id(), name, source, url, current.publicKey(), current.privateKeyFile(),
                 nextBranding, nextRules, current.nextSequence(), current.createdAt()
         );
-        ManifestValidator.validateBinding(bindingFor(candidate, "DreamingFishUpdater", null));
+        validateBinding(candidate);
         new RuleSet(nextRules);
         database.updateProject(id, name, source, url, nextBranding, nextRules);
         return database.requireProject(id);
     }
 
     public ProjectBinding bindingFor(ProjectRecord project, String playerHome, String bundledCoverPath) {
+        requirePublicBaseUrl(project, "生成玩家端配置");
         return new ProjectBinding(
                 ProtocolConstants.BINDING_SCHEMA_VERSION,
                 project.id(),
@@ -314,13 +317,36 @@ public final class ProjectService {
         return normalized;
     }
 
+    /**
+     * The update address may stay empty while the pack is prepared. Players only learn it from a
+     * deployment package, so it is required before publishing or delivering.
+     */
+    public static void requirePublicBaseUrl(ProjectRecord project, String purpose) {
+        if (project.publicBaseUrl().isBlank()) {
+            throw new ManagementException("还没有填写玩家更新地址。" + purpose
+                    + "前，请先在项目设置里填写玩家电脑能访问的地址，例如 http://你的域名或公网IP:端口");
+        }
+    }
+
+    private static void validateBinding(ProjectRecord project) {
+        // An address chosen later is validated when it is set; the rest of the binding must be valid now.
+        String url = project.publicBaseUrl().isBlank() ? "http://127.0.0.1" : project.publicBaseUrl();
+        ManifestValidator.validateBinding(new ProjectBinding(ProtocolConstants.BINDING_SCHEMA_VERSION,
+                project.id(), url, project.publicKey(), "DreamingFishUpdater", null, project.branding()));
+    }
+
+    static String normalizeOptionalBaseUrl(String input) {
+        return input == null || input.isBlank() ? "" : normalizeBaseUrl(input.trim());
+    }
+
     static String normalizeBaseUrl(String input) {
         try {
             URI uri = new URI(input);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
             if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null
                     || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
-                throw new ManagementException("Public base URL must be an absolute HTTP(S) URL");
+                throw new ManagementException("玩家更新地址必须是以 http:// 或 https:// 开头的完整地址，"
+                        + "不能带用户名、问号参数或 #，例如 http://你的域名或公网IP:端口");
             }
             String value = uri.toString();
             while (value.endsWith("/")) {
@@ -328,7 +354,7 @@ public final class ProjectService {
             }
             return value;
         } catch (URISyntaxException | NullPointerException e) {
-            throw new ManagementException("Invalid public base URL", e);
+            throw new ManagementException("玩家更新地址格式不正确：" + input, e);
         }
     }
 }
