@@ -1,6 +1,6 @@
 # DreamingFish Admin Desktop
 
-Tauri 2 管理端桌面版，版本 0.2.3，Windows x64。
+Tauri 2 管理端桌面版，版本 0.2.4，Windows x64。
 
 连接页和工作区使用 Vue 3 / TypeScript / Vite，作为独立桌面前端随程序打包。本机、HTTPS 和 SSH 连接都加载同一套桌面资源，再调用当前管理端的业务接口。Rust 负责本机核心、连接代理、SSH 隧道、窗口与托盘；文件维护、认证、签名、发布与历史恢复继续由 Java 管理核心处理。
 
@@ -21,13 +21,19 @@ Tauri 2 管理端桌面版，版本 0.2.3，Windows x64。
 输出位于仓库 `dist/`：
 
 - `dfs-admin-desktop-windows-x64/DreamingFishAdminDesktop.exe`
-- `dfs-admin-desktop-windows-x64-0.2.3.zip`
-- `dfs-admin-desktop-windows-x64-0.2.3-setup.exe`
+- `dfs-admin-desktop-windows-x64-0.2.4.zip`
+- `dfs-admin-desktop-windows-x64-0.2.4-setup.exe`
 - `latest.json`：安装版自动更新读取的版本信息
 
 安装程序会用更新私钥签名，默认读取 `%USERPROFILE%\.tauri\dreamingfish-admin-desktop.key`，可用 `-SigningKey` 指定。私钥不放进仓库，务必另外备份：已安装的桌面端只接受这把私钥签名的更新，丢失后只能让用户手动重装。没有私钥时加 `-NoUpdaterSignature` 只能做本地测试包。生成新私钥用 `npx tauri signer generate --ci -w <路径>`，并把公钥写进 `tauri.conf.json` 的 `plugins.updater.pubkey`。
 
-发布 GitHub Release 时，把 `latest.json` 和安装程序一起上传。桌面端从 `releases/latest/download/latest.json` 读取更新，所以之后每个正式 Release 都要带上 `latest.json`；只发玩家端的版本也要带上上一份。`latest.json` 中的下载地址默认指向 `v<桌面版版本>` 标签，标签不同时用 `-ReleaseTag` 指定。
+桌面端从 `releases/latest/download/latest.json` 读取更新，所以每个正式 Release 都要带上 `latest.json`。推送提交和标签后，用发布脚本创建 Release，它会自动带上 `latest.json`（这次没有新桌面版时沿用上一个 Release 的），生成 `SHA256SUMS.txt`，发布后再检查自动更新地址：
+
+```powershell
+.\packaging\publish-release.ps1 -Tag v0.2.4 -NotesFile <发布说明.md>
+```
+
+加 `-DryRun` 只列出要上传的文件。`latest.json` 中的下载地址默认指向 `v<桌面版版本>` 标签，标签不同时打包时用 `-ReleaseTag` 指定。便携版压缩包里带一层“梦鱼更新管理”文件夹。
 
 只生成便携包可加 `-PortableOnly`。已构建核心可加 `-SkipBuildCore`；`-SkipTests` 仅用于已经验证过的构建。公开包只包含程序、Java 和 Bootstrap Agent，不包含管理账户、项目或密钥。
 
@@ -48,7 +54,7 @@ Vite 使用 `127.0.0.1:1421`。仅内置 `main` 窗口拥有连接和生命周�
 
 本机 Java 入口为 `dfs-admin desktop`，通过标准输出发出带 PID 的就绪 JSON，并通过标准输入接收 `{"command":"shutdown"}`。管理端只监听自动分配的 loopback 端口，数据目录加锁，桌面外壳关闭所属服务时保留已有网页配置。Windows Job Object 在外壳异常退出时清理所属子进程。
 
-桌面端的连接记录、日志、界面缓存和默认管理目录放在程序旁的 `data`；程序目录不能写入时退回 `%LOCALAPPDATA%\cn.dreamingfish.admin.desktop`，并沿用那里旧版本的 `connections.json`。程序目录有 `uninstall.exe` 时视为安装版，可以自动更新；便携版只提示新版本。安装程序钩子与中文文字在 `src-tauri/installer/`，侧边图和顶部图由 `render-art.py` 从图标绘制。
+桌面端的连接记录、日志、界面缓存和默认管理目录放在程序旁的 `data`；程序目录不能写入时退回 `%LOCALAPPDATA%\cn.dreamingfish.admin.desktop`。旧版本留在那里的连接记录、默认管理目录和日志由 `src/migrate.rs` 在启动时整体迁移进 `data` 并删除旧文件夹；同盘直接改名，跨盘先复制核对再删除，文件被占用时保持原样。便携版在临时目录里运行或缺少 `core` 时直接提示并退出。程序目录有 `uninstall.exe` 时视为安装版，可以自动更新；便携版只提示新版本。安装程序钩子与中文文字在 `src-tauri/installer/`，侧边图和顶部图由 `render-art.py` 从图标绘制。
 
 测试可用 `--desktop-home <绝对路径>` 隔离连接记录和默认管理目录。此参数不会更改发行包默认的数据位置。
 

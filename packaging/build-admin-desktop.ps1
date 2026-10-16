@@ -107,7 +107,15 @@ try {
     Copy-Item -LiteralPath (Join-Path $desktopRepo 'LICENSE') -Destination (Join-Path $desktopPackage 'LICENSE')
     $desktopZip = Join-Path $desktopDist "dfs-admin-desktop-windows-x64-$desktopVersion.zip"
     if(Test-Path -LiteralPath $desktopZip){Remove-Item -LiteralPath $desktopZip -Force}
-    Compress-Archive -Path (Join-Path $desktopPackage '*') -DestinationPath $desktopZip -CompressionLevel Optimal
+    # One top-level folder, so "extract here" never scatters the program and its data folder.
+    $portableStage = Join-Path $desktopRepo 'target\packaging-admin-desktop\portable'
+    if(Test-Path -LiteralPath $portableStage){Remove-Item -LiteralPath $portableStage -Recurse -Force}
+    New-Item -ItemType Directory -Path $portableStage -Force | Out-Null
+    # The folder is named 梦鱼更新管理; spelled as code points because Windows PowerShell reads this file as ANSI.
+    $portableName = -join [char[]](0x68A6,0x9C7C,0x66F4,0x65B0,0x7BA1,0x7406)
+    Copy-Item -LiteralPath $desktopPackage -Destination (Join-Path $portableStage $portableName) -Recurse
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::CreateFromDirectory($portableStage, $desktopZip, [IO.Compression.CompressionLevel]::Optimal, $false, [Text.Encoding]::UTF8)
     if(-not $PortableOnly){
         $desktopInstaller = Get-ChildItem -LiteralPath (Join-Path $desktopUi 'src-tauri\target\release\bundle\nsis') -Filter '*-setup.exe' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if(-not $desktopInstaller){throw 'Desktop installer was not produced'}

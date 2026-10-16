@@ -1,10 +1,12 @@
-DreamingFish 管理端桌面版 0.2.3（Windows x64）
+DreamingFish 管理端桌面版 0.2.4（Windows x64）
 
-双击 DreamingFishAdminDesktop.exe，选择本机管理或远程连接。
+先把压缩包里的整个“梦鱼更新管理”文件夹解压到固定位置，再双击里面的 DreamingFishAdminDesktop.exe，选择本机管理或远程连接。
+不要直接在压缩包里运行，也不要只拿出 exe。
 程序内置 Java，无需另外安装 Java。Windows 使用系统 WebView2；安装版会在缺少 WebView2 时联网安装。
 
 本机管理
-连接记录、运行日志和默认的管理数据都保存在本文件夹的 data 里，整个文件夹可以拷到其他电脑或 U 盘继续使用。
+连接记录、运行日志和默认的管理数据都保存在本文件夹的 data 里，请不要删除它。整个文件夹可以拷到其他电脑或 U 盘继续使用。
+以前版本放在 AppData 里的数据，会在第一次打开时迁移到 data。
 也可选择已有管理端目录，继续使用原项目、账户、密钥与发布记录。
 这里选择的是管理端目录，包含 management-settings.json 和 data；整合包源目录在项目中设置。
 

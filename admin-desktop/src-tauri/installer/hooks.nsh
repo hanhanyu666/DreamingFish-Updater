@@ -17,8 +17,12 @@
     ExecWait '"$R0\uninstall.exe" /S _?=$R0'
     Delete "$R0\uninstall.exe"
     RMDir "$R0"
-    DeleteRegKey HKCU "Software\dreamingfish\DreamingFishAdminDesktop"
   ${EndIf}
+  ; 旧程序文件已被手动删除时，卸载程序也不在了：直接清掉残留的“应用和功能”条目和快捷方式。
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\DreamingFishAdminDesktop"
+  DeleteRegKey HKCU "Software\dreamingfish\DreamingFishAdminDesktop"
+  Delete "$SMPROGRAMS\DreamingFishAdminDesktop.lnk"
+  Delete "$DESKTOP\DreamingFishAdminDesktop.lnk"
   Pop $R1
   Pop $R0
 !macroend

@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "dreamingfish-admin-desktop"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "dunce",
  "open",

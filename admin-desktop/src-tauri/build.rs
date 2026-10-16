@@ -13,6 +13,7 @@ fn main() {
             "quit_application",
             "desktop_window_action",
             "open_data_dir",
+            "dismiss_portable_notice",
             "check_update",
             "install_update",
             "open_release_page",

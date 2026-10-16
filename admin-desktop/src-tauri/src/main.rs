@@ -2,6 +2,7 @@
 
 mod frame;
 mod job;
+mod migrate;
 mod profiles;
 mod service;
 mod workbench;
@@ -78,6 +79,7 @@ struct Snapshot {
     data_root: String,
     installed: bool,
     data_beside_program: bool,
+    portable_notice: bool,
     active: Option<String>,
     version: &'static str,
     notice: Option<String>,
@@ -149,13 +151,16 @@ fn load_desktop(window: WebviewWindow, state: State<Desktop>) -> Result<Snapshot
         data_root: state.root.to_string_lossy().into(),
         installed: state.installed,
         data_beside_program: state.beside_program,
+        portable_notice: !state.installed
+            && state.beside_program
+            && !state.root.join(PORTABLE_NOTICE_READ).exists(),
         active: state
             .active
             .lock()
             .map_err(|e| e.to_string())?
             .as_ref()
             .map(|a| a.profile.id.clone()),
-        version: "0.2.3",
+        version: "0.2.4",
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -463,6 +468,12 @@ fn open_data_dir(window: WebviewWindow, state: State<Desktop>) -> Result<(), Str
 }
 
 #[tauri::command]
+fn dismiss_portable_notice(window: WebviewWindow, state: State<Desktop>) -> Result<(), String> {
+    launcher(&window)?;
+    fs::write(state.root.join(PORTABLE_NOTICE_READ), b"").map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn check_update(
     window: WebviewWindow,
     app: tauri::AppHandle,
@@ -560,6 +571,57 @@ struct DataPlace {
     root: PathBuf,
     installed: bool,
     beside_program: bool,
+    notice: Option<String>,
+}
+
+const PORTABLE_NOTICE_READ: &str = ".portable-notice-read";
+const DATA_NOTE: &str = "请勿删除 - 梦鱼更新管理的数据.txt";
+
+/// A portable copy started from a temporary folder (opened inside the zip, or only the exe taken
+/// out) would scatter data that is gone on the next cleanup, so it stops before writing anything.
+fn portable_problem() -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--desktop-home") {
+        return None;
+    }
+    let program = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    if program.join("uninstall.exe").is_file() {
+        return None;
+    }
+    let canonical = |p: &Path| {
+        dunce::canonicalize(p)
+            .unwrap_or_else(|_| p.to_path_buf())
+            .to_string_lossy()
+            .to_lowercase()
+    };
+    if canonical(&program).starts_with(&canonical(&std::env::temp_dir())) {
+        return Some("梦鱼更新管理正在临时文件夹里运行，可能是直接在压缩包里打开的。\n\n请先把整个压缩包解压到一个固定的文件夹（例如 D:\\梦鱼更新管理），再运行里面的 DreamingFishAdminDesktop.exe。便携版的数据会保存在那个文件夹里。".into());
+    }
+    if !cfg!(debug_assertions) && !program.join("core").join("dfs-admin.jar").is_file() {
+        return Some("程序旁边缺少 core 文件夹。\n\n请把压缩包里的整个“梦鱼更新管理”文件夹解压出来，不要只拿出 DreamingFishAdminDesktop.exe。".into());
+    }
+    None
+}
+
+#[cfg(windows)]
+fn show_startup_message(message: &str) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONWARNING, MB_OK};
+    let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+    let (text, title) = (wide(message), wide("梦鱼更新管理"));
+    unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONWARNING) };
+}
+
+#[cfg(not(windows))]
+fn show_startup_message(message: &str) {
+    eprintln!("{message}");
+}
+
+/// Explains, inside the data folder itself, what deleting it would lose.
+fn write_data_note(root: &Path) {
+    let note = root.join(DATA_NOTE);
+    if !note.exists() {
+        let _ = fs::write(note, "这个 data 文件夹保存梦鱼更新管理的连接记录、运行日志，以及默认管理数据目录（management）里的项目、账户、签名密钥和发布记录。\r\n\r\n请不要删除或单独移走它。签名密钥丢失后，就无法再给已经分发出去的玩家端发布更新。\r\n\r\n要换电脑或换位置，请把程序文件夹连同 data 一起复制；也可以只复制 data，放到新程序旁边。\r\n".as_bytes());
+    }
 }
 
 /// Connection records, logs and the default management data live in `data` beside the program:
@@ -583,15 +645,20 @@ fn data_place(app: &tauri::AppHandle) -> Result<DataPlace, String> {
         if !path.is_absolute() {
             return Err("桌面数据目录必须是绝对路径".into());
         }
-        return Ok(DataPlace { root: path, installed, beside_program: false });
+        return Ok(DataPlace { root: path, installed, beside_program: false, notice: None });
     }
-    let legacy = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    // Tests point the migration at a fake old folder instead of the real per-user one.
+    let legacy = match args.iter().position(|a| a == "--legacy-home") {
+        Some(index) => PathBuf::from(args.get(index + 1).ok_or("--legacy-home 缺少目录")?),
+        None => app.path().app_local_data_dir().map_err(|e| e.to_string())?,
+    };
     let beside = program.join("data");
     if writable(&beside) {
-        adopt_legacy_connections(&legacy, &beside);
-        return Ok(DataPlace { root: beside, installed, beside_program: true });
+        let notice = migrate::legacy_into(&legacy, &beside);
+        write_data_note(&beside);
+        return Ok(DataPlace { root: beside, installed, beside_program: true, notice });
     }
-    Ok(DataPlace { root: legacy, installed, beside_program: false })
+    Ok(DataPlace { root: legacy, installed, beside_program: false, notice: None })
 }
 
 fn writable(dir: &Path) -> bool {
@@ -599,15 +666,6 @@ fn writable(dir: &Path) -> bool {
     fs::create_dir_all(dir).is_ok() && fs::write(&probe, b"").is_ok() && fs::remove_file(&probe).is_ok()
 }
 
-/// Carries connection records over from the per-user directory. The management homes they
-/// point at stay where they are, so projects and signing keys are never moved.
-fn adopt_legacy_connections(legacy: &Path, root: &Path) {
-    let target = root.join("connections.json");
-    let source = legacy.join("connections.json");
-    if !target.exists() && source.is_file() {
-        let _ = fs::copy(source, target);
-    }
-}
 
 // Exercise the packaged webviews and owned process without showing or focusing a window.
 fn run_background_check(app: tauri::AppHandle) {
@@ -655,7 +713,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.2.3", "success":true,
+            Ok::<_, String>(serde_json::json!({"version":"0.2.4", "success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,
@@ -688,6 +746,10 @@ fn main_window_visible(app: &tauri::AppHandle) -> Result<bool, String> {
 }
 
 fn main() {
+    if let Some(problem) = portable_problem() {
+        show_startup_message(&problem);
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if !args.iter().any(|a| a == "--background-check") {
@@ -709,6 +771,7 @@ fn main() {
             quit_application,
             desktop_window_action,
             open_data_dir,
+            dismiss_portable_notice,
             check_update,
             install_update,
             open_release_page
@@ -730,7 +793,7 @@ fn main() {
                 connecting: Mutex::new(false),
                 generation: AtomicU64::new(0),
                 exiting: AtomicBool::new(false),
-                notice: Mutex::new(None),
+                notice: Mutex::new(place.notice),
                 background_check: std::env::args().any(|a| a == "--background-check"),
                 frame_checks: Mutex::new((false, false)),
                 workbench_ready: AtomicBool::new(false),
@@ -853,20 +916,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn data_folder_adopts_old_connection_records_once() {
+    fn data_folder_is_probed_without_leaving_files_and_gets_a_note() {
         let root = std::env::temp_dir().join(format!("dfs-data-place-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        let legacy = root.join("legacy");
         let beside = root.join("program").join("data");
-        fs::create_dir_all(&legacy).unwrap();
-        fs::write(legacy.join("connections.json"), b"old").unwrap();
         assert!(writable(&beside));
-        adopt_legacy_connections(&legacy, &beside);
-        assert_eq!(fs::read(beside.join("connections.json")).unwrap(), b"old");
-        fs::write(beside.join("connections.json"), b"new").unwrap();
-        adopt_legacy_connections(&legacy, &beside);
-        assert_eq!(fs::read(beside.join("connections.json")).unwrap(), b"new");
         assert!(!beside.join(".write-check").exists());
+        write_data_note(&beside);
+        assert!(fs::read_to_string(beside.join(DATA_NOTE)).unwrap().contains("请不要删除"));
         let _ = fs::remove_dir_all(&root);
     }
 }
