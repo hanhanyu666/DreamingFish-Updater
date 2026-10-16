@@ -28,7 +28,7 @@
     title.className = 'dfs-frame-title'; title.textContent = meta.name || '梦鱼更新管理';
     title.title = title.textContent;
     const badge = document.createElement('span');
-    badge.className = 'dfs-frame-badge'; badge.textContent = meta.workspace ? '工作区' : '0.2.0';
+    badge.className = 'dfs-frame-badge'; badge.textContent = meta.workspace ? '工作区' : '0.2.1';
     frame.append(mark, title, badge);
     const controls = document.createElement('div');
     controls.className = 'dfs-frame-controls';
@@ -44,7 +44,7 @@
           maximize.setAttribute('aria-pressed', String(state.maximized));
         }
         frame.removeAttribute('data-error');
-        badge.textContent = meta.workspace ? '工作区' : '0.2.0'; badge.removeAttribute('title');
+        badge.textContent = meta.workspace ? '工作区' : '0.2.1'; badge.removeAttribute('title');
       } catch (error) {
         if (action === 'status' && statusAttempts++ < 6) { setTimeout(() => void native('status'), 200); return; }
         diagnostic(String(error));

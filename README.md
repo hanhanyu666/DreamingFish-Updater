@@ -13,7 +13,7 @@
 [![Player](https://img.shields.io/badge/玩家端-Windows-2EE8DF?style=flat-square)](#下载)
 [![Admin](https://img.shields.io/badge/管理端-Windows%20%7C%20Linux-B06CFF?style=flat-square)](#下载)
 
-[下载最新版](#下载) · [使用文档](https://dreamingfish-studio.github.io/DreamingFish-Updater-Website/) · [更新日志](./CHANGELOG.md)
+[下载最新版](#下载) · [使用文档](https://dreamingfish-studio.github.io/DreamingFish-Updater-Website/) · [更新日志](./CHANGELOG.md) · [加入 QQ 群](https://qm.qq.com/q/9JebKjHwuA)
 
 </div>
 
@@ -135,6 +135,7 @@ Windows 管理端桌面版正在本机验收，可在本机维护，也可连接
 - [官网与完整使用文档](https://dreamingfish-studio.github.io/DreamingFish-Updater-Website/)
 - [中文更新日志](./CHANGELOG.md)
 - 遇到问题或有新的想法，欢迎提交 GitHub Issue。
+- [点击链接加入 QQ 群聊【DreamingFish Updater｜梦鱼更新器】](https://qm.qq.com/q/9JebKjHwuA)
 
 ## 开源许可
 

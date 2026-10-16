@@ -94,7 +94,7 @@ fn tail(path: &Path) -> String {
 
 fn ready_url(message: &serde_json::Value, child_id: u32) -> Result<Url, String> {
     if message["type"] != "ready"
-        || message["version"] != "0.2.0"
+        || message["version"] != "0.2.1"
         || message["pid"].as_u64() != Some(child_id.into())
     {
         return Err("管理核心就绪信息无效".into());
@@ -391,7 +391,7 @@ mod tests {
     use super::*;
     #[test]
     fn only_the_owned_process_can_report_loopback_ready() {
-        let good = serde_json::json!({"type":"ready","version":"0.2.0","pid":42,"port":20080,"url":"http://127.0.0.1:20080/"});
+        let good = serde_json::json!({"type":"ready","version":"0.2.1","pid":42,"port":20080,"url":"http://127.0.0.1:20080/"});
         assert!(ready_url(&good, 42).is_ok());
         assert!(ready_url(&good, 43).is_err());
         let mut bad = good.clone();

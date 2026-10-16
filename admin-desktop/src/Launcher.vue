@@ -7,7 +7,7 @@ import { Monitor,Server,Terminal,Plus,ArrowRight,FolderOpen,MoreHorizontal,FileT
 import {profilePayload,type Profile} from './connections';
 import Fish from './workbench/Fish.vue';
 type Snapshot={profiles:Profile[];defaultHome:string;logs:string;active:string|null;version:string;notice:string|null};
-const state=ref<Snapshot>({profiles:[],defaultHome:'',logs:'',active:null,version:'0.2.0',notice:null});
+const state=ref<Snapshot>({profiles:[],defaultHome:'',logs:'',active:null,version:'0.2.1',notice:null});
 const form=reactive<Profile>({id:'',name:'本机管理',kind:'local',home:'',url:'',target:'',remotePort:18080});
 const busy=ref(false),status=ref(''),error=ref(false),menu=ref(''),dialog=ref('');
 const active=computed(()=>state.value.profiles.find(p=>p.id===state.value.active));

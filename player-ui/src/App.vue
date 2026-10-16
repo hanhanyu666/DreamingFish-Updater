@@ -272,7 +272,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.2.0" }}
+        DreamingFish Updater {{ "0.2.1" }}
       </div>
 
       <ContentPages />

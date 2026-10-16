@@ -133,7 +133,7 @@ fn load_desktop(window: WebviewWindow, state: State<Desktop>) -> Result<Snapshot
             .map_err(|e| e.to_string())?
             .as_ref()
             .map(|a| a.profile.id.clone()),
-        version: "0.2.0",
+        version: "0.2.1",
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -504,7 +504,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.2.0", "success":true,
+            Ok::<_, String>(serde_json::json!({"version":"0.2.1", "success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,
