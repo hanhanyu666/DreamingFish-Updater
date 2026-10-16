@@ -35,8 +35,8 @@ if (-not $PlayerVersion) {
 }
 if (-not (Test-Path -LiteralPath $NotesFile -PathType Leaf)) { throw "Release notes not found: $NotesFile" }
 
-$gh = (Get-Command gh -ErrorAction SilentlyContinue).Source
-if (-not $gh) { $gh = Join-Path $env:LOCALAPPDATA 'Programs\GitHubCLI\bin\gh.exe' }
+$ghCommand = Get-Command gh -ErrorAction SilentlyContinue
+$gh = if ($ghCommand) { $ghCommand.Source } else { Join-Path $env:LOCALAPPDATA 'Programs\GitHubCLI\bin\gh.exe' }
 if (-not (Test-Path -LiteralPath $gh)) { throw 'GitHub CLI (gh) is required' }
 if (-not (& git -C $repoRoot ls-remote --tags origin "refs/tags/$Tag")) { throw "Push the tag $Tag before publishing" }
 
