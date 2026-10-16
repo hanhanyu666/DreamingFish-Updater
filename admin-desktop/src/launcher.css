@@ -27,12 +27,19 @@
 .connection-sidebar>footer {display:flex;flex-direction:column;gap:2px;padding:8px 0 0;margin-top:6px;border-top:1px solid var(--line)}
 .connection-sidebar>footer button {height:32px;justify-content:flex-start;gap:10px;padding:0 10px;background:transparent;color:var(--muted);font-weight:400;border-radius:var(--r-sm)}
 .connection-sidebar>footer button:hover:not(:disabled) {background:var(--fill);color:var(--text)}
-.connection-sidebar>footer span {font-size:11.5px;color:var(--quiet);padding:8px 12px 4px}
+.connection-sidebar>footer button.version-line {height:auto;min-height:28px;margin-top:4px;padding:4px 12px;font-size:11.5px;color:var(--quiet)}
+.connection-sidebar>footer button.version-line:hover:not(:disabled) {background:transparent;color:var(--accent)}
 .connection-editor {display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:0 1px 2px rgba(20,36,44,.04),0 6px 20px rgba(20,36,44,.04);overflow:hidden}
 .connection-editor-header {display:flex;align-items:center;gap:10px;min-height:52px;padding:10px 24px;font-size:13px;font-weight:600;flex:none;border-bottom:1px solid var(--line)}
 .connection-editor-header>.subtle {font-size:12px;font-weight:500;padding:2px 8px;border-radius:var(--r-xs);background:var(--fill)}
 .connection-editor-scroll {flex:1;min-height:0;overflow:auto;padding:28px 44px 28px}
 .connection-editor-scroll>* {max-width:600px}
+.update-card {display:flex;align-items:center;gap:12px;margin:0 0 14px;padding:12px 12px 12px 16px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--accent-line);color:var(--accent)}
+.update-card>div {flex:1;min-width:0;color:var(--text)}
+.update-card strong {display:block;font-size:13.5px;font-weight:650}
+.update-card small {font-size:12px;color:var(--muted)}
+.update-card .accent {height:34px;flex:none}
+.data-note {display:block;color:var(--warning)}
 .running-connection {display:flex;align-items:center;gap:12px;margin:0 0 26px;padding:12px 12px 12px 16px;border-radius:var(--r-md);background:var(--accent-soft);border:1px solid var(--accent-line)}
 .running-connection>.small-dot {width:9px;height:9px;border-radius:50%;background:var(--success);box-shadow:0 0 0 4px var(--success-soft);flex:none}
 .running-connection>div {flex:1;min-width:0}

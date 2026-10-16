@@ -25,7 +25,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.2.2"));
+        assertTrue(version.out().contains("0.2.3"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());

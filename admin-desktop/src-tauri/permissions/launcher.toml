@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "launcher-actions"
 description = "Management connection and lifecycle commands for the bundled launcher only."
-commands.allow = ["load_desktop", "save_profile", "delete_profile", "connect_profile", "cancel_connect", "disconnect_workspace", "show_workspace", "choose_home", "open_logs", "quit_application"]
+commands.allow = ["load_desktop", "save_profile", "delete_profile", "connect_profile", "cancel_connect", "disconnect_workspace", "show_workspace", "choose_home", "open_logs", "quit_application", "open_data_dir", "check_update", "install_update", "open_release_page"]

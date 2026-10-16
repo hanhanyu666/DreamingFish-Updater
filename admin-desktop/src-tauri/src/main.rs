@@ -10,11 +10,12 @@ use profiles::{Config, Profile};
 use service::{ConnectionResult, OwnedService};
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
+    time::Duration,
 };
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -22,9 +23,16 @@ use tauri::{
     Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_updater::UpdaterExt;
+
+const RELEASES: &str = "https://github.com/hanhanyu666/DreamingFish-Updater/releases";
 
 struct Desktop {
     root: PathBuf,
+    installed: bool,
+    beside_program: bool,
+    update: Mutex<Option<tauri_plugin_updater::Update>>,
+    updating: AtomicBool,
     config: Mutex<Config>,
     active: Mutex<Option<Active>>,
     connecting: Mutex<bool>,
@@ -67,9 +75,20 @@ struct Snapshot {
     profiles: Vec<Profile>,
     default_home: String,
     logs: String,
+    data_root: String,
+    installed: bool,
+    data_beside_program: bool,
     active: Option<String>,
     version: &'static str,
     notice: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateInfo {
+    version: String,
+    notes: String,
+    installable: bool,
 }
 
 fn launcher(window: &WebviewWindow) -> Result<(), String> {
@@ -127,13 +146,16 @@ fn load_desktop(window: WebviewWindow, state: State<Desktop>) -> Result<Snapshot
             .clone(),
         default_home: state.root.join("management").to_string_lossy().into(),
         logs: state.root.join("logs").to_string_lossy().into(),
+        data_root: state.root.to_string_lossy().into(),
+        installed: state.installed,
+        data_beside_program: state.beside_program,
         active: state
             .active
             .lock()
             .map_err(|e| e.to_string())?
             .as_ref()
             .map(|a| a.profile.id.clone()),
-        version: "0.2.2",
+        version: "0.2.3",
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -435,6 +457,95 @@ fn open_logs(window: WebviewWindow, state: State<Desktop>) -> Result<(), String>
 }
 
 #[tauri::command]
+fn open_data_dir(window: WebviewWindow, state: State<Desktop>) -> Result<(), String> {
+    launcher(&window)?;
+    open::that(&state.root).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn check_update(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+) -> Result<Option<UpdateInfo>, String> {
+    launcher(&window)?;
+    let state = app.state::<Desktop>();
+    if state.background_check {
+        return Ok(None);
+    }
+    let exiting = app.clone();
+    let update = app
+        .updater_builder()
+        .timeout(Duration::from_secs(30))
+        // The installer replaces the bundled core; the owned service is already stopped by then.
+        .on_before_exit(move || {
+            exiting.state::<Desktop>().exiting.store(true, Ordering::SeqCst);
+            let _ = exiting.remove_tray_by_id("main");
+        })
+        .build()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| format!("检查更新失败：{e}"))?;
+    let info = update.as_ref().map(|u| UpdateInfo {
+        version: u.version.clone(),
+        notes: u.body.clone().unwrap_or_default(),
+        installable: state.installed,
+    });
+    *state.update.lock().map_err(|e| e.to_string())? = update;
+    Ok(info)
+}
+
+#[tauri::command]
+async fn install_update(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    launcher(&window)?;
+    let state = app.state::<Desktop>();
+    if !state.installed {
+        return Err("便携版请下载新的压缩包，替换程序文件即可".into());
+    }
+    let update = state
+        .update
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or("请先检查更新")?;
+    if state.updating.swap(true, Ordering::SeqCst) {
+        return Err("正在更新，请稍候".into());
+    }
+    let _updating = DisconnectGuard(&state.updating);
+    let clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || disconnect(&clone))
+        .await
+        .map_err(|e| e.to_string())??;
+    let progress = app.clone();
+    let mut received = 0u64;
+    // On Windows the installer starts here and this process exits; it reopens after installing.
+    update
+        .download_and_install(
+            move |chunk, total| {
+                received += chunk as u64;
+                let _ = progress.emit_to(
+                    "main",
+                    "update-progress",
+                    serde_json::json!({"received": received, "total": total}),
+                );
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| format!("更新失败：{e}"))
+}
+
+#[tauri::command]
+fn open_release_page(window: WebviewWindow, state: State<Desktop>) -> Result<(), String> {
+    launcher(&window)?;
+    let page = match state.update.lock().map_err(|e| e.to_string())?.as_ref() {
+        Some(update) => format!("{RELEASES}/tag/v{}", update.version),
+        None => format!("{RELEASES}/latest"),
+    };
+    open::that(page).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn quit_application(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
     launcher(&window)?;
     let clone = app.clone();
@@ -445,20 +556,57 @@ async fn quit_application(window: WebviewWindow, app: tauri::AppHandle) -> Resul
     Ok(())
 }
 
-fn profile_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+struct DataPlace {
+    root: PathBuf,
+    installed: bool,
+    beside_program: bool,
+}
+
+/// Connection records, logs and the default management data live in `data` beside the program:
+/// the install folder for the installed app, the unpacked folder for the portable one. A folder
+/// the user cannot write, such as Program Files, falls back to the per-user directory that
+/// versions before 0.2.3 used.
+fn data_place(app: &tauri::AppHandle) -> Result<DataPlace, String> {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--background-check") && !args.iter().any(|a| a == "--desktop-home")
     {
         return Err("后台验收必须使用独立的 --desktop-home 目录".into());
     }
+    let program = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("无法确定程序所在目录")?
+        .to_path_buf();
+    let installed = program.join("uninstall.exe").is_file();
     if let Some(index) = args.iter().position(|a| a == "--desktop-home") {
         let path = PathBuf::from(args.get(index + 1).ok_or("--desktop-home 缺少目录")?);
         if !path.is_absolute() {
             return Err("桌面数据目录必须是绝对路径".into());
         }
-        return Ok(path);
+        return Ok(DataPlace { root: path, installed, beside_program: false });
     }
-    app.path().app_local_data_dir().map_err(|e| e.to_string())
+    let legacy = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let beside = program.join("data");
+    if writable(&beside) {
+        adopt_legacy_connections(&legacy, &beside);
+        return Ok(DataPlace { root: beside, installed, beside_program: true });
+    }
+    Ok(DataPlace { root: legacy, installed, beside_program: false })
+}
+
+fn writable(dir: &Path) -> bool {
+    let probe = dir.join(".write-check");
+    fs::create_dir_all(dir).is_ok() && fs::write(&probe, b"").is_ok() && fs::remove_file(&probe).is_ok()
+}
+
+/// Carries connection records over from the per-user directory. The management homes they
+/// point at stay where they are, so projects and signing keys are never moved.
+fn adopt_legacy_connections(legacy: &Path, root: &Path) {
+    let target = root.join("connections.json");
+    let source = legacy.join("connections.json");
+    if !target.exists() && source.is_file() {
+        let _ = fs::copy(source, target);
+    }
 }
 
 // Exercise the packaged webviews and owned process without showing or focusing a window.
@@ -507,7 +655,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.2.2", "success":true,
+            Ok::<_, String>(serde_json::json!({"version":"0.2.3", "success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,
@@ -547,6 +695,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             load_desktop,
             save_profile,
@@ -558,14 +707,24 @@ fn main() {
             choose_home,
             open_logs,
             quit_application,
-            desktop_window_action
+            desktop_window_action,
+            open_data_dir,
+            check_update,
+            install_update,
+            open_release_page
         ])
         .setup(|app| {
-            let root = profile_root(app.handle()).map_err(std::io::Error::other)?;
+            let place = data_place(app.handle()).map_err(std::io::Error::other)?;
+            let root = place.root;
             fs::create_dir_all(root.join("logs"))?;
             let config = Config::load(&root).map_err(std::io::Error::other)?;
+            let webview_data = root.join("webview");
             app.manage(Desktop {
                 root,
+                installed: place.installed,
+                beside_program: place.beside_program,
+                update: Mutex::new(None),
+                updating: AtomicBool::new(false),
                 config: Mutex::new(config),
                 active: Mutex::new(None),
                 connecting: Mutex::new(false),
@@ -578,6 +737,15 @@ fn main() {
                 background_started: AtomicBool::new(false),
                 disconnecting: AtomicBool::new(false),
             });
+            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                .title("梦鱼更新管理 · 工作区")
+                .inner_size(1000.0, 760.0)
+                .min_inner_size(820.0, 620.0)
+                .center()
+                .decorations(false)
+                .visible(false)
+                .data_directory(webview_data)
+                .build()?;
             let monitor = app.handle().clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_millis(750));
@@ -619,7 +787,7 @@ fn main() {
             let current = MenuItem::with_id(app, "current", "返回工作区", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出桌面端", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&current, &chooser, &quit])?;
-            TrayIconBuilder::new()
+            TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().ok_or("缺少程序图标")?.clone())
                 .tooltip("梦鱼更新管理")
                 .menu(&menu)
@@ -646,7 +814,6 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
-            let main = app.get_webview_window("main").ok_or("缺少连接选择窗口")?;
             frame::round_corners(&main);
             let clone = main.clone();
             main.on_window_event(move |event| {
@@ -679,4 +846,27 @@ fn main() {
                 };
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn data_folder_adopts_old_connection_records_once() {
+        let root = std::env::temp_dir().join(format!("dfs-data-place-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let legacy = root.join("legacy");
+        let beside = root.join("program").join("data");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join("connections.json"), b"old").unwrap();
+        assert!(writable(&beside));
+        adopt_legacy_connections(&legacy, &beside);
+        assert_eq!(fs::read(beside.join("connections.json")).unwrap(), b"old");
+        fs::write(beside.join("connections.json"), b"new").unwrap();
+        adopt_legacy_connections(&legacy, &beside);
+        assert_eq!(fs::read(beside.join("connections.json")).unwrap(), b"new");
+        assert!(!beside.join(".write-check").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
 }

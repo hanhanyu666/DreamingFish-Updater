@@ -12,6 +12,10 @@ fn main() {
             "open_logs",
             "quit_application",
             "desktop_window_action",
+            "open_data_dir",
+            "check_update",
+            "install_update",
+            "open_release_page",
         ]),
     ))
     .expect("build desktop configuration");

@@ -2,7 +2,14 @@ param(
     [string]$JdkHome = $env:JAVA_HOME,
     [switch]$SkipBuildCore,
     [switch]$SkipTests,
-    [switch]$PortableOnly
+    [switch]$PortableOnly,
+    # Private key that signs the installer for auto-update. Keep it out of the repository and back it up:
+    # installed copies only accept updates signed by it.
+    [string]$SigningKey = (Join-Path $env:USERPROFILE '.tauri\dreamingfish-admin-desktop.key'),
+    # Local test builds without the key; such installers cannot be offered as updates.
+    [switch]$NoUpdaterSignature,
+    # Release tag whose assets latest.json points at; defaults to v<desktop version>.
+    [string]$ReleaseTag = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +22,19 @@ $desktopVersion = (Get-Content -LiteralPath (Join-Path $desktopUi 'package.json'
 function Invoke-DesktopTool([string]$Executable, [string[]]$ToolArgs) {
     & $Executable @ToolArgs
     if ($LASTEXITCODE -ne 0) { throw "Desktop build command failed: $Executable" }
+}
+# The first paragraph of this version's CHANGELOG section, shown in the update prompt.
+function Get-DesktopReleaseNotes([string]$Version) {
+    $lines = @(Get-Content -LiteralPath (Join-Path $desktopRepo 'CHANGELOG.md') -Encoding utf8)
+    $paragraph = @()
+    $inside = $false
+    foreach ($line in $lines) {
+        if ($line.StartsWith('## ')) { if ($inside) { break }; $inside = $line.StartsWith("## [$Version]"); continue }
+        if (-not $inside) { continue }
+        if ($line.Trim() -eq '') { if ($paragraph.Count) { break } else { continue } }
+        $paragraph += $line.Trim()
+    }
+    return (($paragraph -join '') -replace '\*\*', '')
 }
 function Assert-DesktopChild([string]$Target, [string]$Parent) {
     $absolute = [IO.Path]::GetFullPath($Target)
@@ -63,8 +83,18 @@ try {
         if(-not(Test-Path -LiteralPath 'node_modules')){Invoke-DesktopTool 'npm.cmd' @('ci')}
         Invoke-DesktopTool 'npm.cmd' @('run','build')
         if(-not $SkipTests){Invoke-DesktopTool 'npm.cmd' @('test');Invoke-DesktopTool 'cargo' @('test','--locked','--manifest-path','src-tauri/Cargo.toml')}
-        $desktopTauriArgs = @('run','tauri','--','build')
+        # --ci keeps the build unattended; the signing key has no password and would otherwise prompt for one.
+        $desktopTauriArgs = @('run','tauri','--','build','--ci')
         if($PortableOnly){$desktopTauriArgs += '--no-bundle'}
+        elseif($NoUpdaterSignature){
+            $unsigned = Join-Path $desktopRepo 'target\packaging-admin-desktop\no-updater.json'
+            [IO.File]::WriteAllText($unsigned, '{"bundle":{"createUpdaterArtifacts":false}}')
+            $desktopTauriArgs += @('--config',$unsigned)
+        }
+        else{
+            if(-not (Test-Path -LiteralPath $SigningKey -PathType Leaf)){throw "Updater signing key not found: $SigningKey (pass -NoUpdaterSignature for a local test build)"}
+            $env:TAURI_SIGNING_PRIVATE_KEY = $SigningKey
+        }
         Invoke-DesktopTool 'npm.cmd' $desktopTauriArgs
     } finally {Pop-Location}
     $desktopPackage = Join-Path $desktopDist 'dfs-admin-desktop-windows-x64'
@@ -81,7 +111,28 @@ try {
     if(-not $PortableOnly){
         $desktopInstaller = Get-ChildItem -LiteralPath (Join-Path $desktopUi 'src-tauri\target\release\bundle\nsis') -Filter '*-setup.exe' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if(-not $desktopInstaller){throw 'Desktop installer was not produced'}
-        Copy-Item -LiteralPath $desktopInstaller.FullName -Destination (Join-Path $desktopDist "dfs-admin-desktop-windows-x64-$desktopVersion-setup.exe") -Force
+        $installerName = "dfs-admin-desktop-windows-x64-$desktopVersion-setup.exe"
+        Copy-Item -LiteralPath $desktopInstaller.FullName -Destination (Join-Path $desktopDist $installerName) -Force
+        $latest = Join-Path $desktopDist 'latest.json'
+        if(Test-Path -LiteralPath $latest){Remove-Item -LiteralPath $latest -Force}
+        if(-not $NoUpdaterSignature){
+            # Installed copies read this from the latest GitHub release to find and verify the update.
+            $signature = Join-Path $desktopInstaller.DirectoryName ($desktopInstaller.Name + '.sig')
+            if(-not (Test-Path -LiteralPath $signature)){throw 'Updater signature was not produced'}
+            $tag = if($ReleaseTag){$ReleaseTag}else{"v$desktopVersion"}
+            $manifest = [ordered]@{
+                version = $desktopVersion
+                notes = Get-DesktopReleaseNotes $desktopVersion
+                pub_date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+                platforms = [ordered]@{
+                    'windows-x86_64' = [ordered]@{
+                        signature = (Get-Content -LiteralPath $signature -Raw).Trim()
+                        url = "https://github.com/hanhanyu666/DreamingFish-Updater/releases/download/$tag/$installerName"
+                    }
+                }
+            }
+            [IO.File]::WriteAllText($latest, ($manifest | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+        }
     }
-    Get-ChildItem -LiteralPath $desktopDist -File | Where-Object {$_.Name -like 'dfs-admin-desktop-windows-x64-*'} | Select-Object Name,Length
+    Get-ChildItem -LiteralPath $desktopDist -File | Where-Object {$_.Name -like 'dfs-admin-desktop-windows-x64-*' -or $_.Name -eq 'latest.json'} | Select-Object Name,Length
 } finally {Pop-Location}
