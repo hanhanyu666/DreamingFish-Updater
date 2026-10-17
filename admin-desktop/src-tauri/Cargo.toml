@@ -1,6 +1,6 @@
 [package]
 name = "dreamingfish-admin-desktop"
-version = "0.2.4"
+version = "0.2.5"
 description = "DreamingFish management desktop"
 authors = ["DreamingFish"]
 edition = "2021"
@@ -28,7 +28,8 @@ reqwest = { version = "=0.12.24", default-features = false, features = ["blockin
 tauri-plugin-updater = "=2.12.0"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader"] }
+webview2-com = "=0.38.2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

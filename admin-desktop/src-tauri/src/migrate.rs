@@ -10,26 +10,39 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Returns a notice for the connection page when the old data could not be moved.
+/// Returns a notice for the connection page when the old data could not be moved, or when it
+/// was copied but the old folder could not be removed.
 pub fn legacy_into(legacy: &Path, root: &Path) -> Option<String> {
     if !legacy.is_dir() || same_path(legacy, root) {
         return None;
     }
     let mut log = Vec::new();
-    let result = migrate(legacy, root, &mut log);
+    let result = migrate(legacy, root, &mut log, true);
+    write_log(root, &log);
+    match result {
+        Ok(None) => None,
+        Ok(Some(leftover)) => Some(format!(
+            "旧版本的数据已迁移到 {}，但旧文件夹 {} 没能自动删除（{leftover}）。退出桌面端后可以手动删除它。",
+            root.display(),
+            legacy.display()
+        )),
+        Err(error) => Some(format!(
+            "旧版本的数据没能迁移到 {}：{error}。暂时继续使用原位置，关闭占用这些文件的程序后重新打开桌面端会再次尝试。",
+            root.display()
+        )),
+    }
+}
+
+/// Moves the old folder's content; returns why the old folder had to be left behind, if it was.
+fn migrate(legacy: &Path, root: &Path, log: &mut Vec<String>, rename: bool) -> Result<Option<String>, String> {
+    let result = migrate_inner(legacy, root, log, rename);
     if let Err(error) = &result {
         log.push(format!("迁移中止：{error}"));
     }
-    write_log(root, &log);
-    result.err().map(|error| {
-        format!(
-            "旧版本的数据没能迁移到 {}：{error}。暂时继续使用原位置，关闭占用这些文件的程序后重新打开桌面端会再次尝试。",
-            root.display()
-        )
-    })
+    result
 }
 
-fn migrate(legacy: &Path, root: &Path, log: &mut Vec<String>) -> Result<(), String> {
+fn migrate_inner(legacy: &Path, root: &Path, log: &mut Vec<String>, rename: bool) -> Result<Option<String>, String> {
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
     let mut config = if root.join("connections.json").exists() {
         Config::load(root)?
@@ -45,10 +58,14 @@ fn migrate(legacy: &Path, root: &Path, log: &mut Vec<String>) -> Result<(), Stri
         }
     }
 
+    let mut leftover = None;
     let old_home = legacy.join("management");
     if old_home.is_dir() {
         let new_home = free_home(root);
-        move_dir(&old_home, &new_home)?;
+        if let Some(reason) = move_dir(&old_home, &new_home, rename)? {
+            log.push(format!("已复制，但旧的管理数据目录没能删除：{reason}"));
+            leftover = Some(reason);
+        }
         log.push(format!("管理数据目录：{} → {}", old_home.display(), new_home.display()));
         rewrite_data_directory(&new_home, &old_home, log);
         for profile in &mut config.profiles {
@@ -86,7 +103,7 @@ fn migrate(legacy: &Path, root: &Path, log: &mut Vec<String>) -> Result<(), Stri
         Ok(()) => log.push(format!("已删除旧目录 {}", legacy.display())),
         Err(_) => log.push(format!("旧目录 {} 里还有无法删除的文件，已保留", legacy.display())),
     }
-    Ok(())
+    Ok(leftover)
 }
 
 /// The management service records its data folder as an absolute path; point it at the new home.
@@ -122,24 +139,52 @@ fn free_home(root: &Path) -> PathBuf {
         .expect("unbounded candidates")
 }
 
-/// Renames on the same volume; across volumes copies everything, checks it, then deletes the source.
-/// A folder still in use by a running management service cannot be renamed and is left alone.
-fn move_dir(source: &Path, target: &Path) -> Result<(), String> {
+/// Renames on the same volume. Across volumes (where Windows may answer "access denied" rather
+/// than "not same device") copies everything, checks it, then deletes the source; a source that
+/// cannot be deleted afterwards is reported but the copy is used. A folder whose database or lock
+/// file is held by a running management service is left alone.
+fn move_dir(source: &Path, target: &Path, rename: bool) -> Result<Option<String>, String> {
     if target.exists() {
         fs::remove_dir(target).map_err(|e| format!("无法使用 {}：{e}", target.display()))?;
     }
-    match fs::rename(source, target) {
-        Ok(()) => return Ok(()),
-        Err(error) if !cross_volume(&error) => {
-            return Err(format!("{} 正在被使用或无法移动（{error}）", source.display()))
+    if rename && same_volume(source, target) {
+        match fs::rename(source, target) {
+            Ok(()) => return Ok(None),
+            Err(error) if !cross_volume(&error) => {
+                return Err(format!("{} 正在被使用或无法移动（{error}）", source.display()))
+            }
+            Err(_) => {}
         }
-        Err(_) => {}
+    }
+    if in_use(source) {
+        return Err(format!("{} 正在被其他程序使用", source.display()));
     }
     if let Err(error) = copy_tree(source, target).and_then(|()| same_tree(source, target)) {
         let _ = fs::remove_dir_all(target);
         return Err(format!("复制 {} 失败（{error}）", source.display()));
     }
-    fs::remove_dir_all(source).map_err(|e| format!("已复制，但无法删除原目录：{e}"))
+    Ok(fs::remove_dir_all(source).err().map(|e| e.to_string()))
+}
+
+fn same_volume(a: &Path, b: &Path) -> bool {
+    let volume = |p: &Path| p.components().next().map(|c| c.as_os_str().to_string_lossy().to_lowercase());
+    volume(a) == volume(b)
+}
+
+/// A running management service keeps its lock file and database open without sharing.
+fn in_use(home: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        for file in [home.join("desktop-backend.lock"), home.join("data").join("management.db")] {
+            if file.is_file() && fs::OpenOptions::new().read(true).share_mode(0).open(&file).is_err() {
+                return true;
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = home;
+    false
 }
 
 fn move_file(source: &Path, target: &Path) -> std::io::Result<()> {
@@ -297,6 +342,57 @@ mod tests {
         assert_eq!(config.profiles.len(), 2);
         assert!(matches!(&config.profiles[0].connection,
             Connection::Local { home } if home == &root.join("management-previous").to_string_lossy()));
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn copies_across_volumes_and_reports_an_undeletable_old_folder() {
+        let base = temp("copy");
+        let legacy = legacy_with_home(&base);
+        let root = base.join("program").join("data");
+        // Held open without delete sharing, the way an indexer or virus scanner can hold a file.
+        #[cfg(windows)]
+        let held = {
+            use std::os::windows::fs::OpenOptionsExt;
+            fs::OpenOptions::new().read(true).share_mode(1).open(legacy.join("management/data/keys/demo.pk8")).unwrap()
+        };
+
+        let mut log = Vec::new();
+        let result = migrate(&legacy, &root, &mut log, false).unwrap();
+
+        assert_eq!(fs::read(root.join("management/data/keys/demo.pk8")).unwrap(), b"secret-key");
+        assert!(matches!(&Config::load(&root).unwrap().profiles[0].connection,
+            Connection::Local { home } if home == &root.join("management").to_string_lossy()));
+        #[cfg(windows)]
+        {
+            assert!(result.is_some(), "{log:?}");
+            drop(held);
+        }
+        let _ = result;
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn leaves_a_home_in_use_untouched() {
+        let base = temp("busy");
+        let legacy = legacy_with_home(&base);
+        let root = base.join("program").join("data");
+        fs::write(legacy.join("management/desktop-backend.lock"), b"").unwrap();
+        #[cfg(windows)]
+        let _lock = {
+            use std::os::windows::fs::OpenOptionsExt;
+            fs::OpenOptions::new().read(true).write(true).share_mode(0).open(legacy.join("management/desktop-backend.lock")).unwrap()
+        };
+
+        let notice = legacy_into(&legacy, &root);
+
+        #[cfg(windows)]
+        {
+            assert!(notice.is_some());
+            assert!(legacy.join("management/data/keys/demo.pk8").is_file());
+            assert!(!root.join("management").exists());
+        }
+        let _ = notice;
         let _ = fs::remove_dir_all(&base);
     }
 

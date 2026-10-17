@@ -9,12 +9,8 @@ html.dfs-desktop { --dfs-frame-height:40px; }
 }
 html[data-theme="light"] #dfs-desktop-frame { --frame-bg:#f5f7fa; --frame-line:#dfe5ed; --frame-text:#677489; }
 #dfs-desktop-frame * { box-sizing:border-box; }
-#dfs-desktop-frame .dfs-frame-mark {
-  width:22px; height:22px; display:grid; place-items:center; flex:none;
-  color:#82d8d4; background:#123632; border:1px solid #24645d; border-radius:6px;
-  font-size:9px; font-weight:800; letter-spacing:-.3px;
-}
-html[data-theme="light"] #dfs-desktop-frame .dfs-frame-mark { color:#12675f; background:#e4f2ef; border-color:#b2d7cc; }
+#dfs-desktop-frame .dfs-frame-mark { width:24px; height:24px; display:grid; place-items:center; flex:none; }
+#dfs-desktop-frame .dfs-frame-mark svg { display:block; width:100%; height:100%; }
 #dfs-desktop-frame .dfs-frame-title { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45vw; }
 #dfs-desktop-frame .dfs-frame-badge { font-size:10px; color:var(--frame-text); opacity:.68; flex:none; }
 #dfs-desktop-frame .dfs-frame-space { flex:1; min-width:10px; align-self:stretch; }
@@ -33,8 +29,6 @@ html[data-theme="light"] #dfs-desktop-frame .dfs-frame-mark { color:#12675f; bac
 #dfs-desktop-frame[data-error] .dfs-frame-badge { color:#eaa2a9; opacity:1; }
 /* The title bar shares the chrome colour of the activity bar; the work area below is a rounded card. */
 html.dfs-desktop #dfs-desktop-frame { font-family:var(--font,"Segoe UI","Microsoft YaHei UI",sans-serif); --frame-bg:var(--base,#eff2f4); --frame-line:transparent; --frame-text:var(--muted,#5b6971); gap:8px; padding-left:12px; }
-html.dfs-desktop #dfs-desktop-frame .dfs-frame-mark { width:24px; height:24px; border:0; border-radius:8px; color:#fff; background:linear-gradient(140deg,#25b9a1,#0f6f63); box-shadow:inset 0 1px rgba(255,255,255,.25); }
-html.dfs-desktop #dfs-desktop-frame .dfs-frame-mark svg { width:17px; height:17px; }
 html.dfs-desktop #dfs-desktop-frame .dfs-frame-title { color:var(--text,#162026); }
 html.dfs-workspace #dfs-desktop-frame .dfs-frame-title { max-width:160px; }
 html.dfs-workspace #dfs-desktop-frame .dfs-frame-badge:not([title]) { display:none; }

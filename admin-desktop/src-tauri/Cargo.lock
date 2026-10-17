@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "dreamingfish-admin-desktop"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "dunce",
  "open",
@@ -910,6 +910,7 @@ dependencies = [
  "tiny_http",
  "url",
  "uuid",
+ "webview2-com",
  "windows-sys 0.61.2",
 ]
 

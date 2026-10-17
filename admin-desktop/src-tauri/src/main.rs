@@ -45,13 +45,15 @@ struct Desktop {
     workbench_ready: AtomicBool,
     background_started: AtomicBool,
     disconnecting: AtomicBool,
+    rebuilds: Mutex<Vec<std::time::Instant>>,
 }
 
 struct Active {
     profile: Profile,
     service: OwnedService,
     origin: url::Origin,
-    _workbench: workbench::Workbench,
+    workspace_url: url::Url,
+    workbench: workbench::Workbench,
 }
 
 struct ConnectingGuard<'a>(&'a Mutex<bool>);
@@ -80,6 +82,8 @@ struct Snapshot {
     installed: bool,
     data_beside_program: bool,
     portable_notice: bool,
+    overlay_notice: bool,
+    program_name: String,
     active: Option<String>,
     version: &'static str,
     notice: Option<String>,
@@ -133,7 +137,13 @@ fn desktop_window_action(
     if matches!(action, frame::Action::Connections) {
         show_main(&app);
     }
-    frame::operate(&window, action)
+    // Closing the workspace hides it to the tray; show the connection page so the app is still in view.
+    let closing_workspace = matches!(action, frame::Action::Close) && window.label() == "workspace";
+    let result = frame::operate(&window, action)?;
+    if closing_workspace {
+        show_main(&app);
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -154,13 +164,18 @@ fn load_desktop(window: WebviewWindow, state: State<Desktop>) -> Result<Snapshot
         portable_notice: !state.installed
             && state.beside_program
             && !state.root.join(PORTABLE_NOTICE_READ).exists(),
+        overlay_notice: overlay_injected() && !state.root.join(OVERLAY_NOTICE_READ).exists(),
+        program_name: std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_default(),
         active: state
             .active
             .lock()
             .map_err(|e| e.to_string())?
             .as_ref()
             .map(|a| a.profile.id.clone()),
-        version: "0.2.4",
+        version: "0.2.5",
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -350,20 +365,66 @@ async fn connect_profile(
     }
     state.workbench_ready.store(false, Ordering::SeqCst);
     let url = workbench.url.join("workspace.html").map_err(|e| e.to_string())?;
+    let active_origin = url.origin();
+    let external_app = app.clone();
+    build_workspace(&app, &profile, &url, &workbench.token, !state.background_check)?;
+    *state.active.lock().map_err(|e| e.to_string())? = Some(Active {
+        profile,
+        service,
+        origin: active_origin,
+        workspace_url: url,
+        workbench,
+    });
+    *state.notice.lock().map_err(|e| e.to_string())? = None;
+    // Keep the connection chooser available from the tray while the workspace is open.
+    if let Some(main) = external_app.get_webview_window("main") {
+        let _ = main.hide();
+    }
+    Ok(())
+}
+
+fn build_main(app: &tauri::AppHandle, root: &Path) -> tauri::Result<WebviewWindow> {
+    let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("梦鱼更新管理 · 工作区")
+        .inner_size(1000.0, 760.0)
+        .min_inner_size(820.0, 620.0)
+        .center()
+        .decorations(false)
+        .visible(false)
+        .data_directory(root.join("webview"))
+        .build()?;
+    frame::round_corners(&main);
+    let clone = main.clone();
+    main.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = clone.hide();
+        }
+    });
+    watch_webview(&main);
+    Ok(main)
+}
+
+fn build_workspace(
+    app: &tauri::AppHandle,
+    profile: &Profile,
+    url: &url::Url,
+    token: &str,
+    visible: bool,
+) -> Result<WebviewWindow, String> {
+    let state = app.state::<Desktop>();
     let origin = url.origin();
-    let active_origin = origin.clone();
     let cookies = state.root.join("webviews").join(&profile.id);
     fs::create_dir_all(&cookies).map_err(|e| e.to_string())?;
-    let external_app = app.clone();
-    let workspace = WebviewWindowBuilder::new(&app, "workspace", WebviewUrl::External(url.clone()))
+    let workspace = WebviewWindowBuilder::new(app, "workspace", WebviewUrl::External(url.clone()))
         .title(format!("{} · 梦鱼更新管理", profile.name))
         .inner_size(1280.0, 800.0)
         .min_inner_size(960.0, 600.0)
         .center()
-        .visible(!state.background_check)
+        .visible(visible)
         .decorations(false)
         .data_directory(cookies)
-        .initialization_script(format!("window.__DFS_DESKTOP_TOKEN__ = {};\n{}",serde_json::to_string(&workbench.token).map_err(|e| e.to_string())?, desktop_chrome_script(&profile, state.background_check)))
+        .initialization_script(format!("window.__DFS_DESKTOP_TOKEN__ = {};\n{}",serde_json::to_string(token).map_err(|e| e.to_string())?, desktop_chrome_script(profile, state.background_check)))
         .on_document_title_changed(|window, title| {
             let state = window.app_handle().state::<Desktop>();
             if state.background_check && title == "DFS_WORKBENCH_READY" {
@@ -386,25 +447,126 @@ async fn connect_profile(
         .build()
         .map_err(|e| format!("无法打开管理工作区：{e}"))?;
     frame::round_corners(&workspace);
-    let workspace_handle = workspace.clone();
+    let handle = workspace.clone();
     workspace.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
-            let _ = workspace_handle.hide();
+            let _ = handle.hide();
+            show_main(handle.app_handle());
         }
     });
-    *state.active.lock().map_err(|e| e.to_string())? = Some(Active {
-        profile,
-        service,
-        origin: active_origin,
-        _workbench: workbench,
+    watch_webview(&workspace);
+    Ok(workspace)
+}
+
+/// Overlays such as RivaTuner (RTSS) inject into WebView2 and can crash it, which leaves a black
+/// window. A crashed page is reloaded; a window whose browser process is gone is rebuilt.
+#[cfg(windows)]
+fn watch_webview(window: &WebviewWindow) {
+    let app = window.app_handle().clone();
+    let label = window.label().to_string();
+    let _ = window.with_webview(move |webview| unsafe {
+        use webview2_com::{Microsoft::Web::WebView2::Win32::*, ProcessFailedEventHandler};
+        let Ok(core) = webview.controller().CoreWebView2() else { return };
+        let handler = ProcessFailedEventHandler::create(Box::new(move |sender, args| {
+            let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+            if let Some(args) = args {
+                args.ProcessFailedKind(&mut kind)?;
+            }
+            if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED {
+                let app = app.clone();
+                let label = label.clone();
+                std::thread::spawn(move || rebuild_window(&app, &label));
+            } else if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+                || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE
+            {
+                if let Some(sender) = sender {
+                    sender.Reload()?;
+                }
+            }
+            Ok(())
+        }));
+        let mut token = 0i64;
+        let _ = core.add_ProcessFailed(&handler, &mut token);
     });
-    *state.notice.lock().map_err(|e| e.to_string())? = None;
-    // Keep the connection chooser available from the tray while the workspace is open.
-    if let Some(main) = external_app.get_webview_window("main") {
-        let _ = main.hide();
+}
+
+#[cfg(not(windows))]
+fn watch_webview(_window: &WebviewWindow) {}
+
+/// Replaces a window whose WebView2 browser process ended, keeping it hidden if it was hidden.
+fn rebuild_window(app: &tauri::AppHandle, label: &str) {
+    let state = app.state::<Desktop>();
+    if state.exiting.load(Ordering::SeqCst) {
+        return;
     }
-    Ok(())
+    let now = std::time::Instant::now();
+    let repeated = match state.rebuilds.lock() {
+        Ok(mut history) => {
+            history.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
+            history.push(now);
+            history.len() > 3
+        }
+        Err(_) => return,
+    };
+    let Some(old) = app.get_webview_window(label) else { return };
+    let visible = old.is_visible().unwrap_or(false);
+    let _ = old.destroy();
+    for _ in 0..50 {
+        if app.get_webview_window(label).is_none() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    append_desktop_log(&state.root, &format!("{label} 窗口的界面进程意外退出{}", if repeated { "，一分钟内反复出现，不再自动恢复" } else { "，已重新打开" }));
+    let rebuilt = if repeated {
+        Err("界面进程一分钟内反复意外退出。如果开着 RivaTuner（RTSS）等帧数显示软件，请先为本程序关闭它，再重新打开工作区。".to_string())
+    } else if label == "main" {
+        build_main(app, &state.root).map_err(|e| e.to_string())
+    } else {
+        let active = state.active.lock().ok().and_then(|a| {
+            a.as_ref().map(|a| (a.profile.clone(), a.workspace_url.clone(), a.workbench.token.clone()))
+        });
+        match active {
+            Some((profile, url, token)) => build_workspace(app, &profile, &url, &token, false),
+            None => return,
+        }
+    };
+    match rebuilt {
+        Ok(window) if visible => {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        Ok(_) => {}
+        Err(error) if label != "main" => show_notice(app, error),
+        Err(_) => {}
+    }
+}
+
+fn append_desktop_log(root: &Path, line: &str) {
+    use std::io::Write;
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(root.join("logs").join("desktop.log")) {
+        let _ = writeln!(file, "[{seconds}] {line}");
+    }
+}
+
+/// RivaTuner Statistics Server injects its frame counter into every process that draws.
+#[cfg(windows)]
+fn overlay_injected() -> bool {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    ["RTSSHooks64.dll", "RTSSHooks.dll"].iter().any(|name| {
+        let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+        unsafe { !GetModuleHandleW(wide.as_ptr()).is_null() }
+    })
+}
+
+#[cfg(not(windows))]
+fn overlay_injected() -> bool {
+    false
 }
 
 fn desktop_chrome_script(profile: &Profile, background_check: bool) -> String {
@@ -468,9 +630,14 @@ fn open_data_dir(window: WebviewWindow, state: State<Desktop>) -> Result<(), Str
 }
 
 #[tauri::command]
-fn dismiss_portable_notice(window: WebviewWindow, state: State<Desktop>) -> Result<(), String> {
+fn dismiss_notice(window: WebviewWindow, state: State<Desktop>, name: String) -> Result<(), String> {
     launcher(&window)?;
-    fs::write(state.root.join(PORTABLE_NOTICE_READ), b"").map_err(|e| e.to_string())
+    let marker = match name.as_str() {
+        "portable" => PORTABLE_NOTICE_READ,
+        "overlay" => OVERLAY_NOTICE_READ,
+        _ => return Err("未知的提示".into()),
+    };
+    fs::write(state.root.join(marker), b"").map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -575,6 +742,7 @@ struct DataPlace {
 }
 
 const PORTABLE_NOTICE_READ: &str = ".portable-notice-read";
+const OVERLAY_NOTICE_READ: &str = ".overlay-notice-read";
 const DATA_NOTE: &str = "请勿删除 - 梦鱼更新管理的数据.txt";
 
 /// A portable copy started from a temporary folder (opened inside the zip, or only the exe taken
@@ -713,7 +881,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.2.4", "success":true,
+            Ok::<_, String>(serde_json::json!({"version":"0.2.5", "success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,
@@ -771,7 +939,7 @@ fn main() {
             quit_application,
             desktop_window_action,
             open_data_dir,
-            dismiss_portable_notice,
+            dismiss_notice,
             check_update,
             install_update,
             open_release_page
@@ -781,7 +949,7 @@ fn main() {
             let root = place.root;
             fs::create_dir_all(root.join("logs"))?;
             let config = Config::load(&root).map_err(std::io::Error::other)?;
-            let webview_data = root.join("webview");
+            let main_root = root.clone();
             app.manage(Desktop {
                 root,
                 installed: place.installed,
@@ -799,16 +967,9 @@ fn main() {
                 workbench_ready: AtomicBool::new(false),
                 background_started: AtomicBool::new(false),
                 disconnecting: AtomicBool::new(false),
+                rebuilds: Mutex::new(Vec::new()),
             });
-            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("梦鱼更新管理 · 工作区")
-                .inner_size(1000.0, 760.0)
-                .min_inner_size(820.0, 620.0)
-                .center()
-                .decorations(false)
-                .visible(false)
-                .data_directory(webview_data)
-                .build()?;
+            let main = build_main(app.handle(), &main_root)?;
             let monitor = app.handle().clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_millis(750));
@@ -877,14 +1038,6 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
-            frame::round_corners(&main);
-            let clone = main.clone();
-            main.on_window_event(move |event| {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = clone.hide();
-                }
-            });
             if !app.state::<Desktop>().background_check {
                 main.show()?;
             }
@@ -900,14 +1053,17 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("启动梦鱼管理桌面端失败")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
+        .run(|app, event| match event {
+            // Windows only hide; this fires when a crashed window is being rebuilt. Quitting uses exit(0).
+            tauri::RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
+            tauri::RunEvent::Exit => {
                 let state = app.state::<Desktop>();
                 state.exiting.store(true, Ordering::SeqCst);
                 if let Ok(mut active) = state.active.lock() {
                     *active = None;
                 };
             }
+            _ => {}
         });
 }
 

@@ -837,8 +837,8 @@ html[data-theme=dark] .tone-audio {--tile-bg:rgba(245,140,120,.16);--tile-fg:#f4
 
 /* The fish: brand mark, empty-state scene, the busy toast and the "all published" status. */
 .fish-glyph {flex:none;color:var(--accent)}
-.fish-mark {display:inline-grid;place-items:center;flex:none;border-radius:30%;background:linear-gradient(140deg,var(--fish-a),var(--fish-b));box-shadow:inset 0 1px rgba(255,255,255,.25),0 2px 6px rgba(15,111,99,.22)}
-.fish-mark svg {width:74%;height:74%}
+.fish-mark {display:inline-grid;place-items:center;flex:none;border-radius:23.4%;box-shadow:0 2px 6px rgba(61,112,203,.24)}
+.fish-mark svg {display:block;width:100%;height:100%}
 .rail-brand {display:grid;place-items:center;margin:0 auto 8px;flex:none}
 .brand-fish {margin-bottom:16px}
 .fish-scene {width:120px;height:96px;margin-bottom:4px;overflow:visible}

@@ -1,4 +1,4 @@
-"""Render the NSIS installer bitmaps from the fish artwork.
+"""Render the NSIS installer bitmaps from the moon fish artwork.
 
 Run from admin-desktop/:  python src-tauri/installer/render-art.py
 Needs Pillow, Microsoft YaHei (Windows) and the Tauri CLI, which rasterizes the SVG sources.
@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 ICONS = HERE.parent / "icons"
 FONT = "C:/Windows/Fonts/msyhbd.ttc"
 FONT_LIGHT = "C:/Windows/Fonts/msyh.ttc"
-TOP, BOTTOM = (44, 195, 170), (15, 111, 99)  # --fish-a / --fish-b
+TOP, BOTTOM = (99, 153, 236), (61, 112, 203)  # the app icon's water
 
 
 def rasterize(svg: Path, work: Path) -> Image.Image:
@@ -70,7 +70,7 @@ def header(mark: Image.Image) -> Image.Image:
     icon = mark.resize((60, 60), Image.LANCZOS)
     image.alpha_composite(icon, (24, (h - 60) // 2))
     draw = ImageDraw.Draw(image)
-    draw.text((96, 19), "梦鱼", font=ImageFont.truetype(FONT, 20), fill=(18, 120, 106, 255))
+    draw.text((96, 19), "梦鱼", font=ImageFont.truetype(FONT, 20), fill=(52, 98, 186, 255))
     draw.text((96, 46), "DreamingFish", font=ImageFont.truetype(FONT_LIGHT, 13), fill=(91, 105, 113, 255))
     return image
 
@@ -78,7 +78,7 @@ def header(mark: Image.Image) -> Image.Image:
 def main():
     with tempfile.TemporaryDirectory() as temp:
         work = Path(temp)
-        fish = rasterize(HERE / "fish-white.svg", work)
+        fish = rasterize(HERE / "fish.svg", work)
         mark = rasterize(ICONS / "icon.svg", work)
     sidebar(fish).convert("RGB").save(HERE / "sidebar.bmp")
     header(mark).convert("RGB").save(HERE / "header.bmp")
