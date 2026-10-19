@@ -25,7 +25,7 @@ for kind in ['cmd','ps1']:
         command=[str(launcher),'--version'] if kind=='cmd' else ['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(launcher),'--version']
         result=subprocess.run(command,cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
         text=result.stdout.decode('utf8',errors='replace')
-        passed=(result.returncode==0 and '0.2.6' in text) if value in [None,'256'] else (result.returncode!=0 and 'DFS_JAVA_HEAP_MB' in text)
+        passed=(result.returncode==0 and '0.2.7' in text) if value in [None,'256'] else (result.returncode!=0 and 'DFS_JAVA_HEAP_MB' in text)
         name=kind+'-'+str(len(steps));(root/(name+'.log')).write_bytes(result.stdout)
         steps.append({'launcher':kind,'heapInput':value,'exitCode':result.returncode,'passed':passed})
 (root/'result.json').write_text(json.dumps({'passed':all(s['passed'] for s in steps),'steps':steps,'realDataUsed':False},indent=2),encoding='utf8')

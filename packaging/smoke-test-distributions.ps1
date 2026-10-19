@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Version = "0.2.2",
-    [string]$AdminVersion = "0.2.6",
+    [string]$AdminVersion = "0.2.7",
     [string]$DistDirectory = "",
     [string]$JdkHome = "",
     [switch]$KeepWork
@@ -66,14 +66,21 @@ function Invoke-Admin([string[]]$AdminArguments) {
 
 function Publish-Release([string]$DisplayVersion, [string]$Changelog) {
     Invoke-Admin @("project", "scan", "smoke-pack") | Out-Null
-    $output = Invoke-Admin @(
+    $publishArguments = @(
         "project", "publish", "smoke-pack",
         "--version", $DisplayVersion,
         "--minimum-player-version", $Version,
-        "--changelog", $Changelog,
         "--removed-files", "DELETE",
         "--yes"
     )
+    if ($Changelog -match '[^\x00-\x7F]') {
+        # Native Windows argument decoding depends on the system code page.
+        # Exercise the documented UTF-8 input path, then verify the actual HTTP history.
+        $changelogPath = Join-Path $workRoot "changelog-$DisplayVersion.txt"
+        [IO.File]::WriteAllText($changelogPath, $Changelog, [Text.UTF8Encoding]::new($false))
+        $publishArguments += @('--changelog-file', $changelogPath)
+    } else { $publishArguments += @('--changelog', $Changelog) }
+    $output = Invoke-Admin $publishArguments
     $text = $output -join [Environment]::NewLine
     $match = [regex]::Match($text, "Published\s+\S+\s+as\s+(\S+)\s+\(sequence")
     if (-not $match.Success) {
@@ -247,7 +254,7 @@ try {
             "Expected test mod is missing before deletion: $target"
         Remove-Item -Force -LiteralPath $target
     }
-    $releaseThreeChangelog = "删除八个旧模组，保留五个新增模组"
+    $releaseThreeChangelog = "删除八个旧模组，保留五个新增模组 🐟"
     $releaseThree = Publish-Release "1.3.0" $releaseThreeChangelog
 
     $baselineOne = Get-Content -Raw -LiteralPath (Join-Path $instanceOne `

@@ -126,7 +126,8 @@ final class AdminWebServer implements AutoCloseable {
         sessionToken = Base64.getUrlEncoder().withoutPadding().encodeToString(token);
         server.setExecutor(executor);
         tasks=new TaskHttpHandler(root,this::handle);transfers=new TransferHttpHandler(this,root);publications=new PublicationHttpHandler(this,root);distribution=new DistributionHttpHandler(this,root);authentication=new AuthHttpHandler(this,auth);storage=new StorageHttpHandler(this,root);projects=new ProjectHttpHandler(this);
-        server.createContext("/", this::handle);
+        server.createContext("/", this::handle).getFilters().add(
+                cn.dreamingfish.updater.management.HttpServerResources.connectionLifecycle());
     }
 
     void start() {

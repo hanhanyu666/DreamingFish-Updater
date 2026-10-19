@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Version = "0.2.2",
-    [string]$AdminVersion = "0.2.6",
+    [string]$AdminVersion = "0.2.7",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
@@ -261,6 +261,8 @@ function Assert-PlayerVersionConsistency([string]$ExpectedVersion) {
 
 if (-not $AdminOnly) { Assert-PlayerVersionConsistency $Version }
 $resolvedJdk = Resolve-Jdk21 $JdkHome
+$env:JAVA_HOME = $resolvedJdk
+$env:PATH = (Join-Path $resolvedJdk 'bin') + ';' + $env:PATH
 $jpackage = Join-Path $resolvedJdk "bin\jpackage.exe"
 $jlink = Join-Path $resolvedJdk "bin\jlink.exe"
 

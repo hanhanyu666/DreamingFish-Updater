@@ -34,7 +34,7 @@ try:
         if result.returncode!=expected:raise RuntimeError(name+' failed: '+result.stdout.decode('utf8',errors='replace'))
         return result.stdout.decode('utf8')
     run('runtime',[str(root/'runtime/bin/java'),'-version'])
-    assert '0.2.6' in run('version',[str(launcher),'--version'])
+    assert '0.2.7' in run('version',[str(launcher),'--version'])
     run('help',[str(launcher),'--help'])
     source=root/'synthetic-source';(source/'mods').mkdir(parents=True);(source/'config').mkdir()
     (source/'config/example.txt').write_text('synthetic fixture\n')

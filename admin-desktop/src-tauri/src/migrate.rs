@@ -262,11 +262,27 @@ fn same_tree(source: &Path, target: &Path, skip_settings: bool) -> Result<(), St
     Ok(())
 }
 fn same_path(a: &Path, b: &Path) -> bool {
-    let a = dunce::canonicalize(a).unwrap_or_else(|_| a.into());
-    let b = dunce::canonicalize(b).unwrap_or_else(|_| b.into());
+    let a = comparison_path(a);
+    let b = comparison_path(b);
     a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy())
 }
+// Config loading resolves Windows short/verbatim names. Compare the migration
+// boundaries in the same spelling, including destinations not created yet.
+fn comparison_path(path: &Path) -> PathBuf {
+    let mut ancestor=path;
+    let mut suffix=Vec::new();
+    loop {
+        if let Ok(mut resolved)=dunce::canonicalize(ancestor) {
+            for part in suffix.iter().rev() {resolved.push(part);}
+            return resolved;
+        }
+        let (Some(name),Some(parent))=(ancestor.file_name(),ancestor.parent()) else{return path.into()};
+        suffix.push(name.to_os_string());ancestor=parent;
+    }
+}
 fn strip(path: &Path, base: &Path) -> Option<PathBuf> {
+    let path=comparison_path(path);
+    let base=comparison_path(base);
     let mut rest = path.components();
     for part in base.components() { if !rest.next()?.as_os_str().to_string_lossy().eq_ignore_ascii_case(&part.as_os_str().to_string_lossy()) { return None; } }
     Some(rest.as_path().into())
@@ -353,7 +369,29 @@ mod tests {
         let (base,old,new)=fixture("portable"); assert_eq!(legacy_into(&old,&new).root,new);
         let moved=base.join("other/data"); copy_tree(&new,&moved).unwrap();
         let cfg=Config::load(&moved).unwrap();
-        assert!(matches!(&cfg.profiles[0].connection,Connection::Local {home} if Path::new(home)==moved.join("management")));
+        assert!(matches!(&cfg.profiles[0].connection,Connection::Local {home} if
+            dunce::canonicalize(home).unwrap()==dunce::canonicalize(moved.join("management")).unwrap()));
+        let stored:serde_json::Value=serde_json::from_slice(&fs::read(moved.join("connections.json")).unwrap()).unwrap();
+        assert_eq!(stored["profiles"][0]["home"],"management");
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[cfg(windows)]
+    #[test]
+    fn migration_rewrites_connections_when_source_uses_a_windows_path_alias() {
+        let (base,old,new)=fixture("path-alias");
+        let alias=fs::canonicalize(&old).unwrap(); // Windows verbatim path spelling.
+        assert_ne!(alias,old);
+        assert_eq!(strip(&alias.join("management/not-created"),&old.join("management")),Some(PathBuf::from("not-created")));
+        let overlap=legacy_into(&old,&alias.join("management/not-created"));
+        assert_eq!(overlap.status,MigrationStatus::Fallback);
+        assert!(old.join("management/data/keys/test.pk8").is_file());
+        let result=legacy_into(&alias,&new);
+        assert_eq!(result.status,MigrationStatus::Complete,"{result:?}");
+        let config=Config::load(&new).unwrap();
+        let Connection::Local{home}=&config.profiles[0].connection else{panic!("expected local profile")};
+        assert_eq!(fs::read(Path::new(home).join("data/keys/test.pk8")).unwrap(),b"synthetic-key");
+        let stored:serde_json::Value=serde_json::from_slice(&fs::read(new.join("connections.json")).unwrap()).unwrap();
+        assert_eq!(stored["profiles"][0]["home"],"management");
         fs::remove_dir_all(base).unwrap();
     }
     #[test]

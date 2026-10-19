@@ -85,7 +85,9 @@ for mode in ([args.only] if args.only else ['normal','both','limit','init-hang',
     expected=(not report.get('success') and report.get('timeoutMillis')==1000 and process.returncode==1) if mode=='init-hang' else (report.get('success') is True and process.returncode==0 and report.get('buildId')==expected_build)
     if mode=='stale-core':expected=report.get('success') is False and process.returncode==1 and any(word in str(report.get('error','')).lower() for word in ['构建','资源','core'])
     row={'mode':mode,'passed':expected and not timed_out and not lingering,'exitCode':process.returncode,'timedOut':timed_out,'seconds':round(time.perf_counter()-start,3),'peakSummedWorkingSetMiB':round(peak_rss/1024**2,2),'peakSummedPrivateBytesMiB':round(peak_private/1024**2,2),'observedProcesses':len(owned),'lingeringOwnedPids':lingering,'cleanupTerminatedOwnedPids':cleanup_terminated,'observedProcessCounters':list(samples.values()),'report':report,'home':str(home)}
-    rows.append(row);print(json.dumps(row,ensure_ascii=False),flush=True)
+    # Keep console JSON portable across Windows code pages; the UTF-8 report below
+    # retains readable Unicode, and JSON consumers decode these escapes losslessly.
+    rows.append(row);print(json.dumps(row,ensure_ascii=True),flush=True)
 result={'passed':all(row['passed'] for row in rows),'samplingMillis':20,'workingSetIncludesSharedPageDoubleCounting':True,'processCountersAreSampledNotCompleteLifetimeTotals':True,'rows':rows}
 (output/'results.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
 raise SystemExit(0 if result['passed'] else 1)

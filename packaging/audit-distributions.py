@@ -44,7 +44,7 @@ def inspect(archive: zipfile.ZipFile, prefix: str, issues: list[dict], marker_by
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", default="0.2.2", help="Player version")
-    parser.add_argument("--admin-version", default="0.2.6")
+    parser.add_argument("--admin-version", default="0.2.7")
     parser.add_argument("--include-desktop",action="store_true",help="Require and audit the desktop portable ZIP too")
     parser.add_argument("--dist", type=Path, default=Path(__file__).resolve().parent.parent / "dist")
     parser.add_argument("--report", type=Path)

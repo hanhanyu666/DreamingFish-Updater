@@ -181,7 +181,7 @@ fn desktop_snapshot(state:&Desktop)->Result<Snapshot,String> {
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_default(),
         active,
-        version: "0.2.6",
+        version: "0.2.7",
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -896,7 +896,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.2.6", "buildId":option_env!("DFS_BUILD_ID").unwrap_or("development"),"success":true,
+            Ok::<_, String>(serde_json::json!({"version":"0.2.7", "buildId":option_env!("DFS_BUILD_ID").unwrap_or("development"),"success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,

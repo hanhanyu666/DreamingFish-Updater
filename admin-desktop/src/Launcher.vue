@@ -8,7 +8,7 @@ import {profilePayload,type Profile} from './connections';
 import Fish from './workbench/Fish.vue';
 type Snapshot={profiles:Profile[];defaultHome:string;logs:string;dataRoot:string;installed:boolean;dataBesideProgram:boolean;portableNotice:boolean;overlayNotice:boolean;programName:string;active:string|null;version:string;notice:string|null};
 type UpdateInfo={version:string;notes:string;installable:boolean};
-const state=ref<Snapshot>({profiles:[],defaultHome:'',logs:'',dataRoot:'',installed:false,dataBesideProgram:true,portableNotice:false,overlayNotice:false,programName:'',active:null,version:'0.2.6',notice:null});
+const state=ref<Snapshot>({profiles:[],defaultHome:'',logs:'',dataRoot:'',installed:false,dataBesideProgram:true,portableNotice:false,overlayNotice:false,programName:'',active:null,version:'0.2.7',notice:null});
 const update=ref<UpdateInfo|null>(null),updating=ref(''),checking=ref(false);
 const form=reactive<Profile>({id:'',name:'本机管理',kind:'local',home:'',url:'',target:'',remotePort:18080});
 const busy=ref(false),status=ref(''),error=ref(false),menu=ref(''),dialog=ref('');

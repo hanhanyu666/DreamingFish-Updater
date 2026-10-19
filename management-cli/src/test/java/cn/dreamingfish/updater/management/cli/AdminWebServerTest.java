@@ -1187,6 +1187,8 @@ class AdminWebServerTest {
             String token = session.get("token").toString();
             var denied = sendBytes(base, "/api/projects/transfer-demo/files/stage?path=client.txt", "new".getBytes(), "wrong-token");
             assertEquals(403, denied.statusCode()); assertEquals("old", Files.readString(source.resolve("client.txt")));
+            assertEquals("close",denied.headers().firstValue("Connection").orElse(""),
+                    "an unread rejected upload must not advertise a reusable connection");
             String requestId=java.util.UUID.randomUUID().toString();
             var staged = sendBytes(base, "/api/projects/transfer-demo/files/stage?path=client.txt&requestId="+requestId, "new".getBytes(), token);
             assertEquals(201, staged.statusCode(), staged.body());

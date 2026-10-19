@@ -11,6 +11,25 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PublicFileServerLimitsTest {
     @TempDir Path temporary;
+    @Test void emptyHealthRequestsKeepTheAdvertisedConnectionReusable() throws Exception {
+        var f=new ManagementFixture(temporary.resolve("keepalive"));
+        try(var server=new PublicFileServer(f.database,f.objects,new InetSocketAddress("127.0.0.1",0));
+            var socket=new Socket()) {
+            server.start();socket.connect(server.address());socket.setSoTimeout(2000);
+            for(int i=0;i<3;i++) {
+                socket.getOutputStream().write("GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                var header=new java.io.ByteArrayOutputStream();int value;
+                while(!header.toString(java.nio.charset.StandardCharsets.US_ASCII).endsWith("\r\n\r\n")) {
+                    value=socket.getInputStream().read();assertNotEquals(-1,value,"server closed a connection advertised as reusable");header.write(value);
+                }
+                String headers=header.toString(java.nio.charset.StandardCharsets.US_ASCII);
+                assertTrue(headers.startsWith("HTTP/1.1 200"),headers);
+                var length=java.util.regex.Pattern.compile("(?im)^Content-length: (\\d+)").matcher(headers);
+                assertTrue(length.find(),headers);int bytes=Integer.parseInt(length.group(1));
+                assertEquals(bytes,socket.getInputStream().readNBytes(bytes).length);
+            }
+        }
+    }
     private Path object(ManagementFixture f)throws Exception {
         Path file=temporary.resolve("large.bin");
         try(var output=new java.io.RandomAccessFile(file.toFile(),"rw")){output.setLength(32L*1024*1024);}

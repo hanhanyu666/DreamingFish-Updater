@@ -1,6 +1,6 @@
 # DreamingFish Admin Desktop
 
-Tauri 2 管理端桌面版，版本 0.2.6，Windows x64。
+Tauri 2 管理端桌面版，版本 0.2.7，Windows x64。
 
 连接页和工作区使用 Vue 3 / TypeScript / Vite，作为独立桌面前端随程序打包。本机、HTTPS 和 SSH 连接都加载同一套桌面资源，再调用当前管理端的业务接口。Rust 负责本机核心、连接代理、SSH 隧道、窗口与托盘；文件维护、认证、签名、发布与历史恢复继续由 Java 管理核心处理。
 
@@ -21,9 +21,9 @@ Tauri 2 管理端桌面版，版本 0.2.6，Windows x64。
 输出位于仓库 `dist/`：
 
 - `dfs-admin-desktop-windows-x64/DreamingFishAdminDesktop.exe`
-- `dfs-admin-desktop-windows-x64-0.2.6.zip`
-- `dfs-admin-desktop-windows-x64-0.2.6-setup.exe`
-- `dfs-admin-desktop-windows-x64-0.2.6-setup.exe.sig`：正式签名构建的公开更新签名
+- `dfs-admin-desktop-windows-x64-0.2.7.zip`
+- `dfs-admin-desktop-windows-x64-0.2.7-setup.exe`
+- `dfs-admin-desktop-windows-x64-0.2.7-setup.exe.sig`：正式签名构建的公开更新签名
 - `latest.json`：安装版自动更新读取的版本信息
 
 安装程序会用更新私钥签名，默认读取 `%USERPROFILE%\.tauri\dreamingfish-admin-desktop.key`，可用 `-SigningKey` 指定。私钥不放进仓库，务必另外备份：已安装的桌面端只接受这把私钥签名的更新，丢失后只能让用户手动重装。没有私钥时加 `-NoUpdaterSignature` 只能做本地测试包。生成新私钥用 `npx tauri signer generate --ci -w <路径>`，并把公钥写进 `tauri.conf.json` 的 `plugins.updater.pubkey`。
@@ -31,7 +31,7 @@ Tauri 2 管理端桌面版，版本 0.2.6，Windows x64。
 桌面端从 `releases/latest/download/latest.json` 读取更新，所以每个正式 Release 都要带上 `latest.json`。推送提交和标签后，用发布脚本创建 Release，它会验证新安装包、签名和 `latest.json` 的版本 / 标签 / URL 一致，再生成 `SHA256SUMS.txt`。没有新安装包时才可沿用既有有效更新信息；不能用旧元数据配新安装包。发布后再检查自动更新地址：
 
 ```powershell
-.\packaging\publish-release.ps1 -Tag v0.2.6 -NotesFile <发布说明.md>
+.\packaging\publish-release.ps1 -Tag v0.2.7 -NotesFile <发布说明.md>
 ```
 
 加 `-DryRun` 只生成只读计划，不调用 gh / git、不下载、不修改 dist / 校验和或临时文件；相对发布说明在调用位置解析。`latest.json` 中的下载地址默认指向 `v<桌面版版本>` 标签，标签不同时打包时用 `-ReleaseTag` 指定。便携版压缩包里带一层“梦鱼更新管理”文件夹。

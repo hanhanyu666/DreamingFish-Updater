@@ -54,18 +54,30 @@ $validationMaven=Join-Path $validationRepo $(if($validationWindows){'mvnw.cmd'}e
 $env:JAVA_HOME=$JdkHome
 $validationOldCargoTarget=$env:CARGO_TARGET_DIR
 $env:CARGO_TARGET_DIR=Join-Path $validationRepo 'target/native-validation'
-function Invoke-ValidationStep([string]$Name,[string]$Executable,[string[]]$Arguments){
-    $log=Join-Path $validationRoot ($Name+'.log');$timer=[Diagnostics.Stopwatch]::StartNew()
-    & $Executable @Arguments 2>&1 | Tee-Object -FilePath $log
-    $code=$LASTEXITCODE;$timer.Stop()
-    $validationSteps.Add([pscustomobject]@{name=$Name;exitCode=$code;seconds=$timer.Elapsed.TotalSeconds;log=$log})
+. (Join-Path $PSScriptRoot 'lib/validation-network.ps1')
+function Invoke-ValidationStep([string]$Name,[string]$Executable,[string[]]$Arguments,[switch]$RetryTransport){
+    for($attempt=0;$attempt-lt 3;$attempt++){
+        $stepName=if($attempt-eq 0){$Name}else{"$Name-retry-$attempt"}
+        $log=Join-Path $validationRoot ($stepName+'.log');$timer=[Diagnostics.Stopwatch]::StartNew()
+        [string[]]$invokeArguments=if($attempt-eq 0){$Arguments}else{@($Arguments)+@('-U')}
+        & $Executable @invokeArguments 2>&1 | Tee-Object -FilePath $log
+        $code=$LASTEXITCODE;$timer.Stop()
+        $validationSteps.Add([pscustomobject]@{name=$stepName;exitCode=$code;seconds=$timer.Elapsed.TotalSeconds;log=$log})
+        if($code-eq 0){return}
+        if($RetryTransport -and $attempt-lt 2 -and (Test-MavenTransportFailure (Get-Content -LiteralPath $log -Raw))){
+            Write-Warning "Maven artifact download failed transiently; retrying with cached downloads. Original log: $log"
+            Start-Sleep -Seconds 2
+            continue
+        }
     if($code-ne 0){
         if($env:GITHUB_ACTIONS -eq 'true'){
-            $detail=(Get-Content -LiteralPath $log -Tail 30)-join "`n"
+            $failures=@(Select-String -LiteralPath $log -Pattern '\[ERROR\]|AssertionFailed|<<< FAILURE|<<< ERROR' | Select-Object -Last 30 | ForEach-Object {$_.Line})
+            $detail=(@($failures)+@(Get-Content -LiteralPath $log -Tail 30))-join "`n"
             $detail=$detail.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
             Write-Output "::error title=Validation failed - $Name::$detail"
         }
         throw "Validation failed: $Name ($code); $log"
+    }
     }
 }
 Push-Location $validationRepo
@@ -73,6 +85,7 @@ try{
     Invoke-ValidationStep 'python-runtime' 'python' @('-c','import sys; assert sys.version_info >= (3, 12)')
     Invoke-ValidationStep 'task-contract' 'node' @('packaging/update-task-contract.mjs','--check')
     Invoke-ValidationStep 'task-contract-tests' 'node' @('--test','packaging/tests/task-contract.test.mjs')
+    & (Join-Path $PSScriptRoot 'tests/validation-network.test.ps1')
     Invoke-ValidationStep 'resource-guard-tests' 'node' @('--test','packaging/tests/build-resources.test.mjs')
     Invoke-ValidationStep 'artifact-audit-tests' 'python' @('packaging/tests/artifact-audit.test.py')
     Invoke-ValidationStep 'player-ci' $validationNpm @('--prefix','player-ui','ci','--registry=https://registry.npmjs.org','--cache',(Join-Path $validationRoot 'npm-cache'))
@@ -84,8 +97,8 @@ try{
     Invoke-ValidationStep 'admin-desktop' $validationNpm @('--prefix','admin-desktop','run','build')
     & (Join-Path $validationRepo 'packaging/tests/publish-release.test.ps1') 2>&1 | Tee-Object -FilePath (Join-Path $validationRoot 'release-planning.log')
     $mavenArgs=@('-B','-ntp',"-Dmaven.repo.local=$MavenRepository",'verify')
-    if($validationWindows){Invoke-ValidationStep 'maven-verify' $validationMaven $mavenArgs}
-    else{Invoke-ValidationStep 'maven-verify' 'sh' (@($validationMaven)+$mavenArgs)}
+    if($validationWindows){Invoke-ValidationStep 'maven-verify' $validationMaven $mavenArgs -RetryTransport}
+    else{Invoke-ValidationStep 'maven-verify' 'sh' (@($validationMaven)+$mavenArgs) -RetryTransport}
     $identity=(& node packaging/build-identity.mjs --print).Trim()
     $agent=Get-ChildItem -LiteralPath 'bootstrap-agent/target' -File -Filter 'bootstrap-agent-*.jar'|Where-Object{$_.Name-notlike'original-*'}|Select-Object -First 1
     $playerJar=Get-ChildItem -LiteralPath 'player-app/target' -File -Filter 'player-app-*.jar'|Where-Object{$_.Name-notlike'original-*'}|Select-Object -First 1
@@ -117,7 +130,7 @@ try{
         & (Join-Path $PSScriptRoot 'build-admin-desktop.ps1') -JdkHome $JdkHome -MavenRepository $MavenRepository -SkipBuildCore -SkipTests -NoUpdaterSignature -OutputRoot $localDist
         Invoke-ValidationStep 'distribution-audit' 'python' @('packaging/audit-distributions.py','--dist',$localDist,'--include-desktop','--report',(Join-Path $validationRoot 'distribution-audit.json'))
         & (Join-Path $PSScriptRoot 'smoke-test-distributions.ps1') -JdkHome $JdkHome -DistDirectory $localDist -KeepWork
-        Invoke-ValidationStep 'windows-launchers' 'python' @('packaging/tests/windows-launcher-smoke.py','--archive',(Join-Path $localDist 'dfs-admin-windows-x64-0.2.6.zip'),'--output',(Join-Path $validationRoot 'windows-launchers'))
+        Invoke-ValidationStep 'windows-launchers' 'python' @('packaging/tests/windows-launcher-smoke.py','--archive',(Join-Path $localDist 'dfs-admin-windows-x64-0.2.7.zip'),'--output',(Join-Path $validationRoot 'windows-launchers'))
         if($WithDesktopSmoke){Invoke-ValidationStep 'desktop-probe-dependencies' 'python' @('-c','import psutil');Invoke-ValidationStep 'desktop-smoke' 'python' @('packaging/desktop-remediation-smoke.py','--exe',(Join-Path $localDist 'dfs-admin-desktop-windows-x64/DreamingFishAdminDesktop.exe'),'--core',(Join-Path $localDist 'dfs-admin-desktop-windows-x64/core'),'--output',(Join-Path $validationRoot 'desktop-smoke'))}
     }
     $validationSuccess=$true

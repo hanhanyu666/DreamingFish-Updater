@@ -83,9 +83,9 @@ public final class PublicFileServer implements AutoCloseable {
         watchdog=Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("dfs-public-watchdog").factory());
         watchdog.scheduleWithFixedDelay(this::expireStalled,200,200,TimeUnit.MILLISECONDS);
         server.setExecutor(executor);
-        server.createContext("/healthz", this::handleHealth);
-        server.createContext("/v1/projects/", exchange->dispatch(exchange,this::handleProject));
-        server.createContext("/v1/objects/sha256/", exchange->dispatch(exchange,this::handleObject));
+        server.createContext("/healthz", this::handleHealth).getFilters().add(HttpServerResources.connectionLifecycle());
+        server.createContext("/v1/projects/", exchange->dispatch(exchange,this::handleProject)).getFilters().add(HttpServerResources.connectionLifecycle());
+        server.createContext("/v1/objects/sha256/", exchange->dispatch(exchange,this::handleObject)).getFilters().add(HttpServerResources.connectionLifecycle());
     }
 
     public void start() {
