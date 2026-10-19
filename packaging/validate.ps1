@@ -59,12 +59,20 @@ function Invoke-ValidationStep([string]$Name,[string]$Executable,[string[]]$Argu
     & $Executable @Arguments 2>&1 | Tee-Object -FilePath $log
     $code=$LASTEXITCODE;$timer.Stop()
     $validationSteps.Add([pscustomobject]@{name=$Name;exitCode=$code;seconds=$timer.Elapsed.TotalSeconds;log=$log})
-    if($code-ne 0){throw "Validation failed: $Name ($code); $log"}
+    if($code-ne 0){
+        if($env:GITHUB_ACTIONS -eq 'true'){
+            $detail=(Get-Content -LiteralPath $log -Tail 30)-join "`n"
+            $detail=$detail.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error title=Validation failed - $Name::$detail"
+        }
+        throw "Validation failed: $Name ($code); $log"
+    }
 }
 Push-Location $validationRepo
 try{
     Invoke-ValidationStep 'python-runtime' 'python' @('-c','import sys; assert sys.version_info >= (3, 12)')
     Invoke-ValidationStep 'task-contract' 'node' @('packaging/update-task-contract.mjs','--check')
+    Invoke-ValidationStep 'task-contract-tests' 'node' @('--test','packaging/tests/task-contract.test.mjs')
     Invoke-ValidationStep 'resource-guard-tests' 'node' @('--test','packaging/tests/build-resources.test.mjs')
     Invoke-ValidationStep 'artifact-audit-tests' 'python' @('packaging/tests/artifact-audit.test.py')
     Invoke-ValidationStep 'player-ci' $validationNpm @('--prefix','player-ui','ci','--registry=https://registry.npmjs.org','--cache',(Join-Path $validationRoot 'npm-cache'))
