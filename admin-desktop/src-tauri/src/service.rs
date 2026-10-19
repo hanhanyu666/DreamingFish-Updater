@@ -115,7 +115,7 @@ pub fn require_management_home(home: &Path) -> Result<(), String> {
 
 fn ready_url(message: &serde_json::Value, child_id: u32) -> Result<Url, String> {
     if message["type"] != "ready"
-        || message["version"] != "0.2.5"
+        || message["version"] != "0.2.6"
         || message["pid"].as_u64() != Some(child_id.into())
     {
         return Err("管理核心就绪信息无效".into());
@@ -192,6 +192,12 @@ impl Drop for OwnedService {
     }
 }
 
+fn java_heap(value:Option<&str>)->Result<Vec<String>,String> {
+    let mb=value.unwrap_or("512").parse::<u32>().map_err(|_|"DFS_JAVA_HEAP_MB 必须是 128–16384 的整数")?;
+    if !(128..=16384).contains(&mb){return Err("DFS_JAVA_HEAP_MB 必须是 128–16384 的整数".into());}
+    Ok(vec!["-Xms64m".into(),format!("-Xmx{mb}m")])
+}
+
 pub fn connect(
     app: &tauri::AppHandle,
     root: &Path,
@@ -209,13 +215,16 @@ pub fn connect(
             },
         }),
         Connection::Local { home } => {
-            let home = PathBuf::from(home);
+            if profile.relocation_required { return Err(format!("旧连接目录身份需确认：{}。请在连接页重新选择实际管理数据目录后保存。", home)); }
+            let home = crate::profiles::resolve_home(root, home)?;
+            if !home.is_dir() { return Err(format!("已保存的管理目录 {} 不存在，请重新选择目录，避免创建空项目。", home.display())); }
             require_management_home(&home)?;
             fs::create_dir_all(&home).map_err(|e| format!("无法打开管理数据目录：{e}"))?;
             let packaged = core(app)?;
             let (path, mut log) = logs(root, profile)?;
             let _ = writeln!(log, "Management core: {}", packaged.display());
             let mut child = command(java_exe(&packaged)?)
+                .args(java_heap(std::env::var("DFS_JAVA_HEAP_MB").ok().as_deref())?)
                 .arg("-Dfile.encoding=UTF-8")
                 .arg("-Dstdin.encoding=UTF-8")
                 .arg("-Dstdout.encoding=UTF-8")
@@ -268,6 +277,9 @@ pub fn connect(
                 {
                     Ok(message) => {
                         let url = ready_url(&message, owned.child.as_ref().unwrap().id())?;
+                        if let Some(expected)=option_env!("DFS_BUILD_ID"){
+                            if message["buildId"].as_str()!=Some(expected){return Err("内置管理核心与桌面构建标识不一致，请用同一轮产物重新打包".into());}
+                        }
                         return Ok(ConnectionResult {
                             url,
                             service: owned,
@@ -412,8 +424,13 @@ fn forwarded_admin(port: u16) -> bool {
 mod tests {
     use super::*;
     #[test]
+    fn java_heap_is_structured_and_rejects_shell_or_vm_arguments(){
+        assert_eq!(java_heap(None).unwrap(),vec!["-Xms64m","-Xmx512m"]);
+        for value in ["0","127","16385","512 -javaagent:bad","512&bad","", "-Xmx1g"]{assert!(java_heap(Some(value)).is_err());}
+    }
+    #[test]
     fn only_the_owned_process_can_report_loopback_ready() {
-        let good = serde_json::json!({"type":"ready","version":"0.2.5","pid":42,"port":20080,"url":"http://127.0.0.1:20080/"});
+        let good = serde_json::json!({"type":"ready","version":"0.2.6","pid":42,"port":20080,"url":"http://127.0.0.1:20080/"});
         assert!(ready_url(&good, 42).is_ok());
         assert!(ready_url(&good, 43).is_err());
         let mut bad = good.clone();

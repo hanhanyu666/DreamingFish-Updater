@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed,nextTick,onMounted,onUnmounted,ref,watch } from 'vue';
 import { ArrowLeft,ArrowRight,ArrowUp,ChevronRight,ChevronDown,Search,Plus,Upload,FolderPlus,RefreshCw,Info,Ellipsis,Shield,ShieldAlert,Trash2,Layers,FolderTree as TreeIcon,FolderOpen,History,Undo2,X,Server,ListFilter,Check,Pencil,CornerLeftUp } from '@lucide/vue';
-import { desk,navigate,travel,safely,places,groups,loadProject,addUploads,applyPreset,request,apiPath,notify,getHistoryFiles,operation,openView,restorePreview } from './store';
-import { entries,bytes,nameOf,parentOf,presets,type Entry } from './model';
+import { desk,fileIndex,pendingCounts,navigate,travel,safely,places,groups,loadProject,addUploads,applyPreset,request,apiPath,notify,getHistoryFiles,operation,openView,restorePreview } from './store';
+import { indexEntries,pageEntries,selectionVisibility,bytes,nameOf,parentOf,presets,type Entry } from './model';
 import { presetSourceLabel } from './presentation';
 import FolderTree from './FolderTree.vue';
 import FileIcon from './FileIcon.vue';
@@ -16,7 +16,7 @@ const isPending=(path:string,published=true)=>!published||changeKinds.value.has(
 const flat=computed(()=>Boolean(desk.search.trim()||desk.group||desk.filter!=='all'));
 const effective=(entry:Entry)=>entry.preset||[...(desk.project?.maintenance?.presets||[])].filter(r=>r.directory?(entry.path===r.path||entry.path.startsWith(r.path+'/')):entry.path===r.path).sort((a,b)=>Number(a.directory)-Number(b.directory)||b.path.length-a.path.length)[0]?.preset||'SYNC';
 const visible=computed(()=>{
- let rows:Entry[]=flat.value?desk.files.map(f=>({...f,name:nameOf(f.path),directory:false})):entries(desk.files,desk.directories,desk.directory);
+ let rows:Entry[]=flat.value?desk.files.map(f=>({...f,name:nameOf(f.path),directory:false})):indexEntries(fileIndex.value,desk.directory);
  const query=desk.search.trim().toLowerCase();
  if(query)rows=rows.filter(e=>`${e.path} ${e.displayName||''} ${e.componentId||''}`.toLowerCase().includes(query));
  if(desk.group)rows=rows.filter(e=>e.optionalGroup===desk.group);
@@ -24,6 +24,11 @@ const visible=computed(()=>{
  const direction=ascending.value?1:-1;
  return rows.sort((a,b)=>Number(b.directory)-Number(a.directory)||direction*(sort.value==='size'?a.size-b.size:sort.value==='version'?String(a.version||'').localeCompare(String(b.version||''),'zh-CN',{numeric:true}):sort.value==='preset'?effective(a).localeCompare(effective(b)):(a.displayName||a.name).localeCompare(b.displayName||b.name,'zh-CN',{numeric:true})));
 });
+const page=ref(0),pageSize=200;
+const paged=computed(()=>pageEntries(visible.value,page.value,pageSize));
+const pageCount=computed(()=>Math.max(1,Math.ceil(visible.value.length/pageSize)));
+const hiddenSelection=computed(()=>selectionVisibility(desk.selection,visible.value,paged.value));
+watch(visible,()=>{page.value=0;anchor.value='';});
 const group=computed(()=>groups.value.find((g:any)=>g.id===desk.group));
 const selected=computed(()=>desk.selection.length===1?desk.selection[0]:null);
 const selectedPaths=computed(()=>new Set(desk.selection.map(e=>e.path)));
@@ -33,7 +38,7 @@ const memberGroup=computed(()=>desk.group||selected.value?.optionalGroup||'');
 const explicitRule=computed(()=>desk.selection.some(e=>(desk.project?.maintenance?.presets||[]).some((r:any)=>r.path===e.path&&Boolean(r.directory)===e.directory)));
 const breadcrumbs=computed(()=>desk.directory?desk.directory.split('/').map((name,i,parts)=>({name,path:parts.slice(0,i+1).join('/')})):[]);
 const showInspector=computed(()=>desk.inspector&&desk.selection.length>0);
-const pendingIn=(path:string)=>desk.files.filter(f=>f.path.startsWith(path+'/')&&isPending(f.path,f.published)).length;
+const pendingIn=(path:string)=>pendingCounts.value.get(path)||0;
 function tag(entry:Entry){if(entry.directory)return null;const kind=changeKinds.value.get(entry.path);if(!entry.published||kind==='ADDED')return {label:'新增',tone:'added'};if(kind==='MODIFIED')return {label:'更新',tone:'modified'};return kind?{label:'待发布',tone:'policy'}:null;}
 function subline(entry:Entry){if(entry.directory){const waiting=pendingIn(entry.path);return `${entry.count} 个文件${waiting?` · ${waiting} 项待发布`:''}`;}if(flat.value)return entry.path;return entry.componentId?entry.name:'';}
 function kindLabel(entry:Entry){return entry.directory?'文件夹':entry.componentId?'Minecraft 模组':'托管文件';}
@@ -57,7 +62,7 @@ async function repair(){desk.menu='';if(!selected.value||selected.value.director
 function pick(path:string){desk.filter='all';navigate(path);}
 const inPlace=(path:string)=>!flat.value&&(desk.directory===path||desk.directory.startsWith(path+'/'));
 function toggleInspector(){desk.inspector=!desk.inspector;if(desk.inspector&&!desk.selection.length)notify('选择文件后显示详情');}
-function move(event:KeyboardEvent,index:number){const next=visible.value[index+(event.key==='ArrowDown'?1:-1)];if(!next)return;event.preventDefault();if(event.shiftKey)check(next,true);else{desk.selection=[next];anchor.value=next.path;}void nextTick(()=>document.querySelectorAll<HTMLElement>('.file-table tbody tr')[visible.value.indexOf(next)]?.focus());}
+function move(event:KeyboardEvent,index:number){const nextIndex=index+(event.key==='ArrowDown'?1:-1),next=visible.value[nextIndex];if(!next)return;event.preventDefault();if(event.shiftKey)check(next,true);else{desk.selection=[next];anchor.value=next.path;}page.value=Math.floor(nextIndex/pageSize);void nextTick(()=>{const row=document.querySelectorAll<HTMLElement>('.file-table tbody tr')[nextIndex%pageSize];row?.focus();row?.scrollIntoView({block:'nearest'});});}
 function key(event:KeyboardEvent){
  if(desk.dialog||desk.palette)return;
  const typing=(event.target as Element|null)?.closest?.('input,textarea,select,[contenteditable]'),ctrl=event.ctrlKey||event.metaKey;
@@ -98,14 +103,16 @@ onMounted(()=>window.addEventListener('keydown',key));onUnmounted(()=>window.rem
    <div v-if="group" class="group-banner"><span class="banner-icon"><Layers :size="17"/></span><div><strong>{{group.title}}</strong><small>{{group.defaultInstall?'默认安装':'默认不安装'}} · {{group.count}} 项<template v-if="group.description"> · {{group.description}}</template></small></div><button @click="desk.dialog='group';desk.dialogData={...group}"><Pencil :size="14"/>编辑</button><button class="danger-text" @click="safely(deleteGroup)">解散</button><button class="icon-button" aria-label="显示全部文件" title="显示全部文件" @click="desk.group=''"><X :size="15"/></button></div>
    <div v-if="desk.sourceError" class="source-banner" role="alert"><ShieldAlert :size="17"/><p>{{desk.sourceError}}</p><button @click="safely(()=>openView('settings','project'))"><FolderOpen :size="14"/>更换整合包目录</button></div>
    <div class="file-scroll" :class="{'with-selection':desk.selection.length&&!showInspector}" @click.self="desk.selection=[]">
-    <table class="file-table"><thead><tr><th class="check-cell"><input type="checkbox" aria-label="选择全部文件" :checked="visible.length>0&&desk.selection.length===visible.length" :indeterminate="desk.selection.length>0&&desk.selection.length<visible.length" @change="desk.selection=($event.target as HTMLInputElement).checked?[...visible]:[]"></th><th class="sortable" :aria-sort="sort==='name'?(ascending?'ascending':'descending'):'none'" @click="order('name')">名称<span>{{arrow('name')}}</span></th><th class="sortable rule-col" @click="order('preset')">维护<span>{{arrow('preset')}}</span></th><th class="sortable right size-col" @click="order('size')">大小<span>{{arrow('size')}}</span></th><th class="sortable version-col" @click="order('version')">版本<span>{{arrow('version')}}</span></th><th class="row-menu-col"><span class="sr-only">操作</span></th></tr></thead>
-     <tbody><tr v-for="(entry,index) in visible" :key="entry.path" :class="{selected:selectedPaths.has(entry.path)}" tabindex="0" @click="select(entry,$event)" @dblclick="open(entry)" @keydown.enter="open(entry)" @keydown.down="move($event,index)" @keydown.up="move($event,index)" @contextmenu.prevent="openContext(entry,$event.clientX,$event.clientY)">
+    <table class="file-table"><thead><tr><th class="check-cell"><input type="checkbox" aria-label="选择全部文件" :checked="visible.length>0&&visible.every(entry=>selectedPaths.has(entry.path))" :indeterminate="visible.some(entry=>selectedPaths.has(entry.path))&&!visible.every(entry=>selectedPaths.has(entry.path))" @change="desk.selection=($event.target as HTMLInputElement).checked?[...visible]:[]"></th><th class="sortable" :aria-sort="sort==='name'?(ascending?'ascending':'descending'):'none'" @click="order('name')">名称<span>{{arrow('name')}}</span></th><th class="sortable rule-col" @click="order('preset')">维护<span>{{arrow('preset')}}</span></th><th class="sortable right size-col" @click="order('size')">大小<span>{{arrow('size')}}</span></th><th class="sortable version-col" @click="order('version')">版本<span>{{arrow('version')}}</span></th><th class="row-menu-col"><span class="sr-only">操作</span></th></tr></thead>
+     <tbody><tr v-for="(entry,index) in paged" :key="entry.path" :class="{selected:selectedPaths.has(entry.path)}" tabindex="0" @click="select(entry,$event)" @dblclick="open(entry)" @keydown.enter="open(entry)" @keydown.down="move($event,page*pageSize+index)" @keydown.up="move($event,page*pageSize+index)" @contextmenu.prevent="openContext(entry,$event.clientX,$event.clientY)">
       <td class="check-cell"><input type="checkbox" :aria-label="`选择 ${entry.path}`" :checked="selectedPaths.has(entry.path)" @click.stop @change="check(entry,($event.target as HTMLInputElement).checked)"></td>
       <td><div class="file-name"><FileIcon :name="entry.name" :directory="entry.directory"/><div><strong :title="entry.path">{{entry.displayName||entry.name}}<em v-if="tag(entry)" class="change-tag" :class="tag(entry)!.tone">{{tag(entry)!.label}}</em></strong><small v-if="subline(entry)">{{subline(entry)}}</small></div></div></td>
       <td class="rule-col"><span class="rule-tag" :class="effective(entry).toLowerCase()">{{presets[effective(entry)]?.label||'普通同步'}}</span><Layers v-if="entry.optionalGroup" :size="13" class="group-mark" :title="`可选内容：${groupTitle(entry.optionalGroup)}`"/></td>
       <td class="right subtle tabular size-col">{{bytes(entry.size)}}</td><td class="subtle version-col" :title="entry.version||''">{{entry.version||'—'}}</td>
       <td class="row-menu-col"><button class="icon-button row-menu" :aria-label="`更多操作 ${entry.name}`" @click.stop="rowMenu(entry,$event)"><Ellipsis :size="15"/></button><ChevronRight v-if="entry.directory" :size="15" class="row-chevron"/></td>
      </tr></tbody></table>
+    <nav v-if="pageCount>1" class="file-pagination" aria-label="文件列表分页"><button :disabled="page===0" @click="page--">上一页</button><span>第 {{page+1}} / {{pageCount}} 页 · 每页 {{pageSize}} 项</span><button :disabled="page+1>=pageCount" @click="page++">下一页</button></nav>
+    <p v-if="desk.selection.length&&(hiddenSelection.otherPages||hiddenSelection.outsideFilter)" class="list-footnote" role="status">选择包含其他页 {{hiddenSelection.otherPages}} 项、筛选外 {{hiddenSelection.outsideFilter}} 项；批量操作会一起处理。</p>
     <p v-if="visible.length" class="list-footnote">{{flat?`筛选出 ${visible.length} 项`:`${visible.length} 项`}} · 整合包共 {{desk.files.length}} 个文件 · {{bytes(desk.files.reduce((n,f)=>n+f.size,0))}}</p>
     <div v-if="!visible.length&&!desk.sourceError" class="empty-list"><Fish variant="scene" class="empty-fish"/><strong>{{flat?'没有找到匹配的文件':'这个目录还没有文件'}}</strong><span>{{flat?'换一个名称、路径或筛选条件试试':'把文件拖到这里，或使用右上角的“导入文件”'}}</span><button v-if="flat" @click="desk.search='';desk.filter='all';desk.group=''">清除搜索与筛选</button><button v-else-if="desk.directory" @click="navigate(parentOf(desk.directory))"><CornerLeftUp :size="14"/>返回上一级</button></div>
    </div>

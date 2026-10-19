@@ -58,6 +58,7 @@ public final class ScanService {
     }
 
     private PublishPreview createPreviewLocked(String projectId) {
+        ApplicationTasks.progress("正在核对标准目录与维护规则",0,1);
         ProjectRecord project = database.requireProject(projectId);
         if (!project.rules().simplified()) {
             List<ReleaseManifest> history = database.listReleases(projectId).stream()

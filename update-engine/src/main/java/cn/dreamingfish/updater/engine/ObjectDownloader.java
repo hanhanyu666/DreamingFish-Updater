@@ -136,6 +136,10 @@ final class ObjectDownloader {
 
     private long performRequest(UpdateRequest request, EnginePaths paths, String hash, long expectedSize,
                                 long requestedOffset, ProgressTracker tracker, boolean retried) {
+        return performRequest(request,paths,hash,expectedSize,requestedOffset,tracker,retried,0);
+    }
+    private long performRequest(UpdateRequest request,EnginePaths paths,String hash,long expectedSize,long requestedOffset,
+                                ProgressTracker tracker,boolean retried,int overloadAttempts) {
         request.cancellationToken().throwIfCancelled();
         URI uri = ManifestFetcher.endpoint(request.binding(), "v1/objects/sha256/" + hash);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
@@ -158,6 +162,16 @@ final class ObjectDownloader {
 
         try (InputStream input = response.body()) {
             int status = response.statusCode();
+            if(status==429||status==503){
+                if(overloadAttempts>=2)throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,"下载服务繁忙，请稍后重试（HTTP "+status+"）；已保留断点缓存");
+                input.close();
+                long seconds=1;
+                try{seconds=Math.max(0,Math.min(5,Long.parseLong(response.headers().firstValue("Retry-After").orElse("1"))));}catch(NumberFormatException ignored){}
+                tracker.set(hash,requestedOffset,"下载服务繁忙，正在等待后重试");
+                long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(seconds);
+                while(System.nanoTime()<deadline){request.cancellationToken().throwIfCancelled();try{Thread.sleep(25);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new UpdateException(UpdateErrorCode.CANCELLED,"Download retry cancelled",e);}}
+                return performRequest(request,paths,hash,expectedSize,requestedOffset,tracker,retried,overloadAttempts+1);
+            }
             long actualOffset;
             StandardOpenOption[] options;
             if (status == 206 && requestedOffset > 0
@@ -173,7 +187,7 @@ final class ObjectDownloader {
             } else if (status == 416 && requestedOffset > 0 && !retried) {
                 Files.deleteIfExists(paths.partialObject(hash));
                 tracker.set(hash, 0, "正在重新下载文件");
-                return performRequest(request, paths, hash, expectedSize, 0, tracker, true);
+                return performRequest(request, paths, hash, expectedSize, 0, tracker, true,overloadAttempts);
             } else {
                 throw new UpdateException(UpdateErrorCode.DOWNLOAD_FAILED,
                         "Object request failed with HTTP " + status + " for " + hash);

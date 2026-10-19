@@ -1,0 +1,5 @@
+SAVE_FAILURE original_home_exists=false moved_key_exists=true old_profile_target_exists=false notice_claims_old_location=true
+INVALID_CONFIG notice=false current_profiles=0 old_config_exists=false old_backup_exists=false moved_key_exists=true
+BUSY_HOME notice=true new_root_profiles=0 old_root_profiles=2 old_key_exists=true
+PORTABLE_MOVE profile_target_exists=false settings_target_exists=false actual_moved_key_exists=true
+Fixture root: D:\Desktop\DreamingFish-Updater\target\review-2026-10-18\migration-44a0c623-3100-459d-929b-f41a7ec2804d

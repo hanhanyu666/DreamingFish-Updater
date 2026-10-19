@@ -53,6 +53,12 @@ public final class StaticDistributionService {
 
     public StaticDistributionExportResult exportProject(String projectId,
                                                          Path selectedOutputDirectory) {
+        try(ProjectLock common=ProjectLock.acquire(paths.locks().resolve(projectId+".lock"))){
+        ApplicationTasks.progress("正在导出已签名发布内容",0,1);
+        return exportLocked(projectId,selectedOutputDirectory);
+        }catch(IOException error){throw new ManagementException("无法锁定静态导出",error);}
+    }
+    private StaticDistributionExportResult exportLocked(String projectId,Path selectedOutputDirectory){
         ProjectRecord project = database.requireProject(projectId);
         StoredRelease latest = database.latestRelease(projectId)
                 .orElseThrow(() -> new ManagementException(
@@ -61,6 +67,7 @@ public final class StaticDistributionService {
         Instant generatedAt = Instant.now();
         ExportMarker previous = readMarker(output);
         Instant createdAt = previous == null ? generatedAt : previous.createdAt();
+        ApplicationTasks.committing("正在写入静态导出目录");
         writeJson(output, MARKER_FILE, new ExportMarker(
                 EXPORT_SCHEMA_VERSION, projectId, createdAt, generatedAt, "IN_PROGRESS"));
 

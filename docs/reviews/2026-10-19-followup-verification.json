@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-19",
+  "buildId": "dd2ed3a7a5f41b24ff6f4dae13e89aa337bbc2268bf9c84e659f90e79bd212b0",
+  "java": {
+    "protocol": {
+      "tests": 41,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "update-engine": {
+      "tests": 61,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "management-core": {
+      "tests": 105,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "management-cli": {
+      "tests": 44,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "bootstrap-agent": {
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "player-app": {
+      "tests": 43,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "javaTotal": {
+    "tests": 307,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "adminFrontendTests": 40,
+  "playerFrontendTests": 77,
+  "adminRustTests": 38,
+  "playerRustTests": 12,
+  "regularTestsPassed": 474,
+  "desktopTaskContract": {
+    "passed": true,
+    "realStore": true,
+    "realRustProxy": true,
+    "realJavaApi": true,
+    "acceptedTaskCount": 2,
+    "lostAcknowledgementReconciled": true,
+    "remainingUnfinishedJobs": 0
+  },
+  "hiddenDesktop": {
+    "passed": true,
+    "report": {
+      "buildId": "dd2ed3a7a5f41b24ff6f4dae13e89aa337bbc2268bf9c84e659f90e79bd212b0",
+      "bundledLauncherIpc": true,
+      "desktopFrontendReady": true,
+      "ownedLoopbackClosed": true,
+      "profiles": 1,
+      "success": true,
+      "version": "0.2.5",
+      "windowsKeptHidden": true,
+      "workspaceFrameIpc": true,
+      "workspaceManagementCommandsDenied": true,
+      "workspaceUrl": "http://127.0.0.1:9209/workspace.html"
+    },
+    "exitCode": 0,
+    "lingeringOwnedPids": []
+  },
+  "artifactIdentityCheck": true,
+  "notes": [
+    "Targeted run first had a test-only final-class inheritance compile error; corrected before final full verify.",
+    "First contract harness imported Vue with an incomplete DOM stub; corrected and then passed with the real store, production proxy and current Java JAR.",
+    "Historical review probes are retained unchanged; regressions assert the corrected behavior."
+  ]
+}

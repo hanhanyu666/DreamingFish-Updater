@@ -14,7 +14,7 @@
     const button=document.getElementById("use-new-interface");if(!button)return;button.hidden=!available;
     let dirty=false;document.addEventListener("input",e=>{if(e.target.closest("form"))dirty=true;});document.addEventListener("submit",()=>{dirty=false;});
     button.addEventListener("click",()=>{
-      if(typeof app!=="undefined"&&(app.busy||app.transferBusy||app.transferTasks.some(task=>!['COMPLETED','DONE','done','SKIPPED'].includes(task.status||task.state)))) {if(typeof toast==="function")toast("请先完成或移出当前文件任务，再切换界面",true);return;}
+      if(typeof app!=="undefined"&&(app.busy||app.transferBusy||app.transferTasks.some(task=>!['COMPLETED','DONE','done','SKIPPED','UNDONE'].includes(task.status||task.state)))) {if(typeof toast==="function")toast("请先完成或移出当前文件任务，再切换界面",true);return;}
       if(dirty&&!confirm("有尚未保存的内容，切换界面并放弃这些修改？"))return;
       try{localStorage.setItem(key,"workbench");}catch(_){}
       const project=document.getElementById("project-select")?.value,view=document.querySelector(".view.active")?.id?.replace("view-","")||"content";

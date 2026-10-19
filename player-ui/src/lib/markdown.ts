@@ -9,7 +9,8 @@ function safeWebUri(destination: string): string | null {
   if (!value) return null;
   try {
     const uri = new URL(value);
-    return uri.protocol === "https:" || uri.protocol === "http:" ? uri.toString() : null;
+    return /^(https?):\/\//i.test(value) && !uri.username && !uri.password
+      && (uri.protocol === "https:" || uri.protocol === "http:") ? uri.toString() : null;
   } catch {
     return null;
   }
@@ -20,9 +21,12 @@ function resolveImageSource(destination: string): string | null {
   if (!value) return null;
   const external = safeWebUri(value);
   if (external) return external;
-  const normalized = value.startsWith("/") ? value : "/" + value;
-  if (normalized.includes("..")) return null;
-  return normalized;
+  try {
+    const decoded = decodeURIComponent(value);
+    if (decoded.startsWith("//") || /[\\:\u0000-\u001f\u007f]/.test(decoded)
+        || decoded.split(/[/?#]/).some(part => part === "." || part === "..")) return null;
+    return value.startsWith("/") ? value : "/" + value;
+  } catch { return null; }
 }
 
 function escapeHtml(value: string): string {

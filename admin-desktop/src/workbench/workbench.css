@@ -1,12 +1,10 @@
 @import '../desktop-chrome.css';
 
-@font-face {font-family:'HarmonyOS Sans SC';src:url('./fonts/HarmonyOS-Sans-SC-Regular.woff2') format('woff2');font-weight:100 549;font-display:swap}
-@font-face {font-family:'HarmonyOS Sans SC';src:url('./fonts/HarmonyOS-Sans-SC-Bold.woff2') format('woff2');font-weight:550 900;font-display:swap}
 
 /* The chrome (title bar, activity bar, project sidebar, status bar) shares one colour around a rounded work
    card; inside the card, panels are tiled and divided by hairlines. Small friendly radii; a fish for a brand. */
 :root {
-  --font:'HarmonyOS Sans SC','Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI','PingFang SC','Hiragino Sans GB',sans-serif;
+  --font:'Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI','PingFang SC','Hiragino Sans GB',sans-serif;
   --mono:'Cascadia Mono','Cascadia Code',Consolas,'Microsoft YaHei UI',monospace;
   font:13px/1.5 var(--font); font-synthesis:none; color-scheme:light; -webkit-font-smoothing:antialiased;
   --base:#eff2f4; --surface:#fff; --surface-2:#f7f9fa; --elevated:#fff;
@@ -1006,3 +1004,5 @@ html[data-theme=dark] .tone-audio {--tile-bg:rgba(245,140,120,.16);--tile-fg:#f4
   .file-table tbody tr {height:46px}
 }
 @media (prefers-reduced-motion:reduce) {*,*::before,*::after {animation:none!important;transition:none!important}}
+
+.file-pagination{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px;font-size:12px;color:var(--muted)}

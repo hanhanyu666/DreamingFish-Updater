@@ -19,7 +19,7 @@ final class BackupCreateCommand implements Runnable {
         ManagementCli root = parent.root;
         char[] password = BackupPasswords.read(passwordEnvironment, true);
         try {
-            Path archive = root.services().backups().create(output, password);
+            Path archive = root.tracked("","backup/create",true,()->root.services().backups().create(output,password));
             if (root.jsonOutput) root.printJson(java.util.Map.of("archive", archive.toString()));
             else root.out().println("Created encrypted backup " + archive);
         } finally {

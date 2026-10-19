@@ -2,12 +2,16 @@
 import { reactive,watch,ref } from 'vue';
 import { FolderOpen,Globe,ShieldCheck,Save,Server,KeyRound,Copy,RotateCcw } from '@lucide/vue';
 import { desk,safely,saveProject,request,apiPath,operation,refresh,notify,openBrowse,openView } from './store';
+import {bytes} from './model';
 import { viewSections,sectionLabel } from './presentation';
 import Segmented from './Segmented.vue';
 const project=reactive({displayName:'',sourceDirectory:'',publicBaseUrl:''}),settings=reactive({httpHost:'',httpPort:8080,webHost:'',webPort:18080});
 const account=reactive({username:'',password:'',newPassword:'',confirmPassword:'',allowLocalBypass:false});
-const address=ref<any>(null);
-function resetProject(){Object.assign(project,{displayName:desk.project?.displayName||'',sourceDirectory:desk.project?.sourceDirectory||'',publicBaseUrl:desk.project?.publicBaseUrl||''});desk.settingsDirty=false;}
+const address=ref<any>(null),draftProject=ref('');
+const storage=ref<any>(null),forgetUndo=ref(false);
+async function inspectStorage(){storage.value=await request('/api/storage/preview','POST',{forgetUndo:forgetUndo.value});}
+async function cleanStorage(){if(!storage.value)return;await operation(async()=>{const result=await request('/api/storage/clean','POST',{stamp:storage.value.stamp,forgetUndo:forgetUndo.value});notify(`已释放 ${bytes(result.releasedBytes)}；${result.failed.length} 项保留`);await inspectStorage();if(result.failed.length)desk.error=result.failed.join('；');});}
+function resetProject(){draftProject.value=desk.project?.id||'';address.value=null;Object.assign(project,{displayName:desk.project?.displayName||'',sourceDirectory:desk.project?.sourceDirectory||'',publicBaseUrl:desk.project?.publicBaseUrl||''});desk.settingsDirty=false;}
 watch(()=>desk.project,resetProject,{immediate:true});
 watch(()=>desk.state.settings,()=>Object.assign(settings,desk.state.settings||{}),{immediate:true});
 watch(()=>desk.auth,()=>{account.username=desk.auth.username||'';account.allowLocalBypass=Boolean(desk.auth.localBypass);},{immediate:true});
@@ -20,7 +24,7 @@ function copy(text:string){void navigator.clipboard?.writeText(text).then(()=>no
 <template><div class="view settings-view"><section class="stage">
  <header class="stage-toolbar"><Segmented class="section-tabs" :items="viewSections.settings" :model-value="desk.section" label="设置" @update:model-value="safely(()=>openView('settings',$event))"/><strong class="section-title">{{sectionLabel('settings',desk.section)}}</strong><span class="toolbar-spacer"/><span class="toolbar-note">{{desk.section==='project'?desk.project?.displayName:'当前管理连接'}}</span></header>
  <div class="list-scroll" :class="{'with-selection':desk.settingsDirty&&desk.section==='project'}"><div class="page-column narrow">
-  <form v-if="desk.section!=='service'&&desk.section!=='account'" id="project-settings" class="settings-form" @submit.prevent="safely(()=>saveProject(project))" @input="desk.settingsDirty=true">
+  <form v-if="desk.section!=='service'&&desk.section!=='account'" id="project-settings" class="settings-form" @submit.prevent="safely(()=>saveProject(project,draftProject))" @input="desk.settingsDirty=true">
    <section class="settings-group"><h3>整合包项目</h3><div class="group-card">
     <label class="group-row"><span class="row-label">项目名称</span><input v-model="project.displayName" required></label>
     <label class="group-row"><span class="row-label">整合包标准目录<small>模组与配置从这个目录检查并发布</small></span><div class="field-with-button"><input v-model="project.sourceDirectory" required><button type="button" aria-label="浏览目录" title="浏览目录" @click="openBrowse('directory','project-source',project.sourceDirectory)"><FolderOpen :size="16"/></button></div></label>
@@ -31,6 +35,7 @@ function copy(text:string){void navigator.clipboard?.writeText(text).then(()=>no
   <form v-else-if="desk.section==='service'" class="settings-form" @submit.prevent="safely(saveService)">
    <section class="settings-group"><h3>玩家下载服务</h3><div class="group-card"><div class="group-row"><span class="row-label">运行状态</span><span class="service-state" :class="{on:desk.state.publicService?.running}"><i/>{{desk.state.publicService?.running?'运行中':'已停止'}}</span><button type="button" class="labelled" @click="desk.dialog='service'"><Server :size="15"/>管理服务</button></div><label class="group-row"><span class="row-label">监听地址</span><input v-model="settings.httpHost" required></label><label class="group-row"><span class="row-label">监听端口</span><input v-model.number="settings.httpPort" type="number" min="1" max="65535" required></label></div><p class="group-note">下载地址用于提供更新内容，与管理工作区的地址分别设置。</p></section>
    <section class="settings-group"><h3>网页管理服务</h3><div class="group-card"><label class="group-row"><span class="row-label">网页监听地址</span><input v-model="settings.webHost" required></label><label class="group-row"><span class="row-label">网页端口</span><input v-model.number="settings.webPort" type="number" min="1" max="65535" required></label></div><p class="group-note">桌面工作区使用自动分配的本机端口，原网页配置仍保留。</p></section>
+   <section class="settings-group"><h3>存储与清理</h3><label class="check"><input v-model="forgetUndo" type="checkbox" @change="storage=null">预览时包含放弃文件导入的撤销归档</label><button type="button" @click="safely(inspectStorage)">检查容量并预览清理</button><template v-if="storage"><div class="group-card"><div v-for="item in storage.categories" :key="item.kind" class="group-row"><span>{{({objects:'发布对象',currentObjects:'当前发布对象',historyObjects:'历史发布对象',unreferencedObjects:'保守保留的其他对象',recoverable:'可恢复归档',staging:'暂存',receipts:'收据与恢复日志',tasks:'后台任务记录'} as Record<string,string>)[item.kind]||item.kind}}<small>{{item.protection}}</small></span><strong>{{bytes(item.bytes)}}</strong></div></div><p v-for="item in storage.candidates" :key="item.path">{{item.path}} · {{bytes(item.bytes)}} · {{item.reason}}{{item.losesUndo?'（清理后无法撤销）':''}}</p><button type="button" :disabled="desk.busy||!storage.candidates.length" @click="safely(cleanStorage)">确认清理上述 {{storage.candidates.length}} 项</button></template></section>
    <div class="form-actions end"><button class="accent" :disabled="desk.busy"><Save :size="15"/>保存服务设置</button></div>
   </form>
   <form v-else class="settings-form" @submit.prevent="safely(saveAccount)">

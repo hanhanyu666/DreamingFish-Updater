@@ -28,8 +28,7 @@ final class PlayerProgramPublishCommand implements Runnable {
         ManagementCli root = parent.root;
         Confirmations.require(root, yes,
                 "Publish the detected immutable player program for " + platform + "?");
-        var stored = root.services().playerPrograms().publish(projectId, platform, version,
-                source, launcher, minimumBootstrapVersion);
+        var stored=root.tracked(projectId,"programs",false,()->root.services().playerPrograms().publish(projectId,platform,version,source,launcher,minimumBootstrapVersion));
         if (root.jsonOutput) root.printJson(stored);
         else root.out().printf("Published player program %s for %s/%s.%n",
                 stored.version(), stored.projectId(), stored.platform());

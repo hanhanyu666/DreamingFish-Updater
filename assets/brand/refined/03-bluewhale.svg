@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="whale-title whale-desc">
+<title id="whale-title">梦鱼更新器 · 云鲸</title>
+<desc id="whale-desc">蓝色水面上，奶油白的小鲸鱼扬起尾鳍。浅蓝腹部、圆润侧鳍与粉色腮红丰富了表情，喷水泡形成一枚轻盈的更新符号。</desc>
+<defs>
+<linearGradient id="whale-bg" x1="92" y1="0" x2="391" y2="512" gradientUnits="userSpaceOnUse"><stop stop-color="#6399EC"/><stop offset="1" stop-color="#3D70CB"/></linearGradient>
+<linearGradient id="whale-body" x1="222" y1="188" x2="303" y2="378" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFDF1"/><stop offset="1" stop-color="#F9F0D9"/></linearGradient>
+<linearGradient id="whale-fin" x1="251" y1="287" x2="275" y2="325" gradientUnits="userSpaceOnUse"><stop stop-color="#A7D6E9"/><stop offset="1" stop-color="#81B7DD"/></linearGradient>
+<clipPath id="whale-tile"><rect width="512" height="512" rx="120"/></clipPath>
+<clipPath id="whale-silhouette"><path d="M158 256c-4-31-11-49-28-61-17-15-22-35-19-53 21-1 40 7 50 25 2-20 15-35 37-37 9 19 1 44-17 60-5 6-7 13-5 21 18-17 48-27 83-25 67 4 117 45 137 100 10 27 4 50-17 64-36 25-101 32-155 13-43-19-60-62-66-107Z"/></clipPath>
+</defs>
+<rect width="512" height="512" rx="120" fill="url(#whale-bg)"/>
+<g clip-path="url(#whale-tile)">
+<path d="M0 397c112-38 172 27 278 6 82-17 144-33 234-9v118H0Z" fill="#AADCF0" opacity=".17"/>
+<path d="M0 440c120-25 202 20 308 1 80-15 143-14 204 3v68H0Z" fill="#2C62BA" opacity=".17"/>
+</g>
+<ellipse cx="283" cy="407" rx="106" ry="10" fill="#254E92" opacity=".08"/>
+<path d="M158 256c-4-31-11-49-28-61-17-15-22-35-19-53 21-1 40 7 50 25 2-20 15-35 37-37 9 19 1 44-17 60-5 6-7 13-5 21 18-17 48-27 83-25 67 4 117 45 137 100 10 27 4 50-17 64-36 25-101 32-155 13-43-19-60-62-66-107Z" fill="url(#whale-body)"/>
+<path d="M161 294c60 54 157 75 239 21l26 64-78 36-158-20Z" fill="#DCEEF3" clip-path="url(#whale-silhouette)"/>
+<path d="M205 210c24-13 57-13 84-2" fill="none" stroke="#FFF" stroke-opacity=".72" stroke-width="6" stroke-linecap="round"/>
+<path d="M126 159c12 6 21 15 28 27m30-35c-1 14-8 26-18 36" fill="none" stroke="#B3D7E7" stroke-opacity=".62" stroke-width="4.5" stroke-linecap="round"/>
+<path d="M262 285c-17 1-23 20-15 35 7 12 23 7 33-11 7-13-4-24-18-24Z" fill="url(#whale-fin)"/>
+<path d="M256 294c-6 6-8 14-4 21" fill="none" stroke="#D7ECF4" stroke-opacity=".65" stroke-width="3.5" stroke-linecap="round"/>
+<circle cx="345" cy="275" r="11.5" fill="#254E7D"/>
+<circle cx="341.5" cy="271.5" r="3.2" fill="#FFF"/>
+<ellipse cx="350" cy="296" rx="12" ry="7.5" fill="#F3B7AA" opacity=".92"/>
+<path d="M374 302q6 7 12 0" fill="none" stroke="#254E7D" stroke-width="4.5" stroke-linecap="round"/>
+<path d="M285 207q8-3 15 3" fill="none" stroke="#8ABAD5" stroke-opacity=".72" stroke-width="4" stroke-linecap="round"/>
+<circle cx="326" cy="132" r="23" fill="#CFF7FA" opacity=".08"/>
+<g fill="none" stroke="#D3F5EC" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M335.72 152.85A23 23 0 1 1 345.92 120.50"/><path d="M336.59 115.15L345.92 120.50 345.95 109.75"/></g>
+<path d="M309 168c-5 6-7 11-4 14 4 5 10 1 9-4-1-3-3-7-5-10Z" fill="#B9E8F0"/>
+<circle cx="371" cy="165" r="4.5" fill="#B9E8F0" opacity=".65"/>
+</svg>

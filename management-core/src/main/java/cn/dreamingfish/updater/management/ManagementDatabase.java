@@ -103,7 +103,7 @@ public final class ManagementDatabase {
     }
 
     public void initialize() {
-        try {
+        try (InstanceAccess access=InstanceAccess.acquire(paths.root(),false)) {
             paths.initialize();
             try (Connection connection = open(); Statement statement = connection.createStatement()) {
                 for (String sql : SCHEMA.split(";")) {
@@ -196,6 +196,7 @@ public final class ManagementDatabase {
     }
 
     public ProjectRecord requireProject(String projectId) {
+        new SourceImportRecovery(paths,this,json).recoverPending(projectId);
         return findProject(projectId)
                 .orElseThrow(() -> new ManagementException("Unknown project: " + projectId));
     }
@@ -216,7 +217,10 @@ public final class ManagementDatabase {
 
     public void updateProject(String projectId, String displayName, Path source,
                               String publicBaseUrl, Branding branding, ProjectRules rules) {
-        updateProject(projectId, displayName, source, publicBaseUrl, branding, rules, true);
+        try (ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(projectId+".lock"))) {
+            requireProject(projectId);
+            updateProject(projectId, displayName, source, publicBaseUrl, branding, rules, true);
+        } catch (IOException error) { throw new ManagementException("无法锁定项目设置",error); }
     }
 
     void updateProjectWithoutJournal(String projectId, String displayName, Path source,
@@ -576,14 +580,26 @@ public final class ManagementDatabase {
     }
 
     private Connection open() throws SQLException {
-        Connection connection = DriverManager.getConnection("jdbc:sqlite:" + paths.database());
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("PRAGMA foreign_keys = ON");
-            statement.execute("PRAGMA busy_timeout = 10000");
-            statement.execute("PRAGMA journal_mode = WAL");
-            statement.execute("PRAGMA synchronous = FULL");
+        final InstanceAccess access;
+        try{access=InstanceAccess.acquire(paths.root(),false);}catch(IOException error){throw new SQLException("Management instance is unavailable",error);}
+        Connection connection=null;
+        try {
+            connection=DriverManager.getConnection("jdbc:sqlite:"+paths.database());
+            try(Statement statement=connection.createStatement()){
+                statement.execute("PRAGMA foreign_keys = ON");statement.execute("PRAGMA busy_timeout = 10000");
+                statement.execute("PRAGMA journal_mode = WAL");statement.execute("PRAGMA synchronous = FULL");
+            }
+            Connection owned=connection;var closed=new java.util.concurrent.atomic.AtomicBoolean();
+            return (Connection)java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),new Class<?>[]{Connection.class},(proxy,method,args)->{
+                if(method.getName().equals("close")&&method.getParameterCount()==0){
+                    if(closed.compareAndSet(false,true)){try{owned.close();}finally{access.close();}}return null;
+                }
+                try{return method.invoke(owned,args);}catch(java.lang.reflect.InvocationTargetException error){throw error.getCause();}
+            });
+        }catch(SQLException|RuntimeException error){
+            if(connection!=null)try{connection.close();}catch(SQLException close){error.addSuppressed(close);}
+            try{access.close();}catch(IOException close){error.addSuppressed(close);}throw error;
         }
-        return connection;
     }
 
     private String toStoredPath(Path path) {

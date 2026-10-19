@@ -63,6 +63,7 @@ public final class StaticDistributionUploader {
                 "WebDAV");
         String authorization = basicAuthorization(configuration);
         List<DistributionFile> files = listFiles(root);
+        ApplicationTasks.committing("正在写入外部托管目录；取消不撤销已上传内容");
         ensureWebDavCollection(base, authorization);
         createWebDavDirectories(base, files, authorization);
         Map<String, RemoteIndexEntry> remoteIndex = readWebDavIndex(
@@ -99,6 +100,7 @@ public final class StaticDistributionUploader {
         validateS3(configuration);
         Path root = validateExport(exportDirectory);
         List<DistributionFile> files = listFiles(root);
+        ApplicationTasks.committing("正在写入对象存储；取消不撤销已上传内容");
         UploadStats stats = uploadOrdered(files, file -> {
             URI destination = s3ObjectUri(configuration, file.relativePath());
             if (!file.mutable() && s3ObjectMatches(

@@ -1,0 +1,100 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@lucide/vue": {
+      "name": "@lucide/vue",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "vue"
+      ],
+      "effects": [],
+      "range": "",
+      "nodes": [
+        "node_modules/@lucide/vue"
+      ],
+      "fixAvailable": false
+    },
+    "@vitejs/plugin-vue": {
+      "name": "@vitejs/plugin-vue",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "vue"
+      ],
+      "effects": [],
+      "range": "",
+      "nodes": [
+        "node_modules/@vitejs/plugin-vue"
+      ],
+      "fixAvailable": false
+    },
+    "@vue/server-renderer": {
+      "name": "@vue/server-renderer",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1241259,
+          "name": "@vue/server-renderer",
+          "dependency": "@vue/server-renderer",
+          "title": "@vue/server-renderer: XSS via missing CR in attribute-name blacklist",
+          "url": "https://github.com/advisories/GHSA-g2v6-rqmx-r4w6",
+          "severity": "high",
+          "cwe": [
+            "CWE-79",
+            "CWE-116"
+          ],
+          "cvss": {
+            "score": 7.2,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:L/I:L/A:N"
+          },
+          "range": "<3.5.42"
+        }
+      ],
+      "effects": [
+        "vue"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/@vue/server-renderer"
+      ],
+      "fixAvailable": false
+    },
+    "vue": {
+      "name": "vue",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@vue/server-renderer"
+      ],
+      "effects": [
+        "@lucide/vue",
+        "@vitejs/plugin-vue"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/vue"
+      ],
+      "fixAvailable": false
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 4,
+      "critical": 0,
+      "total": 4
+    },
+    "dependencies": {
+      "prod": 25,
+      "dev": 58,
+      "optional": 38,
+      "peer": 3,
+      "peerOptional": 0,
+      "total": 84
+    }
+  }
+}

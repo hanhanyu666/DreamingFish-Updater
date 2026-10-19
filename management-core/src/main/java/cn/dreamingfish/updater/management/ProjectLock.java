@@ -29,22 +29,25 @@ final class ProjectLock implements Closeable {
             existing.references++;
             return new ProjectLock(lockFile, existing);
         }
-        FileChannel channel = FileChannel.open(lockFile,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        InstanceAccess access = lockFile.getParent().getFileName().toString().equals("locks")
+                ? InstanceAccess.acquire(lockFile.getParent().getParent(),false) : null;
+        FileChannel channel;
+        try{channel=FileChannel.open(lockFile,StandardOpenOption.CREATE,StandardOpenOption.WRITE);}
+        catch(IOException|RuntimeException error){if(access!=null)access.close();throw error;}
         try {
             FileLock lock = channel.tryLock();
             if (lock == null) {
                 channel.close();
                 throw new ManagementException("Another operation is already changing this project");
             }
-            Held held = new Held(channel, lock);
+            Held held = new Held(channel, lock,access);
             HELD.get().put(lockFile, held);
             return new ProjectLock(lockFile, held);
         } catch (java.nio.channels.OverlappingFileLockException e) {
-            channel.close();
+            channel.close();if(access!=null)access.close();
             throw new ManagementException("Another operation is already changing this project", e);
         } catch (IOException | RuntimeException failure) {
-            channel.close();
+            channel.close();if(access!=null)access.close();
             throw failure;
         }
     }
@@ -60,7 +63,7 @@ final class ProjectLock implements Closeable {
         try {
             held.lock.release();
         } finally {
-            held.channel.close();
+            try{held.channel.close();}finally{if(held.access!=null)held.access.close();}
         }
     }
 
@@ -68,6 +71,7 @@ final class ProjectLock implements Closeable {
         final FileChannel channel;
         final FileLock lock;
         int references = 1;
-        Held(FileChannel channel, FileLock lock) { this.channel = channel; this.lock = lock; }
+        final InstanceAccess access;
+        Held(FileChannel channel, FileLock lock,InstanceAccess access) { this.channel = channel; this.lock = lock; this.access=access; }
     }
 }

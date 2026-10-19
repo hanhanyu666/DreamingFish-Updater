@@ -215,8 +215,45 @@ fn instance_root_from_args() -> Result<PathBuf, String> {
         .map_err(|error| format!("无法读取 Minecraft 实例目录: {error}"))
 }
 
+fn player_origin(label:&str,url:&tauri::Url,development:bool)->bool {
+    if label!="main"||!matches!(url.path(),"/"|"/index.html")||url.query().is_some()||url.fragment().is_some(){return false;}
+    (url.scheme()=="tauri"&&url.host_str()==Some("localhost"))
+        || (matches!(url.scheme(),"http"|"https")&&url.host_str()==Some("tauri.localhost")&&url.port().is_none())
+        || (development&&url.scheme()=="http"&&matches!(url.host_str(),Some("localhost"|"127.0.0.1"))&&url.port()==Some(1420))
+}
+fn require_player(window:&tauri::WebviewWindow)->Result<(),String> {
+    if player_origin(window.label(),&window.url().map_err(|e|e.to_string())?,cfg!(debug_assertions)){Ok(())}else{Err("只有内置玩家主页面可以调用原生命令".into())}
+}
+fn configured_player_home(instance:&Path)->Option<PathBuf> {
+    let args:Vec<String>=std::env::args().collect();
+    let binding=args.windows(2).find(|pair|pair[0]=="--binding").map(|pair|PathBuf::from(&pair[1]))?;
+    let binding=binding.canonicalize().ok()?;if !binding.starts_with(instance)||std::fs::metadata(&binding).ok()?.len()>128*1024{return None;}
+    let value:serde_json::Value=serde_json::from_slice(&std::fs::read(binding).ok()?).ok()?;
+    let home=PathBuf::from(value.get("playerHome")?.as_str()?);
+    (if home.is_absolute(){home}else{instance.join(home)}).canonicalize().ok()
+}
+fn permitted_directory(path:&Path,instance:&Path,player_home:Option<&Path>)->Result<PathBuf,String> {
+    let canonical=path.canonicalize().map_err(|e|e.to_string())?;
+    let instance=instance.canonicalize().map_err(|e|e.to_string())?;
+    let home=player_home.and_then(|home|home.canonicalize().ok());
+    if canonical.is_dir()&&(canonical.starts_with(instance)||home.is_some_and(|home|canonical.starts_with(home))){Ok(canonical)}else{Err("只能打开当前实例或已配置玩家端目录中的文件夹".into())}
+}
+fn safe_external(value:&str)->Result<String,String> {
+    let url=tauri::Url::parse(value).map_err(|_|"外部链接必须是完整 HTTP / HTTPS 地址")?;
+    if !matches!(url.scheme(),"http"|"https")||url.host_str().is_none()||!url.username().is_empty()||url.password().is_some(){return Err("仅允许不含凭据的 HTTP / HTTPS 外部链接".into());}
+    Ok(url.to_string())
+}
+fn safe_command(line:&str)->Result<(),String> {
+    if line.len()>128*1024||line.contains(['\n','\r']){return Err("原生命令长度或行格式无效".into());}
+    let value:serde_json::Value=serde_json::from_str(line).map_err(|_|"原生命令必须是 JSON 对象")?;
+    let command=value.get("command").and_then(|v|v.as_str()).ok_or("缺少命令类型")?;
+    if !["retry","continue-launch","toggle-mod","restore-mods","toggle-file","restore-files","toggle-group","reset-default","archives","restore-archive","delete-archive","open-directory","open-archive","keep-open","confirm","close","quit"].contains(&command){return Err("不支持的玩家原生命令".into());}
+    Ok(())
+}
+
 #[tauri::command]
-fn read_local_image(path: String) -> Result<String, String> {
+fn read_local_image(path: String, window: tauri::WebviewWindow) -> Result<String, String> {
+    require_player(&window)?;
     let instance_root = instance_root_from_args()?;
     read_local_image_from_root(Path::new(&path), &instance_root)
 }
@@ -323,12 +360,14 @@ fn read_music_track_from_root(
 }
 
 #[tauri::command]
-fn read_music_track(file_name: String) -> Result<Option<String>, String> {
+fn read_music_track(file_name: String, window: tauri::WebviewWindow) -> Result<Option<String>, String> {
+    require_player(&window)?;
     read_music_track_from_root(&instance_root_from_args()?, &file_name)
 }
 
 #[tauri::command]
-fn read_startup_music() -> Result<Option<String>, String> {
+fn read_startup_music(window: tauri::WebviewWindow) -> Result<Option<String>, String> {
+    require_player(&window)?;
     read_startup_music_from_root(&instance_root_from_args()?)
 }
 
@@ -400,7 +439,8 @@ fn development_override(name: &str) -> Option<PathBuf> {
 }
 
 #[tauri::command]
-fn spawn_sidecar(app: AppHandle, state: State<'_, SidecarState>) -> Result<(), String> {
+fn spawn_sidecar(app: AppHandle, state: State<'_, SidecarState>, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
     debug_log("spawn_sidecar invoked");
     {
         let mut guard = state.0.lock().map_err(|_| "更新引擎状态锁定失败")?;
@@ -525,7 +565,9 @@ fn spawn_sidecar(app: AppHandle, state: State<'_, SidecarState>) -> Result<(), S
 }
 
 #[tauri::command]
-fn send_command(state: State<'_, SidecarState>, line: String) -> Result<(), String> {
+fn send_command(state: State<'_, SidecarState>, line: String, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
+    safe_command(&line)?;
     let mut guard = state.0.lock().map_err(|_| "更新引擎状态锁定失败")?;
     let sidecar = guard.as_mut().ok_or_else(|| "更新引擎尚未启动")?;
     sidecar
@@ -566,7 +608,8 @@ fn should_force_native_close(previous_millis: u64, current_millis: u64) -> bool 
 }
 
 #[tauri::command]
-fn window_show(app: AppHandle) -> Result<(), String> {
+fn window_show(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
     app.get_webview_window("main")
         .ok_or_else(|| "找不到主窗口".to_string())?
         .show()
@@ -574,7 +617,8 @@ fn window_show(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn window_minimize(app: AppHandle) -> Result<(), String> {
+fn window_minimize(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
     app.get_webview_window("main")
         .ok_or_else(|| "找不到主窗口".to_string())?
         .minimize()
@@ -582,7 +626,8 @@ fn window_minimize(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn window_toggle_maximize(app: AppHandle) -> Result<(), String> {
+fn window_toggle_maximize(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "找不到主窗口".to_string())?;
@@ -594,7 +639,8 @@ fn window_toggle_maximize(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn window_close(app: AppHandle) -> Result<(), String> {
+fn window_close(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "找不到主窗口".to_string())?;
@@ -602,7 +648,8 @@ fn window_close(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn window_start_drag(app: AppHandle) -> Result<(), String> {
+fn window_start_drag(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
     app.get_webview_window("main")
         .ok_or_else(|| "找不到主窗口".to_string())?
         .start_dragging()
@@ -610,18 +657,22 @@ fn window_start_drag(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_path(path: String) -> Result<(), String> {
-    open::that(&path).map_err(|error| format!("无法打开目录: {error}"))
+fn open_path(path: String, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
+    let instance=instance_root_from_args()?;let home=configured_player_home(&instance);
+    let canonical=permitted_directory(Path::new(&path),&instance,home.as_deref())?;
+    open::that(&canonical).map_err(|error| format!("无法打开目录: {error}"))
 }
 
 #[tauri::command]
-fn open_external(uri: String) -> Result<(), String> {
-    open::that(&uri).map_err(|error| format!("无法打开链接: {error}"))
+fn open_external(uri: String, window: tauri::WebviewWindow) -> Result<(), String> {
+    require_player(&window)?;
+    open::that(safe_external(&uri)?).map_err(|error| format!("无法打开链接: {error}"))
 }
 
 #[tauri::command]
-fn quit_application(app: AppHandle) {
-    app.exit(0);
+fn quit_application(app: AppHandle,window:tauri::WebviewWindow)->Result<(),String> {
+    require_player(&window)?;app.exit(0);Ok(())
 }
 
 pub fn run() {
@@ -690,7 +741,7 @@ mod tests {
         format_sidecar_crash, format_utc_timestamp, is_explicit_exit_message,
         read_local_image_from_root, read_startup_music_from_root, redacted_argument_names,
         resolve_java_executable, resolve_sidecar_jar, should_force_native_close,
-        write_close_command, MAX_STARTUP_MUSIC_BYTES,
+        write_close_command, MAX_STARTUP_MUSIC_BYTES,player_origin,safe_external,safe_command,permitted_directory,
     };
     use std::collections::VecDeque;
     use std::io::Cursor;
@@ -718,6 +769,31 @@ mod tests {
         (base, external)
     }
 
+    #[test]
+    fn directory_open_preserves_explicit_external_home_but_never_opens_executable_files(){
+        let (root,_)=fixture();let instance=root.join("instance");let home=root.join("external-home");let outside=root.join("other");
+        for directory in [&instance,&home,&outside]{std::fs::create_dir_all(directory).unwrap();}
+        std::fs::write(instance.join("untrusted.exe"),b"test").unwrap();
+        assert!(permitted_directory(&home,&instance,Some(&home)).is_ok());
+        assert!(permitted_directory(&outside,&instance,Some(&home)).is_err());
+        assert!(permitted_directory(&instance.join("untrusted.exe"),&instance,Some(&home)).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn native_commands_are_bound_to_the_bundled_player_page(){
+        for uri in ["tauri://localhost/","http://tauri.localhost/index.html","https://tauri.localhost/"]{assert!(player_origin("main",&tauri::Url::parse(uri).unwrap(),false));}
+        for uri in ["https://example.test/","http://localhost:1420/","tauri://localhost/preview.html","tauri://localhost/?adminPreview=1","http://tauri.localhost/foreign.html"]{assert!(!player_origin("main",&tauri::Url::parse(uri).unwrap(),false));}
+        assert!(!player_origin("other",&tauri::Url::parse("tauri://localhost/").unwrap(),false));
+        assert!(player_origin("main",&tauri::Url::parse("http://localhost:1420/").unwrap(),true));
+    }
+    #[test]
+    fn external_urls_and_sidecar_lines_have_runtime_validation(){
+        for value in ["javascript:alert(1)","file:///C:/secret.exe","https://user:pass@example.test/","cmd:run"]{assert!(safe_external(value).is_err());}
+        assert!(safe_external("https://example.test/a").is_ok());
+        assert!(safe_command(r#"{"command":"retry"}"#).is_ok());
+        assert!(safe_command("{\"command\":\"retry\"}\n{\"command\":\"quit\"}").is_err());
+        assert!(safe_command(r#"{"command":"execute-shell"}"#).is_err());
+    }
     #[test]
     fn release_resolution_ignores_external_overrides() {
         let (base, external) = fixture();

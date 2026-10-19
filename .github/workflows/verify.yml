@@ -1,0 +1,60 @@
+name: Verify current source and local artifacts
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  management:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.12.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        if: runner.os == 'Windows'
+      - name: Frontends, Java, protocol and platform checks
+        shell: pwsh
+        run: ./packaging/validate.ps1 -SkipNative:($IsLinux)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-${{ runner.os }}
+          path: target/validation
+  native-packaging:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.12.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Probe dependencies
+        run: python -m pip install psutil
+      - name: Unsigned local packaging, private-data audit and smoke checks
+        shell: pwsh
+        run: ./packaging/validate.ps1 -WithPackaging -WithDesktopSmoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-package-validation
+          path: target/validation

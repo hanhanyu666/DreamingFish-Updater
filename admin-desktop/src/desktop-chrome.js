@@ -28,12 +28,13 @@
     title.className = 'dfs-frame-title'; title.textContent = meta.name || '梦鱼更新管理';
     title.title = title.textContent;
     const badge = document.createElement('span');
-    badge.className = 'dfs-frame-badge'; badge.textContent = meta.workspace ? '工作区' : '0.2.5';
+    badge.className = 'dfs-frame-badge'; badge.textContent = meta.workspace ? '工作区' : '0.2.6';
     frame.append(mark, title, badge);
     const controls = document.createElement('div');
     controls.className = 'dfs-frame-controls';
     let maximize;
     let statusAttempts = 0;
+    const statusRetryLimit = 50;
     const native = async (action) => {
       try {
         const state = await window.__TAURI_INTERNALS__.invoke('desktop_window_action', { action });
@@ -44,9 +45,9 @@
           maximize.setAttribute('aria-pressed', String(state.maximized));
         }
         frame.removeAttribute('data-error');
-        badge.textContent = meta.workspace ? '工作区' : '0.2.5'; badge.removeAttribute('title');
+        badge.textContent = meta.workspace ? '工作区' : '0.2.6'; badge.removeAttribute('title');
       } catch (error) {
-        if (action === 'status' && statusAttempts++ < 6) { setTimeout(() => void native('status'), 200); return; }
+        if (action === 'status' && statusAttempts++ < statusRetryLimit) { setTimeout(() => void native('status'), 200); return; }
         diagnostic(String(error));
         frame.dataset.error = 'true';
         badge.title = String(error);
@@ -90,7 +91,11 @@
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer); resizeTimer = setTimeout(() => void native('status'), 100);
     });
-    void native('status');
+    // WebView2 can deliver DOMContentLoaded before the IPC request origin is
+    // committed. Status is read-only: wait for load when possible and keep a
+    // bounded retry window, without changing any native origin permission.
+    if (document.readyState === 'complete') void native('status');
+    else window.addEventListener('load', () => void native('status'), { once:true });
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
   else install();

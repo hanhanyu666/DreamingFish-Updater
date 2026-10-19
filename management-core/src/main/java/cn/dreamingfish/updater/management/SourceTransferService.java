@@ -13,8 +13,15 @@ public final class SourceTransferService {
     private final JsonCodec json;
     private final SourceFileService files;
     private final ScanService scanner;
+    private final java.util.function.Consumer<String> checkpoint;
 
     public SourceTransferService(ManagementPaths paths, ManagementDatabase database, JsonCodec json) {
+        this(paths, database, json, phase -> {});
+    }
+
+    SourceTransferService(ManagementPaths paths, ManagementDatabase database, JsonCodec json,
+                          java.util.function.Consumer<String> checkpoint) {
+        this.checkpoint = checkpoint;
         this.paths = paths;
         this.database = database;
         this.json = json;
@@ -23,23 +30,48 @@ public final class SourceTransferService {
     }
 
     public Plan stage(String projectId, String targetPath, InputStream input, long length) {
+        return stage(projectId, targetPath, input, length, null);
+    }
+
+    public Plan stage(String projectId, String targetPath, InputStream input, long length, String requestId) {
         ProjectRecord project = database.requireProject(projectId);
         String target = PathSafety.normalizeManifestPath(targetPath);
         validateTarget(project, target);
-        String id = UUID.randomUUID().toString();
+        String id = requestId == null || requestId.isBlank() ? UUID.randomUUID().toString() : requestId;
         Path directory = directory(projectId, id);
-        try {
+        try (ProjectLock uploadLock = ProjectLock.acquire(paths.locks().resolve("upload-" + id + ".lock"))) {
+            if (Files.isRegularFile(directory.resolve("stage.json"))) {
+                Stage previous = readStage(projectId, id);
+                if (!previous.path().equals(target)) throw new ManagementException("请求身份已用于另一个目标，请新建导入任务");
+                return plan(projectId, id);
+            }
+            if (Files.exists(directory.resolve("receipt.json")) || Files.exists(directory.resolve("intent.json"))
+                    || Files.exists(paths.root().resolve("source-transactions").resolve(projectId).resolve(id+".json")))
+                throw new ManagementException("这个请求有未核对的操作记录，请先恢复或复查");
+            if(Files.exists(paths.root().resolve("source-import-expired").resolve(projectId).resolve(id+".json")))
+                throw new ManagementException("原暂存已过期，请使用新的请求身份重新检查");
+            boolean createdHere = false;
+            try(StorageService.Lease budget=new StorageService(paths,database,json).reserve(length<0?SourceFileService.MAX_UPLOAD_BYTES:length,0)) {
             Files.createDirectories(directory);
+            createdHere = true;
             Path payload = directory.resolve(target.toLowerCase(Locale.ROOT).endsWith(".jar") ? "payload.jar" : "payload.bin");
-            copyLimited(input, payload, length, SourceFileService.MAX_UPLOAD_BYTES);
+            budget.copy(input, payload, length, SourceFileService.MAX_UPLOAD_BYTES);
             ModMetadata metadata = target.toLowerCase(Locale.ROOT).endsWith(".jar")
                     ? ModMetadataReader.read(payload).orElse(null) : null;
             Stage stage = new Stage(id, target, Files.size(payload), CryptoSupport.sha256(payload),
                     metadata, payload.getFileName().toString(), Instant.now());
             AtomicFiles.write(directory.resolve("stage.json"), json.write(stage));
             return plan(projectId, id);
+            } catch (IOException | RuntimeException error) {
+                // Rejecting an existing identity must never discard its earlier upload.
+                // Once stage.json is durable, retain it even if returning the plan fails.
+                if (createdHere && !Files.exists(directory.resolve("stage.json"), LinkOption.NOFOLLOW_LINKS)) {
+                    try { discard(projectId, id); }
+                    catch (RuntimeException cleanup) { error.addSuppressed(cleanup); }
+                }
+                throw error;
+            }
         } catch (IOException | RuntimeException error) {
-            discard(projectId, id);
             throw failure("无法暂存文件", error);
         }
     }
@@ -48,7 +80,7 @@ public final class SourceTransferService {
         Stage stage = readStage(projectId, id);
         ProjectRecord project = database.requireProject(projectId);
         validateTarget(project, stage.path());
-        List<SourceFileService.SourceFileEntry> entries = files.list(projectId);
+        List<SourceFileService.SourceFileEntry> entries = files.listVerified(projectId);
         Snapshot existing = snapshot(project, stage.path());
         ModMetadata existingMetadata = entries.stream().filter(entry -> fold(entry.path()).equals(fold(stage.path()))
                 && entry.componentId() != null).findFirst().map(entry -> new ModMetadata(entry.componentId(), entry.displayName(), entry.version())).orElse(null);
@@ -70,6 +102,11 @@ public final class SourceTransferService {
     }
 
     public Plan stageServer(String projectId, Path external, String targetPath) {
+        return stageServer(projectId, external, targetPath, null);
+    }
+
+    public Plan stageServer(String projectId, Path external, String targetPath, String requestId) {
+        if (requestId != null && hasStage(projectId, requestId)) return plan(projectId, requestId);
         Path source = external.toAbsolutePath().normalize();
         try {
             PathSafety.assertSafePathTree(source);
@@ -77,7 +114,7 @@ public final class SourceTransferService {
                 throw new ManagementException("请选择服务器上的普通文件");
             long size = Files.size(source);
             Plan plan;
-            try (InputStream input = Files.newInputStream(source)) { plan = stage(projectId, targetPath, input, size); }
+            try (InputStream input = Files.newInputStream(source)) { plan = stage(projectId, targetPath, input, size, requestId); }
             if (Files.size(source) != size || !CryptoSupport.sha256(source).equals(plan.sha256())) {
                 discard(projectId, plan.id());
                 throw new ManagementException("服务器文件在复制时变化，请重新检查");
@@ -91,6 +128,13 @@ public final class SourceTransferService {
     }
 
     public Result commit(String projectId, String id, String action, String stamp, boolean refreshPreview) {
+        return commit(projectId,id,action,stamp,refreshPreview,false);
+    }
+    Result commitLegacy(String projectId,String id,boolean overwrite) {
+        Plan plan=plan(projectId,id);
+        return commit(projectId,id,overwrite?"OVERWRITE":"ADD",plan.stamp(),false,true);
+    }
+    private Result commit(String projectId,String id,String action,String stamp,boolean refreshPreview,boolean legacy) {
         Stage stage = readStage(projectId, id);
         if (!Set.of("ADD", "OVERWRITE", "REPLACE_MOD").contains(action))
             throw new ManagementException("请选择新增、覆盖或替换旧模组");
@@ -102,12 +146,17 @@ public final class SourceTransferService {
         }
         Receipt receipt;
         try (ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(projectId + ".lock"))) {
+            if (Files.isRegularFile(directory.resolve("receipt.json"))) {
+                Receipt previous = readReceipt(projectId,id);
+                if (previous.undone()) throw new ManagementException("这个导入已恢复，请开始新的导入");
+                return result(projectId,previous,refreshPreview);
+            }
             Plan plan = plan(projectId, id);
             if (!Objects.equals(plan.stamp(), stamp))
                 throw new ManagementException("源文件或维护设置已变化，请重新检查上传清单");
             if (action.equals("ADD") && plan.existing() != null)
                 throw new ManagementException("目标文件已经存在，请选择覆盖或跳过");
-            if (!action.equals("REPLACE_MOD") && !plan.replacements().isEmpty())
+            if (!legacy && !action.equals("REPLACE_MOD") && !plan.replacements().isEmpty())
                 throw new ManagementException("同一模组已有其他文件，请明确选择替换旧版本");
             if (action.equals("REPLACE_MOD") && plan.replacements().isEmpty())
                 throw new ManagementException("没有可替换的旧模组，请重新检查");
@@ -119,15 +168,13 @@ public final class SourceTransferService {
             affected.add(stage.path());
             if (action.equals("REPLACE_MOD")) plan.replacements().forEach(item -> affected.add(item.path()));
             List<Snapshot> before = new ArrayList<>();
-            for (String path : affected) {
-                Snapshot previous = snapshot(project, path);
-                if (previous != null) {
-                    Path archive = PathSafety.resolveInside(directory.resolve("before"), path);
-                    AtomicFiles.copyReplace(source(project, path), archive);
-                    if (!previous.sha256().equals(CryptoSupport.sha256(archive)))
-                        throw new ManagementException("归档期间文件发生变化，请重新检查");
-                    before.add(previous);
-                }
+            for(String path:affected){Snapshot previous=snapshot(project,path);if(previous!=null)before.add(previous);}
+            long backupBytes=before.stream().mapToLong(Snapshot::size).sum();
+            try(StorageService.Lease budget=new StorageService(paths,database,json).reserve(Math.addExact(backupBytes,stage.size()),backupBytes)) {
+            for(Snapshot previous:before){
+                Path archive=PathSafety.resolveInside(directory.resolve("before"),previous.path());
+                budget.charge(previous.size());AtomicFiles.copyReplace(source(project,previous.path()),archive);
+                if(!previous.sha256().equals(CryptoSupport.sha256(archive)))throw new ManagementException("归档期间文件发生变化，请重新检查");
             }
             ProjectRules updated = action.equals("REPLACE_MOD") ? migrate(project.rules(), plan) : project.rules();
             Path target = source(project, stage.path());
@@ -137,19 +184,9 @@ public final class SourceTransferService {
             receipt = new Receipt(stage.id(), stage.path(), stage.size(), stage.sha256(), stage.createdAt(),
                     project.sourceDirectory().toString(), List.copyOf(before), List.copyOf(affected),
                     project.rules(), updated, false);
-            try {
-                // Recheck archived versions immediately before any replacement.
-                for (Snapshot previous : before) if (!previous.sha256().equals(
-                        CryptoSupport.sha256(source(project, previous.path()))))
-                    throw new ManagementException("文件在导入前变化，请重新检查");
-                AtomicFiles.copyReplace(payload, target);
-                for (String path : affected) if (!path.equals(stage.path())) Files.delete(source(project, path));
-                updateRules(project, updated);
-                AtomicFiles.write(directory.resolve("receipt.json"), json.write(receipt));
-            } catch (IOException | RuntimeException error) {
-                restoreBefore(project, receipt, directory, error);
-                updateRules(project, project.rules());
-                throw error;
+            // The durable intention precedes the first source mutation. Recovery redoes
+            // this exact operation; a lost response never creates another import.
+            new SourceImportRecovery(paths,database,json,checkpoint).commit(projectId,receipt,false);
             }
         } catch (IOException error) {
             throw failure("无法导入文件", error);
@@ -191,7 +228,7 @@ public final class SourceTransferService {
                 if (Files.isRegularFile(directory.resolve("receipt.json"))) {
                     Receipt receipt = readReceipt(projectId, directory.getFileName().toString());
                     result.add(new ImportView(receipt.id(), receipt.path(), receipt.size(), receipt.createdAt(),
-                            receipt.before().stream().map(Snapshot::path).toList(), receipt.undone()));
+                            receipt.before().stream().map(Snapshot::path).toList(), receipt.undone(), undoAvailable(projectId,receipt)));
                 }
             }
             return result.stream().sorted(Comparator.comparing(ImportView::createdAt).reversed()).limit(40).toList();
@@ -218,24 +255,9 @@ public final class SourceTransferService {
                 if (!previous.sha256().equals(CryptoSupport.sha256(archive)))
                     throw new ManagementException("归档文件校验失败，已停止恢复");
             }
-            ProjectRules restored = project.rules().withPresets(receipt.beforeRules().presets())
-                    .withOptionalGroups(receipt.beforeRules().optionalGroups())
-                    .withCleanupDirectories(receipt.beforeRules().cleanupDirectories());
-            try {
-                for (Snapshot previous : receipt.before()) AtomicFiles.copyReplace(
-                        PathSafety.resolveInside(directory.resolve("before"), previous.path()), source(project, previous.path()));
-                if (receipt.before().stream().noneMatch(before -> before.path().equals(targetPath)))
-                    Files.delete(source(project, receipt.path()));
-                updateRules(project, restored);
-                receipt = new Receipt(receipt.id(), receipt.path(), receipt.size(), receipt.sha256(), receipt.createdAt(),
-                        receipt.sourceRoot(), receipt.before(), receipt.affected(), receipt.beforeRules(), receipt.afterRules(), true);
-                AtomicFiles.write(directory.resolve("receipt.json"), json.write(receipt));
-            } catch (IOException | RuntimeException error) {
-                AtomicFiles.copyReplace(directory.resolve(readStage(projectId, id).payload()), source(project, receipt.path()));
-                for (String path : receipt.affected()) if (!path.equals(receipt.path())) Files.deleteIfExists(source(project, path));
-                updateRules(project, project.rules());
-                throw error;
-            }
+            new SourceImportRecovery(paths,database,json,checkpoint).commit(projectId,receipt,true);
+            receipt = readReceipt(projectId,id);
+
         } catch (IOException error) { throw failure("无法恢复导入前内容", error); }
         return result(projectId, receipt);
     }
@@ -244,19 +266,21 @@ public final class SourceTransferService {
         database.requireProject(projectId);
         Receipt receipt = readReceipt(projectId, id);
         return new ImportView(receipt.id(), receipt.path(), receipt.size(), receipt.createdAt(),
-                receipt.before().stream().map(Snapshot::path).toList(), receipt.undone());
+                receipt.before().stream().map(Snapshot::path).toList(), receipt.undone(),undoAvailable(projectId,receipt));
     }
 
-    public void discard(String projectId, String id) {
-        Path directory = directory(projectId, id);
-        if (Files.exists(directory.resolve("receipt.json"))) return;
-        try {
-            if (Files.exists(directory)) try (var stream = Files.walk(directory)) {
-                for (Path item : stream.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(item);
-            }
-        } catch (IOException ignored) { /* A stale staging file can be removed later. */ }
+    public boolean discard(String projectId,String id) {
+        Path directory=directory(projectId,id);
+        try(ProjectLock project=ProjectLock.acquire(paths.locks().resolve(projectId+".lock"));ProjectLock upload=ProjectLock.acquire(paths.locks().resolve("upload-"+id+".lock"))){
+            if(Files.exists(directory.resolve("receipt.json"))||Files.exists(paths.root().resolve("source-transactions").resolve(projectId).resolve(id+".json")))return false;
+            AtomicFiles.deleteRecursively(directory);return true;
+        }catch(IOException error){throw new ManagementException("暂存清理未完成；请保留原请求并查看存储预览",error);}
     }
 
+    private boolean undoAvailable(String projectId,Receipt receipt){
+        Path directory=directory(projectId,receipt.id());
+        return !receipt.undone()&&receipt.before().stream().allMatch(before->Files.isRegularFile(directory.resolve("before").resolve(before.path()),LinkOption.NOFOLLOW_LINKS));
+    }
     private Result result(String projectId, Receipt receipt) {
         return result(projectId, receipt, true);
     }
@@ -330,14 +354,45 @@ public final class SourceTransferService {
         try { return PathSafety.resolveInside(projectDirectory(projectId), id); }
         catch (IOException error) { throw failure("暂存目录无效", error); }
     }
+    public boolean hasStage(String projectId, String id) {
+        Path directory=directory(projectId,id);
+        try(ProjectLock project=ProjectLock.acquire(paths.locks().resolve(projectId+".lock"));ProjectLock upload=ProjectLock.acquire(paths.locks().resolve("upload-"+id+".lock"))){
+            if(Files.exists(directory.resolve("receipt.json"))||Files.exists(paths.root().resolve("source-transactions").resolve(projectId).resolve(id+".json"))) {
+                if(!Files.isRegularFile(directory.resolve("stage.json")))throw new ManagementException("导入元数据损坏，请保留操作目录并恢复记录");
+            }
+            if(Files.isRegularFile(directory.resolve("stage.json"))&&expired(projectId,id)){
+                AtomicFiles.write(PathSafety.resolveInside(paths.root(),"source-import-expired/"+projectId+"/"+id+".json"),json.write(Map.of("id",id,"state","EXPIRED","expiredAt",Instant.now())));
+                AtomicFiles.deleteRecursively(directory);return false;
+            }
+            return Files.isRegularFile(directory.resolve("stage.json"));
+        }catch(IOException error){throw new ManagementException("无法确认暂存状态，请保留原请求后重试",error);}
+    }
+    private boolean expired(String projectId,String id)throws IOException {
+        Path dir=directory(projectId,id);
+        if(Files.exists(dir.resolve("receipt.json"))||Files.exists(paths.root().resolve("source-transactions").resolve(projectId).resolve(id+".json")))return false;
+        Stage stage=stageRecord(projectId,id);
+        return stage.createdAt().isBefore(Instant.now().minus(java.time.Duration.ofHours(StorageService.Limits.defaults().expiryHours())));
+    }
     private Stage readStage(String projectId, String id) {
-        try { return json.read(Files.readAllBytes(directory(projectId, id).resolve("stage.json")), Stage.class); }
+        try {Stage stage=stageRecord(projectId,id);if(expired(projectId,id))throw new ManagementException("暂存已过期，请重新选择文件并确认");return stage; }
         catch (IOException error) { throw new ManagementException("暂存文件已失效，请重新上传"); }
     }
-    private Receipt readReceipt(String projectId, String id) {
-        try { return json.read(Files.readAllBytes(directory(projectId, id).resolve("receipt.json")), Receipt.class); }
-        catch (IOException error) { throw new ManagementException("导入记录不存在"); }
+    private Stage stageRecord(String projectId,String id)throws IOException {
+        Stage stage=json.read(directory(projectId,id).resolve("stage.json"),Stage.class);
+        if(!id.equals(stage.id())||stage.path()==null||!PathSafety.normalizeManifestPath(stage.path()).equals(stage.path())||!cn.dreamingfish.updater.protocol.Hex.isSha256(stage.sha256())||stage.createdAt()==null||stage.size()<0||stage.size()>SourceFileService.MAX_UPLOAD_BYTES||!Set.of("payload.jar","payload.bin").contains(stage.payload()))throw new ManagementException("暂存元数据身份或格式损坏，已保留材料，请恢复记录后重试");
+        return stage;
     }
+    private Receipt readReceipt(String projectId,String id) {
+        try {
+            byte[] bytes=Files.readAllBytes(directory(projectId,id).resolve("receipt.json"));
+            var tree=json.read(bytes,com.fasterxml.jackson.databind.JsonNode.class);
+            if(!tree.has("undone")||!tree.get("undone").isBoolean())throw new ManagementException("导入收据缺少明确的最终状态，不能假定成功");
+            Receipt receipt=json.read(bytes,Receipt.class);
+            if(!id.equals(receipt.id())||receipt.before()==null||receipt.affected()==null||receipt.beforeRules()==null||receipt.afterRules()==null||receipt.sourceRoot()==null||receipt.createdAt()==null||!cn.dreamingfish.updater.protocol.Hex.isSha256(receipt.sha256()))throw new ManagementException("导入收据身份或内容不完整，请保留材料后恢复");
+            return receipt;
+        }catch(IOException error){throw new ManagementException("导入记录不存在或无法读取；请保留原请求复查",error);}
+    }
+
     static void copyLimited(InputStream input, Path target, long expected, long maximum) throws IOException {
         if (expected > maximum) throw new ManagementException("文件超过允许的大小");
         long copied = 0;
@@ -362,6 +417,6 @@ public final class SourceTransferService {
                        Snapshot existing, ModMetadata existingMetadata, List<Match> replacements, String stamp, boolean committed, boolean undone) {}
     public record Receipt(String id, String path, long size, String sha256, Instant createdAt, String sourceRoot,
                           List<Snapshot> before, List<String> affected, ProjectRules beforeRules, ProjectRules afterRules, boolean undone) {}
-    public record ImportView(String id, String path, long size, Instant createdAt, List<String> previousPaths, boolean undone) {}
+    public record ImportView(String id, String path, long size, Instant createdAt, List<String> previousPaths, boolean undone,boolean undoAvailable) {}
     public record Result(String id, String path, boolean undone, String checkError) {}
 }

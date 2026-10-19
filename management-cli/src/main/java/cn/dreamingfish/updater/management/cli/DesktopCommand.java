@@ -41,7 +41,7 @@ final class DesktopCommand implements Runnable {
                     root.printJson(Map.of("type", "ready", "version", ManagementCli.VERSION,
                             "pid", ProcessHandle.current().pid(), "port", server.address().getPort(),
                             "url", "http://127.0.0.1:" + server.address().getPort() + "/",
-                            "home", home.toString()));
+                            "home", home.toString(),"buildId",buildId()));
                     String line;
                     while ((line = root.input().readLine()) != null) {
                         if (line.isBlank()) continue;
@@ -66,6 +66,13 @@ final class DesktopCommand implements Runnable {
         } catch (IOException e) {
             throw new ManagementException("无法运行桌面管理服务: " + e.getMessage(), e);
         }
+    }
+
+    private static String buildId(){
+        try(var input=DesktopCommand.class.getResourceAsStream("/META-INF/dreamingfish/build/management-cli.json")){
+            if(input==null)return "development";
+            Map<?,?> info=new JsonCodec().read(input,Map.class);return String.valueOf(info.get("buildId"));
+        }catch(IOException error){throw new ManagementException("管理核心构建标识不可读",error);}
     }
 
     private static boolean shutdownRequested(String line) {

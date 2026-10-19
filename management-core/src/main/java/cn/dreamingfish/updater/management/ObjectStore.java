@@ -43,6 +43,10 @@ public final class ObjectStore {
     }
 
     public Path importExpected(Path source, String expectedSha256, long expectedSize) {
+        return importExpected(source,expectedSha256,expectedSize,null);
+    }
+
+    Path importExpected(Path source,String expectedSha256,long expectedSize,StorageService.Lease sharedBudget) {
         if (!Hex.isSha256(expectedSha256) || expectedSize < 0) {
             throw new ManagementException("Invalid expected object metadata");
         }
@@ -52,11 +56,25 @@ public final class ObjectStore {
                     || Files.isSymbolicLink(source)) {
                 throw new ManagementException("Object source is not a safe regular file: " + source);
             }
+            if(Files.size(source)!=expectedSize)throw new ManagementException("Source file changed after the preview: "+source);
             if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
                 verify(target, expectedSha256, expectedSize);
                 return target;
             }
 
+            if(sharedBudget==null){
+                try(StorageService.Lease budget=new StorageService(paths).reserve(expectedSize,0)){
+                    return copyExpected(source,target,expectedSha256,expectedSize,budget);
+                }
+            }
+            return copyExpected(source,target,expectedSha256,expectedSize,sharedBudget);
+        } catch (IOException | NoSuchAlgorithmException e) {
+            throw new ManagementException("Unable to import object " + source, e);
+        }
+    }
+
+    private Path copyExpected(Path source,Path target,String expectedSha256,long expectedSize,StorageService.Lease budget)throws IOException,NoSuchAlgorithmException {
+            budget.beginObject(expectedSize);long checkpoint=budget.checkpoint();
             Files.createDirectories(target.getParent());
             Path temporary = Files.createTempFile(paths.temporary(), "object-", ".part");
             boolean moved = false;
@@ -69,6 +87,8 @@ public final class ObjectStore {
                     int read;
                     while ((read = input.read(buffer)) >= 0) {
                         if (read > 0) {
+                            if(copied>expectedSize-read)throw new ManagementException("Source file changed while importing: "+source);
+                            budget.charge(read);
                             output.write(buffer, 0, read);
                             digest.update(buffer, 0, read);
                             copied += read;
@@ -79,6 +99,7 @@ public final class ObjectStore {
                 if (copied != expectedSize || !actualHash.equals(expectedSha256)) {
                     throw new ManagementException("Source file changed while importing: " + source);
                 }
+                AtomicFiles.force(temporary);
                 AtomicFiles.moveReplace(temporary, target);
                 moved = true;
                 return target;
@@ -86,10 +107,9 @@ public final class ObjectStore {
                 if (!moved) {
                     Files.deleteIfExists(temporary);
                 }
+                // Ownership left temporary storage only after move or successful deletion.
+                budget.rewind(checkpoint);
             }
-        } catch (IOException | NoSuchAlgorithmException e) {
-            throw new ManagementException("Unable to import object " + source, e);
-        }
     }
 
     public Path require(String sha256) {

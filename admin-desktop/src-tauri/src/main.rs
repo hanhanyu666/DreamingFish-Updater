@@ -4,6 +4,7 @@ mod frame;
 mod job;
 mod migrate;
 mod profiles;
+mod recovery;
 mod service;
 mod workbench;
 
@@ -13,7 +14,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering},
         Mutex,
     },
     time::Duration,
@@ -45,7 +46,7 @@ struct Desktop {
     workbench_ready: AtomicBool,
     background_started: AtomicBool,
     disconnecting: AtomicBool,
-    rebuilds: Mutex<Vec<std::time::Instant>>,
+    rebuilds: Mutex<recovery::Budget>,
 }
 
 struct Active {
@@ -76,6 +77,7 @@ impl Drop for DisconnectGuard<'_> {
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
     profiles: Vec<Profile>,
+    connection_resources: Option<workbench::ConnectionMetrics>,
     default_home: String,
     logs: String,
     data_root: String,
@@ -149,7 +151,16 @@ fn desktop_window_action(
 #[tauri::command]
 fn load_desktop(window: WebviewWindow, state: State<Desktop>) -> Result<Snapshot, String> {
     launcher(&window)?;
+    desktop_snapshot(&state)
+}
+
+fn desktop_snapshot(state:&Desktop)->Result<Snapshot,String> {
+    let (connection_resources,active)={
+        let current=state.active.lock().map_err(|e|e.to_string())?;
+        (current.as_ref().map(|active|active.workbench.statistics()),current.as_ref().map(|active|active.profile.id.clone()))
+    };
     Ok(Snapshot {
+        connection_resources,
         profiles: state
             .config
             .lock()
@@ -169,13 +180,8 @@ fn load_desktop(window: WebviewWindow, state: State<Desktop>) -> Result<Snapshot
             .ok()
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_default(),
-        active: state
-            .active
-            .lock()
-            .map_err(|e| e.to_string())?
-            .as_ref()
-            .map(|a| a.profile.id.clone()),
-        version: "0.2.5",
+        active,
+        version: "0.2.6",
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -188,9 +194,15 @@ fn save_profile(
 ) -> Result<Profile, String> {
     launcher(&window)?;
     profile.normalize()?;
-    if let profiles::Connection::Local { home } = &profile.connection {
-        service::require_management_home(std::path::Path::new(home))?;
+    if !profile.confirm_relocation && state.config.lock().map_err(|e| e.to_string())?.profiles.iter().any(|old| old.id == profile.id && old.relocation_required) {
+        return Err("旧连接目录身份不明确，请通过选择目录按钮重新定位后再连接。".into());
     }
+    if let profiles::Connection::Local { home } = &profile.connection {
+        let resolved = profiles::resolve_home(&state.root, home)?;
+        service::require_management_home(&resolved)?;
+        fs::create_dir_all(&resolved).map_err(|e| format!("无法准备选定的管理目录：{e}"))?;
+    }
+    profile.relocation_required = false;
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
     if profile.id.is_empty() {
         profile.id = config
@@ -263,30 +275,41 @@ async fn choose_home(
         .transpose()
 }
 
-fn show_main(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
+fn show_main_existing(app:&tauri::AppHandle) {
+    if let Some(window)=app.get_webview_window("main") {let _=window.show();let _=window.unminimize();let _=window.set_focus();}
+}
+fn show_main(app:&tauri::AppHandle) {
+    let state=app.state::<Desktop>();
+    if state.exiting.load(Ordering::SeqCst)||state.updating.load(Ordering::SeqCst){return;}
+    if app.get_webview_window("main").is_none(){
+        if let Ok(mut budget)=state.rebuilds.lock(){budget.manual_reset("main");}
+        if let Err(error)=build_main(app,&state.root){append_desktop_log(&state.root,&format!("手动重建连接页失败：{error}"));return;}
     }
+    show_main_existing(app);
 }
 
 fn show_notice(app: &tauri::AppHandle, message: String) {
     if let Ok(mut notice) = app.state::<Desktop>().notice.lock() {
         *notice = Some(message);
     }
-    show_main(app);
+    show_main_existing(app);
     let _ = app.emit_to("main", "workspace-ended", ());
 }
 
-fn show_current(app: &tauri::AppHandle) -> Result<(), String> {
-    let w = app
-        .get_webview_window("workspace")
-        .ok_or("还没有打开工作区")?;
-    w.show().map_err(|e| e.to_string())?;
-    w.unminimize().map_err(|e| e.to_string())?;
-    w.set_focus().map_err(|e| e.to_string())
+fn recover_current(app:&tauri::AppHandle,visible:bool)->Result<(),String> {
+    let state=app.state::<Desktop>();
+    if state.exiting.load(Ordering::SeqCst)||state.disconnecting.load(Ordering::SeqCst)||state.updating.load(Ordering::SeqCst){return Err("当前连接正在关闭或更新".into());}
+    if app.get_webview_window("workspace").is_none(){
+        let (profile,url,token)=state.active.lock().map_err(|e|e.to_string())?.as_ref().map(|active|(active.profile.clone(),active.workspace_url.clone(),active.workbench.token.clone())).ok_or("还没有打开工作区")?;
+        state.rebuilds.lock().map_err(|e|e.to_string())?.manual_reset("workspace");
+        state.workbench_ready.store(false,Ordering::SeqCst);
+        build_workspace(app,&profile,&url,&token,false)?;
+        append_desktop_log(&state.root,"用户已手动重建工作区窗口，所属连接仍然有效");
+    }
+    if visible {let window=app.get_webview_window("workspace").ok_or("工作区重建后仍缺失")?;window.show().map_err(|e|e.to_string())?;window.unminimize().map_err(|e|e.to_string())?;window.set_focus().map_err(|e|e.to_string())?;}
+    Ok(())
 }
+fn show_current(app:&tauri::AppHandle)->Result<(),String>{recover_current(app,true)}
 
 #[tauri::command]
 fn show_workspace(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
@@ -465,82 +488,62 @@ fn build_workspace(
 fn watch_webview(window: &WebviewWindow) {
     let app = window.app_handle().clone();
     let label = window.label().to_string();
-    let _ = window.with_webview(move |webview| unsafe {
+    let epoch=match app.state::<Desktop>().rebuilds.lock(){Ok(mut budget)=>budget.attach(&label),Err(_)=>return};
+    let setup_root=app.state::<Desktop>().root.clone();let setup_label=label.clone();
+    let attached = window.with_webview(move |webview| unsafe {
         use webview2_com::{Microsoft::Web::WebView2::Win32::*, ProcessFailedEventHandler};
-        let Ok(core) = webview.controller().CoreWebView2() else { return };
-        let handler = ProcessFailedEventHandler::create(Box::new(move |sender, args| {
+        let core=match webview.controller().CoreWebView2(){Ok(core)=>core,Err(error)=>{append_desktop_log(&app.state::<Desktop>().root,&format!("{label} 故障监听初始化失败：{error}"));return;}};
+        let registration_app=app.clone();let registration_label=label.clone();
+        let handler = ProcessFailedEventHandler::create(Box::new(move |_sender, args| {
+            if !app.state::<Desktop>().rebuilds.lock().map(|budget|budget.current(&label,epoch)).unwrap_or(false){return Ok(());}
             let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
             if let Some(args) = args {
                 args.ProcessFailedKind(&mut kind)?;
             }
-            if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED {
-                let app = app.clone();
-                let label = label.clone();
-                std::thread::spawn(move || rebuild_window(&app, &label));
-            } else if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
-                || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE
-            {
-                if let Some(sender) = sender {
-                    sender.Reload()?;
-                }
-            }
+            let reason=if kind==COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED {Some("browser-process-exited")}
+                else if kind==COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED {Some("render-process-exited")}
+                else if kind==COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE {Some("render-process-unresponsive")}else{None};
+            if let Some(reason)=reason {let app=app.clone();let label=label.clone();std::thread::spawn(move||rebuild_window(&app,&label,reason));}
             Ok(())
         }));
         let mut token = 0i64;
-        let _ = core.add_ProcessFailed(&handler, &mut token);
+        match core.add_ProcessFailed(&handler,&mut token){Ok(())=>append_desktop_log(&registration_app.state::<Desktop>().root,&format!("{registration_label} 已注册统一 WebView 故障监听")),Err(error)=>append_desktop_log(&registration_app.state::<Desktop>().root,&format!("{registration_label} 无法注册故障监听：{error}"))}
     });
+    if let Err(error)=attached{append_desktop_log(&setup_root,&format!("{setup_label} 绑定 WebView 故障监听失败：{error}"));}
 }
 
 #[cfg(not(windows))]
 fn watch_webview(_window: &WebviewWindow) {}
 
 /// Replaces a window whose WebView2 browser process ended, keeping it hidden if it was hidden.
-fn rebuild_window(app: &tauri::AppHandle, label: &str) {
-    let state = app.state::<Desktop>();
-    if state.exiting.load(Ordering::SeqCst) {
-        return;
+fn rebuild_window(app:&tauri::AppHandle,label:&str,reason:&str) {
+    let state=app.state::<Desktop>();let generation=state.generation.load(Ordering::SeqCst);
+    let closing=||state.exiting.load(Ordering::SeqCst)||state.updating.load(Ordering::SeqCst)||state.disconnecting.load(Ordering::SeqCst)
+        ||state.connecting.lock().map(|busy|*busy).unwrap_or(true)||state.generation.load(Ordering::SeqCst)!=generation;
+    if closing(){append_desktop_log(&state.root,&format!("忽略 {label} 的迟到故障 {reason}：会话正在切换"));return;}
+    let decision=match state.rebuilds.lock(){Ok(mut budget)=>budget.schedule(label,std::time::Instant::now()),Err(_)=>return};
+    let (attempt,delay)=match decision {recovery::Decision::AlreadyPending=>{append_desktop_log(&state.root,&format!("合并 {label} 故障 {reason}：已有恢复任务"));return;},recovery::Decision::Exhausted=>(0,Duration::ZERO),recovery::Decision::Retry{attempt,delay}=>(attempt,delay)};
+    append_desktop_log(&state.root,&format!("窗口故障 label={label} reason={reason} attempt={attempt} decision={decision:?}"));
+    let finish=||{if let Ok(mut budget)=state.rebuilds.lock(){budget.finish(label);}};
+    let Some(old)=app.get_webview_window(label)else{finish();return;};let visible=old.is_visible().unwrap_or(false);
+    std::thread::sleep(delay);if closing(){finish();return;}
+    if let Ok(mut checks)=state.frame_checks.lock(){if label=="main"{checks.0=false;}else{checks.1=false;state.workbench_ready.store(false,Ordering::SeqCst);}}
+    if let Err(error)=old.destroy(){append_desktop_log(&state.root,&format!("销毁 {label} 失败：{error}"));finish();return;}
+    for _ in 0..50 {if app.get_webview_window(label).is_none(){break;}std::thread::sleep(Duration::from_millis(100));}
+    if attempt==0 {
+        *state.notice.lock().unwrap()=Some(format!("{label} 窗口一分钟内故障达到上限，自动恢复已暂停。可使用托盘的连接页 / 返回工作区手动重建。"));
+        append_desktop_log(&state.root,&format!("{label} 自动恢复暂停，保留手动入口与连接状态"));finish();return;
     }
-    let now = std::time::Instant::now();
-    let repeated = match state.rebuilds.lock() {
-        Ok(mut history) => {
-            history.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
-            history.push(now);
-            history.len() > 3
-        }
-        Err(_) => return,
-    };
-    let Some(old) = app.get_webview_window(label) else { return };
-    let visible = old.is_visible().unwrap_or(false);
-    let _ = old.destroy();
-    for _ in 0..50 {
-        if app.get_webview_window(label).is_none() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    append_desktop_log(&state.root, &format!("{label} 窗口的界面进程意外退出{}", if repeated { "，一分钟内反复出现，不再自动恢复" } else { "，已重新打开" }));
-    let rebuilt = if repeated {
-        Err("界面进程一分钟内反复意外退出。如果开着 RivaTuner（RTSS）等帧数显示软件，请先为本程序关闭它，再重新打开工作区。".to_string())
-    } else if label == "main" {
-        build_main(app, &state.root).map_err(|e| e.to_string())
-    } else {
-        let active = state.active.lock().ok().and_then(|a| {
-            a.as_ref().map(|a| (a.profile.clone(), a.workspace_url.clone(), a.workbench.token.clone()))
-        });
-        match active {
-            Some((profile, url, token)) => build_workspace(app, &profile, &url, &token, false),
-            None => return,
-        }
+    if closing(){finish();return;}
+    let rebuilt=if label=="main"{build_main(app,&state.root).map_err(|e|e.to_string())}else{
+        let active=state.active.lock().ok().and_then(|active|active.as_ref().map(|a|(a.profile.clone(),a.workspace_url.clone(),a.workbench.token.clone())));
+        match active {Some((profile,url,token))=>build_workspace(app,&profile,&url,&token,false),None=>{finish();return;}}
     };
     match rebuilt {
-        Ok(window) if visible => {
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
-        Ok(_) => {}
-        Err(error) if label != "main" => show_notice(app, error),
-        Err(_) => {}
+        Ok(window)=>{if closing(){let _=window.destroy();}else if visible&&!state.background_check{let _=window.show();let _=window.set_focus();}append_desktop_log(&state.root,&format!("{label} 第 {attempt} 次恢复完成，visible={visible}"));}
+        Err(error)=>{append_desktop_log(&state.root,&format!("{label} 第 {attempt} 次恢复失败：{error}"));*state.notice.lock().unwrap()=Some(error);}
     }
+    finish();
 }
 
 fn append_desktop_log(root: &Path, line: &str) {
@@ -821,12 +824,14 @@ fn data_place(app: &tauri::AppHandle) -> Result<DataPlace, String> {
         None => app.path().app_local_data_dir().map_err(|e| e.to_string())?,
     };
     let beside = program.join("data");
-    if writable(&beside) {
-        let notice = migrate::legacy_into(&legacy, &beside);
-        write_data_note(&beside);
-        return Ok(DataPlace { root: beside, installed, beside_program: true, notice });
-    }
-    Ok(DataPlace { root: legacy, installed, beside_program: false, notice: None })
+    Ok(choose_default_place(&legacy,&beside,installed,writable(&beside)))
+}
+fn choose_default_place(legacy:&Path,beside:&Path,installed:bool,can_write:bool)->DataPlace {
+    if can_write {
+        let outcome=migrate::legacy_into(legacy,beside);write_data_note(&outcome.root);
+        let beside_program=outcome.root==beside;
+        DataPlace {root:outcome.root,installed,beside_program,notice:outcome.notice}
+    }else{DataPlace {root:legacy.into(),installed,beside_program:false,notice:None}}
 }
 
 fn writable(dir: &Path) -> bool {
@@ -852,10 +857,20 @@ fn run_background_check(app: tauri::AppHandle) {
                 snapshot.profiles.into_iter().find(|p| p.id == *id).ok_or("验收连接记录缺失")?
             } else { save_profile(main.clone(), app.state::<Desktop>(), Profile {
                 id: String::new(), name: "本机管理".into(),
+                relocation_required: false, confirm_relocation: false,
                 connection: profiles::Connection::Local { home: snapshot.default_home },
             })? };
             let owned = !matches!(profile.connection, profiles::Connection::Remote { .. });
             connect_profile(main, app.clone(), profile.id).await?;
+            if let Some(mode)=args.iter().position(|a|a=="--background-fault").and_then(|i|args.get(i+1)){
+                let inject=app.clone();let mode=mode.clone();
+                tauri::async_runtime::spawn_blocking(move||{
+                    if mode=="main"||mode=="both"{rebuild_window(&inject,"main","simulated-render-process-exited");}
+                    if mode=="workspace"||mode=="both"{rebuild_window(&inject,"workspace","simulated-render-process-unresponsive");}
+                    if mode=="limit"{for _ in 0..4{rebuild_window(&inject,"workspace","simulated-browser-process-exited");}recover_current(&inject,false)?;}
+                    Ok::<_,String>(())
+                }).await.map_err(|e|e.to_string())??;
+            }
             let checker = app.clone();
             let frames = tauri::async_runtime::spawn_blocking(move || {
                 let state = checker.state::<Desktop>();
@@ -881,7 +896,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.2.5", "success":true,
+            Ok::<_, String>(serde_json::json!({"version":"0.2.6", "buildId":option_env!("DFS_BUILD_ID").unwrap_or("development"),"success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,
@@ -896,13 +911,16 @@ fn run_background_check(app: tauri::AppHandle) {
             }
         };
         let state = app.state::<Desktop>();
+        if BACKGROUND_FINISHED.swap(true,Ordering::SeqCst){return;}
         let write = serde_json::to_vec_pretty(&report)
             .map_err(|e| e.to_string())
             .and_then(|bytes| {
                 fs::write(state.root.join("background-check.json"), bytes)
                     .map_err(|e| e.to_string())
             });
-        app.exit(if write.is_ok() { exit_code } else { 1 });
+        let exit_code=if write.is_ok(){exit_code}else{1};
+        BACKGROUND_EXIT_CODE.store(exit_code,Ordering::SeqCst);
+        app.exit(exit_code);
     });
 }
 
@@ -913,12 +931,32 @@ fn main_window_visible(app: &tauri::AppHandle) -> Result<bool, String> {
         .map_err(|e| e.to_string())
 }
 
+static BACKGROUND_FINISHED:AtomicBool=AtomicBool::new(false);
+static BACKGROUND_EXIT_CODE:AtomicI32=AtomicI32::new(-1);
+fn start_background_deadline(){
+    let args:Vec<String>=std::env::args().collect();if !args.iter().any(|a|a=="--background-check"){return;}
+    let Some(root)=args.iter().position(|a|a=="--desktop-home").and_then(|i|args.get(i+1)).map(PathBuf::from)else{return;};
+    if !root.is_absolute(){return;}
+    let timeout=args.iter().position(|a|a=="--background-timeout-ms").and_then(|i|args.get(i+1)).and_then(|v|v.parse::<u64>().ok()).unwrap_or(45000).clamp(1000,120000);
+    std::thread::spawn(move||{
+        std::thread::sleep(Duration::from_millis(timeout));
+        if !BACKGROUND_FINISHED.swap(true,Ordering::SeqCst){
+            let _=fs::create_dir_all(&root);let value=serde_json::json!({"success":false,"error":"后台验收从进程启动起达到总期限","timeoutMillis":timeout});
+            let _=fs::write(root.join("background-check.json"),serde_json::to_vec_pretty(&value).unwrap());
+            // Owned Windows Job Objects close with the process even if initialization is stuck.
+            std::process::exit(1);
+        }
+    });
+    if args.iter().any(|a|a=="--simulate-init-hang"){loop{std::thread::sleep(Duration::from_secs(1));}}
+}
+
 fn main() {
+    start_background_deadline();
     if let Some(problem) = portable_problem() {
         show_startup_message(&problem);
         return;
     }
-    tauri::Builder::default()
+    let exit_code=tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if !args.iter().any(|a| a == "--background-check") {
                 show_main(app)
@@ -948,7 +986,7 @@ fn main() {
             let place = data_place(app.handle()).map_err(std::io::Error::other)?;
             let root = place.root;
             fs::create_dir_all(root.join("logs"))?;
-            let config = Config::load(&root).map_err(std::io::Error::other)?;
+            let (config, recovery_notice) = Config::load_with_notice(&root).map_err(std::io::Error::other)?;
             let main_root = root.clone();
             app.manage(Desktop {
                 root,
@@ -961,13 +999,13 @@ fn main() {
                 connecting: Mutex::new(false),
                 generation: AtomicU64::new(0),
                 exiting: AtomicBool::new(false),
-                notice: Mutex::new(place.notice),
+                notice: Mutex::new([place.notice, recovery_notice].into_iter().flatten().collect::<Vec<_>>().join("\n").into()),
                 background_check: std::env::args().any(|a| a == "--background-check"),
                 frame_checks: Mutex::new((false, false)),
                 workbench_ready: AtomicBool::new(false),
                 background_started: AtomicBool::new(false),
                 disconnecting: AtomicBool::new(false),
-                rebuilds: Mutex::new(Vec::new()),
+                rebuilds: Mutex::new(recovery::Budget::default()),
             });
             let main = build_main(app.handle(), &main_root)?;
             let monitor = app.handle().clone();
@@ -1053,7 +1091,7 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("启动梦鱼管理桌面端失败")
-        .run(|app, event| match event {
+        .run_return(|app, event| match event {
             // Windows only hide; this fires when a crashed window is being rebuilt. Quitting uses exit(0).
             tauri::RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
             tauri::RunEvent::Exit => {
@@ -1065,12 +1103,41 @@ fn main() {
             }
             _ => {}
         });
+    let background_exit=BACKGROUND_EXIT_CODE.load(Ordering::SeqCst);
+    std::process::exit(if background_exit>0{background_exit}else{exit_code});
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn launcher_snapshot_does_not_relock_an_active_guard_inside_one_struct_literal(){
+        let root=std::env::temp_dir().join(format!("dfs-snapshot-{}",uuid::Uuid::new_v4()));fs::create_dir_all(&root).unwrap();
+        let state=Desktop {root:root.clone(),installed:false,beside_program:true,update:Mutex::new(None),updating:AtomicBool::new(false),
+            config:Mutex::new(Config::load(&root).unwrap()),active:Mutex::new(None),connecting:Mutex::new(false),generation:AtomicU64::new(0),
+            exiting:AtomicBool::new(false),notice:Mutex::new(None),background_check:true,frame_checks:Mutex::new((false,false)),
+            workbench_ready:AtomicBool::new(false),background_started:AtomicBool::new(false),disconnecting:AtomicBool::new(false),rebuilds:Mutex::new(recovery::Budget::default())};
+        let (sender,receiver)=std::sync::mpsc::channel();
+        let worker=std::thread::spawn(move||{let snapshot=desktop_snapshot(&state);let released=state.active.try_lock().is_ok();sender.send((snapshot,released)).unwrap();});
+        let (snapshot,released)=receiver.recv_timeout(Duration::from_secs(2)).expect("launcher snapshot must finish without waiting for its own active mutex");
+        let snapshot=snapshot.unwrap();assert!(snapshot.active.is_none());assert!(snapshot.connection_resources.is_none());assert!(released);worker.join().unwrap();fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn full_default_location_entry_uses_fallback_and_supports_appdata_portability(){
+        let base=std::env::temp_dir().join(format!("dfs-location-{}-{}",std::process::id(),uuid::Uuid::new_v4()));
+        let old=base.join("legacy");let beside=base.join("program/data");
+        fs::create_dir_all(old.join("management/data")).unwrap();fs::write(old.join("management/data/management.db"),b"synthetic").unwrap();
+        let cfg=serde_json::json!({"profiles":[{"id":"test","name":"Test","kind":"local","home":old.join("management")}]});
+        fs::write(old.join("connections.json"),serde_json::to_vec(&cfg).unwrap()).unwrap();
+        fs::create_dir_all(beside.join("connections.json.tmp")).unwrap();
+        let place=choose_default_place(&old,&beside,false,true);assert_eq!(place.root,old);assert!(!place.beside_program);assert_eq!(Config::load(&place.root).unwrap().profiles.len(),1);
+        let fallback=choose_default_place(&old,&beside,false,false);assert_eq!(fallback.root,old);
+        // New portable configs resolve against the actual fallback root too.
+        let config=Config::load(&old).unwrap();config.save(&old).unwrap();assert!(fs::read_to_string(old.join("connections.json")).unwrap().contains("\"management\""));
+        fs::remove_dir_all(base).unwrap();
+    }
     #[test]
     fn data_folder_is_probed_without_leaving_files_and_gets_a_note() {
         let root = std::env::temp_dir().join(format!("dfs-data-place-{}", std::process::id()));

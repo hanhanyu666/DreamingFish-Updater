@@ -13,7 +13,7 @@ final class ProjectScanCommand implements Runnable {
     @Override
     public void run() {
         ManagementCli root = parent.root;
-        PublishPreview preview = root.services().scanner().createPreview(projectId);
+        PublishPreview preview = root.tracked(projectId,"scan",false,()->root.services().scanner().createPreview(projectId));
         if (root.jsonOutput) {
             root.printJson(preview);
             return;

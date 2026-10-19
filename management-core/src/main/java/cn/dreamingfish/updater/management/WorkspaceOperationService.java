@@ -48,7 +48,7 @@ public final class WorkspaceOperationService {
         }
         for (var entry : transfers.history(projectId)) {
             entries.add(new Entry("import/" + entry.id(), "FILES", "导入 " + entry.path(), entry.createdAt(),
-                    entry.undone(), !entry.undone(), "", List.of(new ProjectSettingsSnapshot.Change(entry.path(),
+                    entry.undone(), entry.undoAvailable(), entry.undone()?"":entry.undoAvailable()?"":"原文件归档已清理，不能撤销", List.of(new ProjectSettingsSnapshot.Change(entry.path(),
                     entry.previousPaths().isEmpty() ? "没有旧文件" : String.join("、", entry.previousPaths()), "导入文件"))));
         }
         for (var entry : sourceOperations.history(projectId)) {
@@ -88,6 +88,7 @@ public final class WorkspaceOperationService {
             if (!plan.committed() && !plan.undone()) throw new ManagementException("这条导入还没有完成");
             String stamp = CryptoSupport.sha256(json.write(List.of(id, plan.stamp(), project.rules(), project.sourceDirectory().toString(), project.nextSequence())));
             var original = transfers.importView(projectId, id.substring(7));
+            if(!original.undone()&&!original.undoAvailable())throw new ManagementException("原文件归档已清理，不能撤销；导入成功收据仍保留");
             List<ProjectSettingsSnapshot.Change> changes = new ArrayList<>();
             changes.add(new ProjectSettingsSnapshot.Change(plan.path(), "导入后的文件",
                     original.previousPaths().contains(plan.path()) ? "恢复原文件" : "移出新导入的文件"));

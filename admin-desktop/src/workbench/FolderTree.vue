@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { ChevronRight } from '@lucide/vue';
-import { desk, navigate } from './store';
+import { desk, navigate,fileIndex,pendingCounts } from './store';
 import { nameOf } from './model';
 import FileIcon from './FileIcon.vue';
 const props=defineProps<{path:string}>();
@@ -9,9 +9,9 @@ const props=defineProps<{path:string}>();
 const inside=()=>desk.directory.startsWith(props.path+'/');
 const expanded=ref(desk.directory===props.path||inside());
 watch(()=>desk.directory,()=>{if(inside())expanded.value=true;});
-const children=computed(()=>desk.directories.filter(p=>p.startsWith(props.path+'/')&&!p.slice(props.path.length+1).includes('/')));
-const count=computed(()=>desk.files.filter(f=>f.path.startsWith(props.path+'/')).length);
-const pending=computed(()=>{const changed=new Set((desk.project?.preview?.changes||[]).map((c:any)=>c.path));return desk.files.some(f=>f.path.startsWith(props.path+'/')&&(!f.published||changed.has(f.path)));});
+const children=computed(()=>(fileIndex.value.rows.get(props.path)||[]).filter(entry=>entry.directory).map(entry=>entry.path));
+const count=computed(()=>fileIndex.value.folders.get(props.path)?.count||0);
+const pending=computed(()=>(pendingCounts.value.get(props.path)||0)>0);
 const current=computed(()=>desk.directory===props.path&&!desk.group&&!desk.search.trim()&&desk.filter==='all');
 function open(){desk.filter='all';navigate(props.path);}
 </script>

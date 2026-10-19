@@ -111,6 +111,7 @@ class WorkspaceOperationServiceTest {
         var files=new SourceFileService(f.paths,f.database,f.json);
         assertThrows(ManagementException.class,()->files.remove("demo","a.txt",null));
         assertEquals("keep",Files.readString(f.source.resolve("a.txt")));assertEquals(before,f.database.requireProject("demo").rules());
+        Files.writeString(f.paths.root().resolve("source-transactions"),"blocks durable import intention");
         assertThrows(ManagementException.class,()->files.upload("demo","a.txt",new ByteArrayInputStream("new".getBytes()),3,true));
         assertEquals("keep",Files.readString(f.source.resolve("a.txt")));
     }

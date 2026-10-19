@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-labelledby="app-title app-desc">
+<title id="app-title">梦鱼更新器 · 应用图标</title>
+<desc id="app-desc">青色小鱼配蓝紫色双叶尾鳍、明亮的大眼睛和上下环绕的更新弧线。</desc>
+<defs>
+<linearGradient id="app-bg" x1="65" y1="35" x2="449" y2="493" gradientUnits="userSpaceOnUse"><stop stop-color="#234572"/><stop offset="1" stop-color="#111D3D"/></linearGradient>
+<linearGradient id="app-edge" x1="50" y1="40" x2="465" y2="490" gradientUnits="userSpaceOnUse"><stop stop-color="#8BE8EC" stop-opacity=".48"/><stop offset=".48" stop-color="#6889C8" stop-opacity=".16"/><stop offset="1" stop-color="#9392F4" stop-opacity=".08"/></linearGradient>
+<linearGradient id="app-body" x1="232" y1="197" x2="354" y2="324" gradientUnits="userSpaceOnUse"><stop stop-color="#8AF5E8"/><stop offset=".48" stop-color="#43E0E0"/><stop offset="1" stop-color="#20B8D6"/></linearGradient>
+<linearGradient id="app-tail" x1="131" y1="209" x2="223" y2="315" gradientUnits="userSpaceOnUse"><stop stop-color="#A59BFF"/><stop offset=".54" stop-color="#738FF0"/><stop offset="1" stop-color="#43B4DB"/></linearGradient>
+<linearGradient id="app-fin" x1="261" y1="179" x2="303" y2="334" gradientUnits="userSpaceOnUse"><stop stop-color="#728FEC"/><stop offset="1" stop-color="#54BEDB"/></linearGradient>
+<linearGradient id="app-orbit" x1="129" y1="347" x2="363" y2="374" gradientUnits="userSpaceOnUse"><stop stop-color="#40BAD3" stop-opacity=".45"/><stop offset="1" stop-color="#9AEDE5"/></linearGradient>
+</defs>
+<rect x="24" y="24" width="464" height="464" rx="118" fill="url(#app-bg)"/>
+<rect x="27" y="27" width="458" height="458" rx="115" stroke="url(#app-edge)" stroke-width="4"/>
+<g stroke-linecap="round" stroke-linejoin="round">
+<path d="M329 116C265 91 171 95 113 130m11-22-11 22 24 3" stroke="#82BADA" stroke-opacity=".43" stroke-width="6"/>
+<path d="M136 357c62 42 148 45 224 10m-29-10 29 10-19 25" stroke="url(#app-orbit)" stroke-width="8"/>
+</g>
+<g transform="translate(-5 -3) translate(268 257) scale(1.06) translate(-268 -257)">
+<path d="M251 213c11-47 32-52 65-21l-8 25Zm5 88c10 44 35 48 64 13Z" fill="url(#app-fin)"/>
+<path d="M219 254c-29-24-60-45-89-43-1 25 9 45 28 59-21 17-29 37-26 62 32 1 64-20 88-53l10-13Z" fill="url(#app-tail)"/>
+<path d="M201 260c32-50 72-70 117-65 37 3 64 25 84 62-22 38-50 57-86 60-46 4-85-16-115-57Z" fill="url(#app-body)"/>
+<path d="M226 238c27-24 57-35 88-32" stroke="#D7FFF3" stroke-opacity=".42" stroke-width="7" stroke-linecap="round"/>
+<path d="M145 230c13 9 26 20 36 31" stroke="#D8CCFF" stroke-opacity=".42" stroke-width="6" stroke-linecap="round"/>
+<path d="M257 235c18 15 19 34 3 48" stroke="#1598B2" stroke-opacity=".58" stroke-width="7" stroke-linecap="round"/>
+<path d="M283 294c24 11 52 3 75-14" stroke="#BBF7EE" stroke-opacity=".26" stroke-width="4" stroke-linecap="round"/>
+<circle cx="345" cy="242" r="13" fill="#143657"/>
+<circle cx="341" cy="237" r="4.2" fill="#F1FFFF"/>
+<path d="M372 267c4 4 8 4 12 0" stroke="#137DA1" stroke-width="3.5" stroke-linecap="round"/>
+</g>
+<circle cx="386" cy="165" r="9" stroke="#8BE7EA" stroke-opacity=".7" stroke-width="4"/>
+</svg>

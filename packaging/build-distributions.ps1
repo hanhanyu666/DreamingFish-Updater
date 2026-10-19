@@ -1,12 +1,14 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.1",
-    [string]$AdminVersion = "0.2.5",
+    [string]$Version = "0.2.2",
+    [string]$AdminVersion = "0.2.6",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
     [switch]$PlayerOnly,
-    [switch]$AdminOnly
+    [switch]$AdminOnly,
+    [string]$OutputRoot = "",
+    [string]$MavenRepository = ""
 )
 
 Set-StrictMode -Version Latest
@@ -18,9 +20,11 @@ if ($PlayerOnly -and $AdminOnly) {
 
 $packagingRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $packagingRoot
-$distRoot = Join-Path $repoRoot "dist"
+$distRoot = if($OutputRoot){[IO.Path]::GetFullPath($OutputRoot)}else{Join-Path $repoRoot "dist"}
 $buildRoot = Join-Path $repoRoot "target\packaging"
 $templates = Join-Path $packagingRoot "templates"
+if (-not $MavenRepository) { $MavenRepository = Join-Path $repoRoot '.m2/repository' }
+$MavenRepository = [IO.Path]::GetFullPath($MavenRepository)
 
 function Assert-ChildPath([string]$Path, [string]$Parent) {
     $resolvedPath = [System.IO.Path]::GetFullPath($Path)
@@ -266,6 +270,7 @@ if ($PlayerOnly) {
     New-Item -ItemType Directory -Force -Path $distRoot | Out-Null
     $playerOutput = Join-Path $distRoot "dreamingfish-player-windows-x64"
     $playerArchive = Join-Path $distRoot "dreamingfish-player-windows-x64-$Version.zip"
+    Assert-ChildPath $playerOutput $distRoot
     if (Test-Path -LiteralPath $playerOutput) {
         Clear-ReadOnlyFiles $playerOutput
         Remove-Item -Recurse -Force -LiteralPath $playerOutput
@@ -282,6 +287,7 @@ if ($PlayerOnly) {
         (Join-Path $distRoot "dfs-admin-linux-x64-$AdminVersion.zip")
     )
     foreach ($adminOutput in $adminOutputs) {
+        Assert-ChildPath $adminOutput $distRoot
         if (Test-Path -LiteralPath $adminOutput) {
             Clear-ReadOnlyFiles $adminOutput
             Remove-Item -Recurse -Force -LiteralPath $adminOutput
@@ -337,8 +343,8 @@ foreach ($module in $cleanModules) {
         throw "Refusing to clean a linked module output: $moduleTarget"
     }
 }
-Invoke-Checked (Join-Path $repoRoot "mvnw.cmd") @("clean", "-pl", ($cleanModules -join ","))
-$mavenArguments = @("package")
+Invoke-Checked (Join-Path $repoRoot "mvnw.cmd") @("-Dmaven.repo.local=$MavenRepository", "clean", "-pl", ($cleanModules -join ","))
+$mavenArguments = @("-Dmaven.repo.local=$MavenRepository", "package")
 if ($PlayerOnly) { $mavenArguments += @("-pl", "player-app", "-am") }
 if ($AdminOnly) { $mavenArguments += @("-pl", "management-cli", "-am") }
 if ($SkipTests) { $mavenArguments += "-DskipTests" }
@@ -369,11 +375,12 @@ if (-not $AdminOnly) {
         if (-not (Test-Path -LiteralPath (Join-Path $playerUi "node_modules"))) {
             Invoke-Checked "npm.cmd" @("install")
         }
-        Invoke-Checked "npm.cmd" @("run", "tauri", "--", "build", "--no-bundle")
+        Invoke-Checked "npm.cmd" @("run", "tauri", "--", "build", "--no-bundle", "--features", "custom-protocol")
     } finally {
         Pop-Location
     }
-    $tauriExe = Join-Path $playerUi "src-tauri\target\release\dreamingfish-player.exe"
+    $playerCargoTarget=if($env:CARGO_TARGET_DIR){[IO.Path]::GetFullPath($env:CARGO_TARGET_DIR)}else{Join-Path $playerUi "src-tauri\target"}
+    $tauriExe = Join-Path $playerCargoTarget "release\dreamingfish-player.exe"
     if (-not (Test-Path -LiteralPath $tauriExe)) {
         throw "Tauri player executable was not produced: $tauriExe"
     }
@@ -433,6 +440,8 @@ Invoke-Checked $jpackage @(
     "--description", "DreamingFish modpack update management",
     "--win-console",
     "--add-modules", "java.naming,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported",
+    "--java-options", "-Xms64m",
+    "--java-options", "-Xmx512m",
     "--java-options", "-Dfile.encoding=UTF-8",
     "--java-options", '-Ddfs.home=$APPDIR/..'
 )
@@ -440,10 +449,13 @@ Copy-DirectoryContents (Join-Path $adminImageRoot "DreamingFishAdmin") $adminWin
 New-Item -ItemType Directory -Force -Path (Join-Path $adminWindows "support") | Out-Null
 Copy-Item -LiteralPath $agentJar.FullName -Destination `
     (Join-Path $adminWindows "support\bootstrap-agent.jar")
+Copy-Item -LiteralPath (Join-Path $JdkHome "bin\java.exe") -Destination (Join-Path $adminWindows "runtime\bin\java.exe")
+Copy-Item -LiteralPath (Join-Path $templates "dfs-admin.cmd") -Destination (Join-Path $adminWindows "dfs-admin.cmd")
+Copy-Item -LiteralPath (Join-Path $templates "dfs-admin.ps1") -Destination (Join-Path $adminWindows "dfs-admin.ps1")
 Copy-Item -LiteralPath (Join-Path $templates "README-management.txt") -Destination (Join-Path $adminWindows "README.txt")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\QUICKSTART.md") -Destination (Join-Path $adminWindows "QUICKSTART.md")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") -Destination (Join-Path $adminWindows "DEPLOYMENT.md")
-foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md')) {
+foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md','CAPABILITIES.md','STORAGE.md')) {
     Copy-Item -LiteralPath (Join-Path $repoRoot "docs\$guide") -Destination (Join-Path $adminWindows $guide)
 }
 $adminVersionOutput = & (Join-Path $adminWindows "DreamingFishAdmin.exe") --version 2>&1
@@ -493,6 +505,8 @@ if (-not $SkipLinux) {
     $linuxLauncher = Join-Path $adminLinux "dfs-admin"
     Copy-Item -LiteralPath (Join-Path $templates "dfs-admin") -Destination $linuxLauncher
     $linuxLauncherText = Get-Content -Raw -LiteralPath $linuxLauncher
+    $linuxLauncherText = $linuxLauncherText.Replace("`r`n", "`n").Replace("`r", "`n")
+    [IO.File]::WriteAllText($linuxLauncher, $linuxLauncherText, [Text.UTF8Encoding]::new($false))
     if (-not $linuxLauncherText.Contains("-Djava.net.preferIPv4Stack=true")) {
         throw "The Linux admin launcher must force the IPv4 network stack."
     }
@@ -502,7 +516,7 @@ if (-not $SkipLinux) {
         -Destination (Join-Path $adminLinux "QUICKSTART.md")
     Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") `
         -Destination (Join-Path $adminLinux "DEPLOYMENT.md")
-    foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md')) {
+    foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md','CAPABILITIES.md','STORAGE.md')) {
         Copy-Item -LiteralPath (Join-Path $repoRoot "docs\$guide") -Destination (Join-Path $adminLinux $guide)
     }
     New-Zip $adminLinux (Join-Path $distRoot "dfs-admin-linux-x64-$AdminVersion.zip")

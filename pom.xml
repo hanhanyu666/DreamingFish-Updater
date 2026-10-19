@@ -27,7 +27,7 @@
     <maven.compiler.encoding>UTF-8</maven.compiler.encoding>
     <maven.resources.encoding>UTF-8</maven.resources.encoding>
     <maven.compiler.release>21</maven.compiler.release>
-    <jackson.version>2.18.2</jackson.version>
+    <jackson.version>2.18.11</jackson.version>
     <junit.version>5.11.4</junit.version>
     <picocli.version>4.7.6</picocli.version>
     <sqlite.version>3.47.2.0</sqlite.version>

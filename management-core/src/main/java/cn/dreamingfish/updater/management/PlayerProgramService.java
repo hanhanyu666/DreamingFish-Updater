@@ -58,7 +58,7 @@ public final class PlayerProgramService {
         Path sourceRoot = resolved.root();
         ProjectRecord project = database.requireProject(projectId);
         Path lockPath = paths.locks().resolve(projectId + ".player-" + platform + ".lock");
-        try (ProjectLock ignored = ProjectLock.acquire(lockPath)) {
+        try (ProjectLock common=ProjectLock.acquire(paths.locks().resolve(projectId+".lock"));ProjectLock ignored = ProjectLock.acquire(lockPath)) {
             latest(projectId, platform).ifPresent(current -> {
                 if (targetVersion.compareTo(SemanticVersion.parse(current.version())) <= 0) {
                     throw new ManagementException("Player program version must be newer than " + current.version());

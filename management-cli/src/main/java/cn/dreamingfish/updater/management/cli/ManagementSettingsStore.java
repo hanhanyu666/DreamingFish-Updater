@@ -47,7 +47,11 @@ final class ManagementSettingsStore {
             if (parent != null) Files.createDirectories(parent);
             Path temporary = Files.createTempFile(parent, file.getFileName().toString(), ".tmp");
             try {
-                Files.write(temporary, json.writePretty(normalized));
+                ManagementSettings stored = normalized;
+                if (Path.of(normalized.dataDirectory()).equals(file.getParent().resolve("data"))) {
+                    stored = normalized.withDataDirectory("data");
+                }
+                Files.write(temporary, json.writePretty(stored));
                 try {
                     Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE,
                             StandardCopyOption.REPLACE_EXISTING);
@@ -93,7 +97,10 @@ final class ManagementSettingsStore {
                 || Files.isSymbolicLink(localData)) {
             return settings;
         }
-        return settings.withDataDirectory(localData.toString());
+        // An existing external directory is explicitly selected and must retain its identity.
+        if (Files.exists(configured)) return settings;
+        throw new ManagementException("原管理数据目录 " + configured + " 不存在，但本机存在 " + localData
+                + "。无法确定这是否为同一份数据；请确认后在 management-settings.json 中重新定位 dataDirectory。");
     }
 
     private static ManagementSettings migrate(ManagementSettings settings) {

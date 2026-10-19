@@ -45,6 +45,21 @@ class AdminWebServerTest {
             .build();
 
     @Test
+    void unusedJsonControlBodiesDoNotResetResponsesOnReusedConnections() throws Exception {
+        ManagementCli root = new ManagementCli(temporary.resolve("control-body/management-settings.json"), new StringReader(""));
+        try (AdminWebServer server = new AdminWebServer(root, new InetSocketAddress("127.0.0.1", 0))) {
+            server.start();
+            URI base=URI.create("http://127.0.0.1:"+server.address().getPort());
+            String token=json.read(send(base,"/api/session","GET",null,null).body().getBytes(StandardCharsets.UTF_8),Map.class).get("token").toString();
+            for(int i=0;i<30;i++) {
+                var response=send(base,"/api/public-service/stop","POST","{\"unused\":\""+"x".repeat(4096)+"\"}",token);
+                assertEquals(200,response.statusCode(),response.body());
+                assertTrue(response.body().contains("\"running\":false"));
+            }
+        }
+    }
+
+    @Test
     void servesNewAndLegacyInterfacesFromSameOriginWithoutDesktopCredentials() throws Exception {
         ManagementCli root = new ManagementCli(temporary.resolve("dual-ui/management-settings.json"), new StringReader(""));
         boolean frontendBuilt = AdminWebServer.class.getResource("web/workbench/index.html") != null;
@@ -521,7 +536,7 @@ class AdminWebServerTest {
                     ), token), token);
             assertEquals(201, republished.statusCode(), republished.body());
             assertTrue(republished.body().contains(
-                    "\"publicServiceRestarted\":true"), republished.body());
+                    "\"publicServiceRestarted\":false"), republished.body());
             assertTrue(republished.body().contains(
                     "\"running\":true"), republished.body());
 
@@ -1172,13 +1187,22 @@ class AdminWebServerTest {
             String token = session.get("token").toString();
             var denied = sendBytes(base, "/api/projects/transfer-demo/files/stage?path=client.txt", "new".getBytes(), "wrong-token");
             assertEquals(403, denied.statusCode()); assertEquals("old", Files.readString(source.resolve("client.txt")));
-            var staged = sendBytes(base, "/api/projects/transfer-demo/files/stage?path=client.txt", "new".getBytes(), token);
+            String requestId=java.util.UUID.randomUUID().toString();
+            var staged = sendBytes(base, "/api/projects/transfer-demo/files/stage?path=client.txt&requestId="+requestId, "new".getBytes(), token);
             assertEquals(201, staged.statusCode(), staged.body());
             Map<?, ?> plan = json.read(staged.body().getBytes(StandardCharsets.UTF_8), Map.class);
+            assertEquals(requestId,plan.get("id"));
+            var duplicate=sendBytes(base,"/api/projects/transfer-demo/files/stage?path=client.txt&requestId="+requestId,"new".getBytes(),token);
+            assertEquals(requestId,json.read(duplicate.body().getBytes(StandardCharsets.UTF_8),Map.class).get("id"));
             assertEquals("old", Files.readString(source.resolve("client.txt")));
             var committed = send(base, "/api/projects/transfer-demo/files/commit", "POST", json.writeString(Map.of(
                     "id", plan.get("id"), "stamp", plan.get("stamp"), "action", "OVERWRITE")), token);
             assertEquals(200, committed.statusCode(), committed.body()); assertEquals("new", Files.readString(source.resolve("client.txt")));
+            var recheck=send(base,"/api/projects/transfer-demo/files/recheck","POST",json.writeString(Map.of("id",requestId)),token);
+            assertEquals(Boolean.TRUE,json.read(recheck.body().getBytes(StandardCharsets.UTF_8),Map.class).get("committed"));
+            var repeatCommit=send(base,"/api/projects/transfer-demo/files/commit","POST",json.writeString(Map.of("id",requestId,"stamp",plan.get("stamp"),"action","OVERWRITE")),token);
+            assertEquals(200,repeatCommit.statusCode());
+            assertEquals(410,send(base,"/api/projects/transfer-demo/files/recheck","POST",json.writeString(Map.of("id",java.util.UUID.randomUUID().toString())),token).statusCode());
             var history = send(base, "/api/projects/transfer-demo/files/import-history", "GET", null, token);
             assertEquals(1, json.read(history.body().getBytes(StandardCharsets.UTF_8), List.class).size());
             var undo = send(base, "/api/projects/transfer-demo/files/undo-import", "POST", json.writeString(Map.of("id", plan.get("id"))), token);

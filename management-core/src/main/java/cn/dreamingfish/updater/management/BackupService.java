@@ -51,7 +51,8 @@ public final class BackupService {
 
     public Path create(Path destination, char[] password) {
         Path target = destination.toAbsolutePath().normalize();
-        try {
+        try (ManagementSnapshotLock snapshotLock=ManagementSnapshotLock.acquire(paths,database,false);
+             StorageService.Lease budget=new StorageService(paths,database,json).reserve(backupReservation(),0)) {
             if (target.getParent() != null) {
                 Files.createDirectories(target.getParent());
             }
@@ -74,7 +75,12 @@ public final class BackupService {
         }
     }
 
-    public void restore(Path archive, char[] password, boolean force) {
+    public void restore(Path archive,char[] password,boolean force) {
+        try(ManagementSnapshotLock snapshotLock=ManagementSnapshotLock.acquire(paths,database,true)){
+            restoreLocked(archive,password,force);
+        }catch(IOException error){throw new ManagementException("无法锁定备份恢复的数据根",error);}
+    }
+    private void restoreLocked(Path archive, char[] password, boolean force) {
         Path source = archive.toAbsolutePath().normalize();
         if (!Files.isRegularFile(source)) {
             throw new ManagementException("Backup archive does not exist: " + source);
@@ -90,6 +96,7 @@ public final class BackupService {
         boolean newMoved = false;
         boolean preserveRecoveryData = false;
         try {
+            long archiveBytes=Files.size(source);StorageService.requireFree(parent,Math.addExact(archiveBytes*3,StorageService.Limits.defaults().minimumFreeBytes()));
             Files.createDirectories(restoreRoot);
             encryption.decrypt(source, decryptedZip, password);
             extractZip(decryptedZip, restoreRoot);
@@ -140,6 +147,15 @@ public final class BackupService {
                 // The primary restore result is more useful than a temporary cleanup failure.
             }
         }
+    }
+
+    private long backupReservation()throws IOException {
+        long bytes=Files.size(paths.database());long entries=1;
+        for(Path root:List.of(paths.keys(),paths.manifests(),paths.playerPrograms(),paths.objects())){
+            bytes=Math.addExact(bytes,StorageService.treeBytes(root));
+            if(Files.exists(root))try(var stream=Files.walk(root)){entries=Math.addExact(entries,stream.count());}
+        }
+        return Math.addExact(Math.multiplyExact(bytes,2),Math.addExact(Files.size(paths.database()),Math.addExact(Math.multiplyExact(entries,1024),1L<<20)));
     }
 
     private void writeZip(Path zip, Path databaseSnapshot) throws IOException {

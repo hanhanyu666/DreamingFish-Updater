@@ -22,8 +22,7 @@ final class ProjectStaticExportCommand implements Runnable {
     @Override
     public void run() {
         ManagementCli root = parent.root;
-        var result = root.services().staticDistribution()
-                .exportProject(projectId, output);
+        var result=root.tracked(projectId,"distribution-export",false,()->root.services().staticDistribution().exportProject(projectId,output));
         if (root.jsonOutput) {
             root.printJson(result);
             return;

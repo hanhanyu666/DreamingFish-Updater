@@ -45,6 +45,7 @@ final class TestUpdateServer implements AutoCloseable {
     volatile boolean invalidSignature;
     volatile boolean signatureSidecarsOnly;
     volatile boolean unavailable;
+    final java.util.concurrent.atomic.AtomicInteger overloadedObjectResponses=new java.util.concurrent.atomic.AtomicInteger();
     volatile String lastRange;
     volatile long objectDelayMillis;
     final AtomicInteger activeObjectRequests = new AtomicInteger();
@@ -240,6 +241,7 @@ final class TestUpdateServer implements AutoCloseable {
         int active = activeObjectRequests.incrementAndGet();
         maximumConcurrentObjectRequests.accumulateAndGet(active, Math::max);
         try {
+            if(overloadedObjectResponses.getAndUpdate(value->Math.max(0,value-1))>0){exchange.getResponseHeaders().set("Retry-After","0");send(exchange,503,new byte[0]);return;}
             if (objectDelayMillis > 0) {
                 try {
                     Thread.sleep(objectDelayMillis);
