@@ -83,7 +83,9 @@ try{
     Invoke-ValidationStep 'admin-web' $validationNpm @('--prefix','admin-desktop','run','build:web')
     Invoke-ValidationStep 'admin-desktop' $validationNpm @('--prefix','admin-desktop','run','build')
     & (Join-Path $validationRepo 'packaging/tests/publish-release.test.ps1') 2>&1 | Tee-Object -FilePath (Join-Path $validationRoot 'release-planning.log')
-    Invoke-ValidationStep 'maven-verify' $validationMaven @('-B','-ntp',"-Dmaven.repo.local=$MavenRepository",'verify')
+    $mavenArgs=@('-B','-ntp',"-Dmaven.repo.local=$MavenRepository",'verify')
+    if($validationWindows){Invoke-ValidationStep 'maven-verify' $validationMaven $mavenArgs}
+    else{Invoke-ValidationStep 'maven-verify' 'sh' (@($validationMaven)+$mavenArgs)}
     $identity=(& node packaging/build-identity.mjs --print).Trim()
     $agent=Get-ChildItem -LiteralPath 'bootstrap-agent/target' -File -Filter 'bootstrap-agent-*.jar'|Where-Object{$_.Name-notlike'original-*'}|Select-Object -First 1
     $playerJar=Get-ChildItem -LiteralPath 'player-app/target' -File -Filter 'player-app-*.jar'|Where-Object{$_.Name-notlike'original-*'}|Select-Object -First 1
