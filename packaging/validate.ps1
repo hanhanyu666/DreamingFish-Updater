@@ -119,6 +119,13 @@ try{
         if($WithDesktopSmoke){Invoke-ValidationStep 'desktop-probe-dependencies' 'python' @('-c','import psutil');Invoke-ValidationStep 'desktop-smoke' 'python' @('packaging/desktop-remediation-smoke.py','--exe',(Join-Path $localDist 'dfs-admin-desktop-windows-x64/DreamingFishAdminDesktop.exe'),'--core',(Join-Path $localDist 'dfs-admin-desktop-windows-x64/core'),'--output',(Join-Path $validationRoot 'desktop-smoke'))}
     }
     $validationSuccess=$true
+}catch{
+    if($env:GITHUB_ACTIONS -eq 'true'){
+        $detail=($_ | Out-String)+$_.ScriptStackTrace
+        $detail=$detail.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+        Write-Output "::error title=Validation exception::$detail"
+    }
+    throw
 }finally{
     $report=[pscustomobject]@{success=$validationSuccess;sourceRoot=$validationRepo;steps=$validationSteps;nativeTarget=$env:CARGO_TARGET_DIR}
     [IO.File]::WriteAllText((Join-Path $validationRoot 'validation.json'),($report|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
