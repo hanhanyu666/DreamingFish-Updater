@@ -1,0 +1,5 @@
+   Compiling dfs-review-proxy-probe v0.0.0 (D:\Desktop\DreamingFish-Updater\docs\reviews\repro-2026-10-19\rust-probe)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.53s
+     Running `admin-desktop/src-tauri/target\debug\proxy-probe.exe`
+DIRECT HTTP/1.1 202 Accepted body={"prefer":true,"requestId":true}
+PROXY HTTP/1.1 200 OK body={"prefer":false,"requestId":false}

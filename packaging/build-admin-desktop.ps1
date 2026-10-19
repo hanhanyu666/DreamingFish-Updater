@@ -9,15 +9,20 @@ param(
     # Local test builds without the key; such installers cannot be offered as updates.
     [switch]$NoUpdaterSignature,
     # Release tag whose assets latest.json points at; defaults to v<desktop version>.
-    [string]$ReleaseTag = ''
+    [string]$ReleaseTag = '',
+    [string]$OutputRoot = '',
+    [string]$MavenRepository = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $desktopRepo = Split-Path -Parent $PSScriptRoot
+if (-not $MavenRepository) { $MavenRepository = Join-Path $desktopRepo '.m2/repository' }
+$MavenRepository = [IO.Path]::GetFullPath($MavenRepository)
 $desktopUi = Join-Path $desktopRepo 'admin-desktop'
 $desktopCore = Join-Path $desktopUi 'src-tauri\resources\core'
-$desktopDist = Join-Path $desktopRepo 'dist'
+$desktopCargoTarget = if($env:CARGO_TARGET_DIR){[IO.Path]::GetFullPath($env:CARGO_TARGET_DIR)}else{Join-Path $desktopUi 'src-tauri\target'}
+$desktopDist = if($OutputRoot){[IO.Path]::GetFullPath($OutputRoot)}else{Join-Path $desktopRepo 'dist'}
 $desktopVersion = (Get-Content -LiteralPath (Join-Path $desktopUi 'package.json') -Raw | ConvertFrom-Json).version
 function Invoke-DesktopTool([string]$Executable, [string[]]$ToolArgs) {
     & $Executable @ToolArgs
@@ -52,10 +57,13 @@ try {
     if (-not $SkipBuildCore) {
         Invoke-DesktopTool 'npm.cmd' @('--prefix','player-ui','run','build')
         Invoke-DesktopTool 'npm.cmd' @('--prefix','admin-desktop','run','build:web')
-        $coreArgs = @('-pl','management-cli','-am','package')
+        $coreArgs = @("-Dmaven.repo.local=$MavenRepository",'-pl','management-cli','-am','package')
         if ($SkipTests) {$coreArgs += '-DskipTests'}
         Invoke-DesktopTool (Join-Path $desktopRepo 'mvnw.cmd') $coreArgs
     }
+    $expectedBuild = (& node (Join-Path $desktopRepo 'packaging\build-identity.mjs') --print).Trim()
+    if($LASTEXITCODE -ne 0){throw 'Could not calculate source identity'}
+    Invoke-DesktopTool 'python' @((Join-Path $desktopRepo 'packaging\check-artifact-identity.py'),'--expected',$expectedBuild,'--admin-jar',(Join-Path $desktopRepo 'management-cli\target\dfs-admin.jar'))
     New-Item -ItemType Directory -Path (Join-Path $desktopCore 'support') -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $desktopRepo 'LICENSE') -Destination (Join-Path $desktopUi 'src-tauri\resources\LICENSE') -Force
     Copy-Item -LiteralPath (Join-Path $desktopRepo 'management-cli\target\dfs-admin.jar') -Destination (Join-Path $desktopCore 'dfs-admin.jar') -Force
@@ -68,6 +76,7 @@ try {
     $desktopAgent = Get-ChildItem -LiteralPath (Join-Path $desktopRepo 'bootstrap-agent\target') -File -Filter 'bootstrap-agent-*.jar' | Where-Object {$_.Name -notlike 'original-*'} | Select-Object -First 1
     if (-not $desktopAgent) {throw 'Bootstrap Agent has not been built'}
     Copy-Item -LiteralPath $desktopAgent.FullName -Destination (Join-Path $desktopCore 'support\bootstrap-agent.jar') -Force
+    Invoke-DesktopTool 'python' @((Join-Path $desktopRepo 'packaging\check-artifact-identity.py'),'--expected',$expectedBuild,'--core-directory',$desktopCore,'--write-core-info')
     $runtimeBuild = Join-Path $desktopRepo ('target\packaging-admin-desktop\runtime-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($runtimeBuild)) -Force | Out-Null
     Invoke-DesktopTool (Join-Path $JdkHome 'bin\jlink.exe') @('--add-modules','java.naming,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.unsupported','--strip-debug','--no-man-pages','--no-header-files','--compress=2','--output',$runtimeBuild)
@@ -84,7 +93,7 @@ try {
         Invoke-DesktopTool 'npm.cmd' @('run','build')
         if(-not $SkipTests){Invoke-DesktopTool 'npm.cmd' @('test');Invoke-DesktopTool 'cargo' @('test','--locked','--manifest-path','src-tauri/Cargo.toml')}
         # --ci keeps the build unattended; the signing key has no password and would otherwise prompt for one.
-        $desktopTauriArgs = @('run','tauri','--','build','--ci')
+        $desktopTauriArgs = @('run','tauri','--','build','--ci','--features','custom-protocol')
         if($PortableOnly){$desktopTauriArgs += '--no-bundle'}
         elseif($NoUpdaterSignature){
             $unsigned = Join-Path $desktopRepo 'target\packaging-admin-desktop\no-updater.json'
@@ -101,7 +110,7 @@ try {
     Assert-DesktopChild $desktopPackage $desktopDist
     if(Test-Path -LiteralPath $desktopPackage){Remove-Item -LiteralPath $desktopPackage -Recurse -Force}
     New-Item -ItemType Directory -Path $desktopPackage -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $desktopUi 'src-tauri\target\release\dreamingfish-admin-desktop.exe') -Destination (Join-Path $desktopPackage 'DreamingFishAdminDesktop.exe')
+    Copy-Item -LiteralPath (Join-Path $desktopCargoTarget 'release\dreamingfish-admin-desktop.exe') -Destination (Join-Path $desktopPackage 'DreamingFishAdminDesktop.exe')
     Copy-Item -LiteralPath $desktopCore -Destination (Join-Path $desktopPackage 'core') -Recurse
     Copy-Item -LiteralPath (Join-Path $desktopRepo 'packaging\templates\README-admin-desktop.txt') -Destination (Join-Path $desktopPackage 'README.txt')
     Copy-Item -LiteralPath (Join-Path $desktopRepo 'LICENSE') -Destination (Join-Path $desktopPackage 'LICENSE')
@@ -117,7 +126,7 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::CreateFromDirectory($portableStage, $desktopZip, [IO.Compression.CompressionLevel]::Optimal, $false, [Text.Encoding]::UTF8)
     if(-not $PortableOnly){
-        $desktopInstaller = Get-ChildItem -LiteralPath (Join-Path $desktopUi 'src-tauri\target\release\bundle\nsis') -Filter '*-setup.exe' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        $desktopInstaller = Get-ChildItem -LiteralPath (Join-Path $desktopCargoTarget 'release\bundle\nsis') -Filter '*-setup.exe' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if(-not $desktopInstaller){throw 'Desktop installer was not produced'}
         $installerName = "dfs-admin-desktop-windows-x64-$desktopVersion-setup.exe"
         Copy-Item -LiteralPath $desktopInstaller.FullName -Destination (Join-Path $desktopDist $installerName) -Force
@@ -127,6 +136,7 @@ try {
             # Installed copies read this from the latest GitHub release to find and verify the update.
             $signature = Join-Path $desktopInstaller.DirectoryName ($desktopInstaller.Name + '.sig')
             if(-not (Test-Path -LiteralPath $signature)){throw 'Updater signature was not produced'}
+            Copy-Item -LiteralPath $signature -Destination (Join-Path $desktopDist ($installerName + '.sig')) -Force
             $tag = if($ReleaseTag){$ReleaseTag}else{"v$desktopVersion"}
             $manifest = [ordered]@{
                 version = $desktopVersion

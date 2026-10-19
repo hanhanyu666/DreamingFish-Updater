@@ -73,9 +73,16 @@ public final class PublishService {
             ensurePreviewBaseIsCurrent(preview);
             ensureRemovalDecisions(preview, project.rules());
 
-            for (ScannedFile file : preview.files()) {
-                Path source = PathSafety.resolveInside(project.sourceDirectory(), file.path());
-                objects.importExpected(source, file.sha256(), file.size());
+            long temporaryPeak=preview.files().stream()
+                    .filter(file->!Files.exists(paths.objectPath(file.sha256()),java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                    .mapToLong(ScannedFile::size).max().orElse(-1);
+            // Objects are streamed sequentially. One publication reserves its largest
+            // new temporary object, rather than reopening two root locks per file.
+            try(StorageService.Lease budget=temporaryPeak<0?null:new StorageService(paths,database,json).reserve(temporaryPeak,0)){
+                for (ScannedFile file : preview.files()) {
+                    Path source = PathSafety.resolveInside(project.sourceDirectory(), file.path());
+                    objects.importExpected(source, file.sha256(), file.size(),budget);
+                }
             }
             if (project.branding().coverObject() != null) {
                 objects.require(project.branding().coverObject());
@@ -88,6 +95,7 @@ public final class PublishService {
             }
             scanner.requireConfirmation(projectId, previewId, previewDigest);
 
+            ApplicationTasks.committing("正在签名并提交不可变发布");
             Instant now = Instant.now();
             long sequence = project.nextSequence();
             String releaseId = releaseId(sequence, now);

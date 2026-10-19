@@ -75,9 +75,8 @@ final class ProjectPublishCommand implements Runnable {
                             + "如果已确认玩家会通过其他方式获得新版玩家端，请加上 --confirm-player-upgrade。");
         }
         Confirmations.require(root, yes, "Publish immutable release " + version + "?");
-        var release = services.publisher().publish(
-                projectId, version, minimumPlayerVersion, resolvedChangelog,
-                preview.previewId(), preview.confirmationDigest());
+        var confirmed=preview;
+        var release=root.tracked(projectId,"publish",false,()->services.publisher().publish(projectId,version,minimumPlayerVersion,resolvedChangelog,confirmed.previewId(),confirmed.confirmationDigest()));
         if (root.jsonOutput) root.printJson(CliOutput.releaseMap(release));
         else root.out().printf("Published %s as %s (sequence %d).%n",
                 release.displayVersion(), release.releaseId(), release.sequence());

@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import zipfile
 
-PRIVATE_NAMES = {"management-settings.json", "management-web-auth.json", "management.db", "project-binding.json"}
+PRIVATE_NAMES = {"management-settings.json", "management-web-auth.json", "management.db", "project-binding.json", "connections.json", "connections.json.previous"}
 
 def inspect(archive: zipfile.ZipFile, prefix: str, issues: list[dict], marker_bytes: list, depth: int = 0) -> int:
     count = 0
@@ -23,9 +23,15 @@ def inspect(archive: zipfile.ZipFile, prefix: str, issues: list[dict], marker_by
         location = prefix + "!" + name
         if depth == 0 and (Path(name).name in PRIVATE_NAMES or name.startswith("data/")):
             issues.append({"entry": location, "reason": "project-specific state in generic archive"})
-        if depth == 0 and ("private-key" in name.lower() or name.lower().endswith(".key")):
+        parts=set(name.lower().split('/'))
+        if parts & {"source-imports","source-transactions","source-archive","source-operations","application-tasks","storage-leases"}:
+            issues.append({"entry":location,"reason":"private management recovery/task data"})
+        if ("private-key" in name.lower() or name.lower().endswith((".key", ".pk8", ".ppk"))):
             issues.append({"entry": location, "reason": "possible project private key"})
         payload = archive.read(entry)
+        if depth==0 and prefix.startswith("dfs-admin-linux-x64-") and name=="dfs-admin":
+            if not payload.startswith(b"#!/") or b"\r" in payload or payload.startswith(b"\xef\xbb\xbf"):
+                issues.append({"entry":location,"reason":"Linux launcher requires an LF-only shebang without BOM"})
         if name.endswith((".jar", ".zip")) and depth < 3 and zipfile.is_zipfile(io.BytesIO(payload)):
             with zipfile.ZipFile(io.BytesIO(payload)) as nested:
                 count += inspect(nested, location, issues, marker_bytes, depth + 1)
@@ -37,8 +43,9 @@ def inspect(archive: zipfile.ZipFile, prefix: str, issues: list[dict], marker_by
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="0.2.1", help="Player version")
-    parser.add_argument("--admin-version", default="0.2.5")
+    parser.add_argument("--version", default="0.2.2", help="Player version")
+    parser.add_argument("--admin-version", default="0.2.6")
+    parser.add_argument("--include-desktop",action="store_true",help="Require and audit the desktop portable ZIP too")
     parser.add_argument("--dist", type=Path, default=Path(__file__).resolve().parent.parent / "dist")
     parser.add_argument("--report", type=Path)
     parser.add_argument("--markers", type=Path, help="Local JSON array of private strings; keep this file outside public source control")
@@ -49,6 +56,7 @@ def main() -> int:
     marker_bytes = [(marker, marker.encode(encoding)) for marker in markers for encoding in ("utf-8", "utf-16le")]
     names = [f"dfs-admin-windows-x64-{args.admin_version}.zip", f"dfs-admin-linux-x64-{args.admin_version}.zip",
              f"dreamingfish-player-windows-x64-{args.version}.zip"]
+    if args.include_desktop:names.append(f"dfs-admin-desktop-windows-x64-{args.admin_version}.zip")
     report = {"version": args.version, "adminVersion": args.admin_version, "archives": [], "issues": []}
     for name in names:
         path = args.dist / name

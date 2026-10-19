@@ -27,6 +27,23 @@ class PublishServiceTest {
     Path temporary;
 
     @Test
+    void manySequentialObjectsUseOnePeakReservationAndReleaseTemporaryOwnership()throws Exception {
+        var fixture=new ManagementFixture(temporary);fixture.createProject();
+        for(int i=0;i<100;i++)Files.writeString(fixture.source.resolve("file-"+i+".txt"),"payload-"+i+"x".repeat(64));
+        String oldBytes=System.getProperty("dfs.storage.stagingBytes"),oldConcurrent=System.getProperty("dfs.storage.concurrent");
+        try {
+            System.setProperty("dfs.storage.stagingBytes","128");System.setProperty("dfs.storage.concurrent","1");
+            fixture.scanner.createPreview("demo");var release=fixture.publisher.publish("demo","1.0.0","0.2.1","one bounded stream");
+            assertEquals(100,fixture.database.readManifest(release).files().size());
+            try(var locks=Files.list(fixture.paths.locks())){assertEquals(1,locks.filter(path->path.getFileName().toString().matches("storage-[a-f0-9-]{36}\\.lock")).count(),"one batch must not leave a lock file per content object");}
+            try(var leases=Files.list(fixture.paths.root().resolve("storage-leases"))){assertEquals(0,leases.count());}
+        } finally {
+            if(oldBytes==null)System.clearProperty("dfs.storage.stagingBytes");else System.setProperty("dfs.storage.stagingBytes",oldBytes);
+            if(oldConcurrent==null)System.clearProperty("dfs.storage.concurrent");else System.setProperty("dfs.storage.concurrent",oldConcurrent);
+        }
+    }
+
+    @Test
     void carriesTitleBarBrandingThroughBindingCoverAndPublishedManifest()
             throws Exception {
         ManagementFixture fixture = new ManagementFixture(temporary);

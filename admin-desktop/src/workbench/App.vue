@@ -2,7 +2,7 @@
 import { computed,onMounted,onUnmounted,ref,watch,nextTick } from 'vue';
 import { Files,GitCompareArrows,Package,Palette,Settings2,Search,Plus,Check,LoaderCircle,History,Upload,X,CornerDownLeft,Server,Sun,Moon,ShieldCheck,LogOut,Info,PanelLeft,PanelLeftClose,ChevronsLeft,ChevronsRight,LayoutTemplate } from '@lucide/vue';
 import { desk,boot,authenticate,safely,openView,navigate,request,setTheme,publishState,latestVersion } from './store';
-import { authRequiresForm,bytes } from './model';
+import { authRequiresForm,bytes,taskFinished } from './model';
 import { isDesktop,openLegacy } from './host';
 import { useIndicator } from './indicator';
 import Sidebar from './Sidebar.vue';
@@ -14,6 +14,7 @@ import AppearanceView from './AppearanceView.vue';
 import SettingsView from './SettingsView.vue';
 import Forms from './Forms.vue';
 import Tasks from './Tasks.vue';
+import {backendTaskFinished} from './backend-tasks';
 import Fish from './Fish.vue';
 const nav=[{id:'files',label:'文件',icon:Files},{id:'changes',label:'改动与版本',icon:GitCompareArrows},{id:'delivery',label:'发放',icon:Package},{id:'appearance',label:'玩家端设计',icon:Palette},{id:'settings',label:'设置',icon:Settings2}];
 const title=computed(()=>nav.find(item=>item.id===desk.view)?.label||'');
@@ -21,7 +22,7 @@ const title=computed(()=>nav.find(item=>item.id===desk.view)?.label||'');
 const narrow=window.matchMedia('(max-width:900px)');
 if(narrow.matches)desk.sidebar=false;
 watch(()=>desk.sidebar,value=>{if(!narrow.matches)localStorage.setItem('dfs-workbench-sidebar',value?'on':'off');});
-const jobs=computed(()=>desk.tasks.filter(t=>t.state!=='done').length);
+const jobs=computed(()=>desk.tasks.filter(t=>!taskFinished(t)).length+desk.jobs.filter(t=>!t.dismissed&&!backendTaskFinished(t)).length);
 const locked=computed(()=>desk.busy||desk.uploading||jobs.value>0);
 const login=ref({username:'',password:'',confirmPassword:'',allowLocalBypass:false});
 const loginBusy=ref(false);
@@ -72,12 +73,12 @@ watch(()=>[desk.ready,desk.auth.registered,desk.auth.authenticated],()=>{if(wind
    <span v-if="!isDesktop" class="rail-brand" title="梦鱼更新管理"><Fish variant="mark" :size="32"/></span>
    <button v-for="(item,i) in nav.slice(0,4)" :key="item.id" class="rail-item" :class="{active:desk.view===item.id}" :data-active="desk.view===item.id" :data-tip="`${item.label} · Ctrl ${i+1}`" :aria-label="item.label" :aria-current="desk.view===item.id?'page':undefined" @click="safely(()=>openView(item.id))"><component :is="item.icon" :size="20"/><span class="rail-label">{{item.label}}</span><i v-if="item.id==='changes'&&desk.project&&publishState!=='已发布'" class="rail-dot" :title="publishState"/></button>
    <span class="rail-spacer"/>
-   <button v-if="desk.tasks.length" class="rail-item rail-tasks" :class="{open:desk.tasksOpen}" :data-tip="desk.tasksOpen?'收起导入清单':'打开导入清单'" aria-label="导入清单" @click="desk.tasksOpen=!desk.tasksOpen"><Upload :size="19"/><span class="rail-label">导入清单<small>{{jobs?`${jobs} 项待处理`:'已全部完成'}}</small></span><b v-if="jobs">{{jobs}}</b></button>
+   <button v-if="desk.tasks.length||desk.jobs.some(t=>!t.dismissed)" class="rail-item rail-tasks" :class="{open:desk.tasksOpen}" :data-tip="desk.tasksOpen?'收起导入清单':'打开导入清单'" aria-label="导入清单" @click="desk.tasksOpen=!desk.tasksOpen"><Upload :size="19"/><span class="rail-label">导入清单<small>{{jobs?`${jobs} 项待处理`:'已全部完成'}}</small></span><b v-if="jobs">{{jobs}}</b></button>
    <button class="rail-item rail-utility" :data-tip="running?'下载服务运行中':'下载服务已停止'" aria-label="下载服务" @click="desk.dialog='service'"><span class="rail-icon"><Server :size="19"/><i class="service-dot" :class="{on:running}"/></span><span class="rail-label">下载服务<small>{{running?'运行中':'已停止'}}</small></span></button>
    <button class="rail-item rail-utility" :data-tip="desk.theme==='light'?'切换到深色':'切换到浅色'" :aria-label="desk.theme==='light'?'切换深色主题':'切换浅色主题'" @click="setTheme(desk.theme==='light'?'dark':'light')"><Moon v-if="desk.theme==='light'" :size="19"/><Sun v-else :size="19"/><span class="rail-label">{{desk.theme==='light'?'深色模式':'浅色模式'}}</span></button>
    <button class="rail-item" :class="{active:desk.view==='settings'}" :data-active="desk.view==='settings'" data-tip="设置 · Ctrl 5" aria-label="设置" :aria-current="desk.view==='settings'?'page':undefined" @click="safely(()=>openView('settings'))"><Settings2 :size="19"/><span class="rail-label">设置</span></button>
    <div class="menu-anchor rail-account" data-menu-root><button class="rail-item" :data-tip="desk.auth.username||'账户'" aria-label="账户菜单" aria-haspopup="menu" :aria-expanded="desk.menu==='account'" @click="desk.menu=desk.menu==='account'?'':'account'"><span class="bar-avatar">{{initial(desk.auth.username)}}</span><span class="rail-label">{{desk.auth.username||'管理员'}}<small>{{windowName()}}</small></span></button>
-    <div v-if="desk.menu==='account'" class="menu rail-menu" role="menu" aria-label="账户"><div class="menu-identity"><span class="bar-avatar">{{initial(desk.auth.username)}}</span><span class="menu-copy"><strong>{{desk.auth.username||'管理员'}}</strong><small>{{windowName()}}</small></span></div><hr><button role="menuitem" @click="desk.menu='';safely(()=>openView('settings','account'))"><ShieldCheck :size="15"/>账户与安全</button><button role="menuitem" class="compact-only" @click="desk.menu='';desk.dialog='service'"><Server :size="15"/>下载服务</button><button role="menuitem" class="compact-only" @click="desk.menu='';setTheme(desk.theme==='light'?'dark':'light')"><Moon v-if="desk.theme==='light'" :size="15"/><Sun v-else :size="15"/>{{desk.theme==='light'?'深色模式':'浅色模式'}}</button><button role="menuitem" @click="safely(logout)"><LogOut :size="15"/>退出账户</button><hr><span class="menu-footnote"><Info :size="13"/>管理端 0.2.5</span></div></div>
+    <div v-if="desk.menu==='account'" class="menu rail-menu" role="menu" aria-label="账户"><div class="menu-identity"><span class="bar-avatar">{{initial(desk.auth.username)}}</span><span class="menu-copy"><strong>{{desk.auth.username||'管理员'}}</strong><small>{{windowName()}}</small></span></div><hr><button role="menuitem" @click="desk.menu='';safely(()=>openView('settings','account'))"><ShieldCheck :size="15"/>账户与安全</button><button role="menuitem" class="compact-only" @click="desk.menu='';desk.dialog='service'"><Server :size="15"/>下载服务</button><button role="menuitem" class="compact-only" @click="desk.menu='';setTheme(desk.theme==='light'?'dark':'light')"><Moon v-if="desk.theme==='light'" :size="15"/><Sun v-else :size="15"/>{{desk.theme==='light'?'深色模式':'浅色模式'}}</button><button role="menuitem" @click="safely(logout)"><LogOut :size="15"/>退出账户</button><hr><span class="menu-footnote"><Info :size="13"/>管理端 0.2.6</span></div></div>
    <button class="rail-item rail-toggle" :data-tip="railExpanded?'只显示图标':'显示文字'" :aria-label="railExpanded?'只显示图标':'显示文字'" :aria-pressed="railExpanded" @click="railExpanded=!railExpanded"><ChevronsLeft v-if="railExpanded" :size="19"/><ChevronsRight v-else :size="19"/><span class="rail-label">只显示图标</span></button>
   </nav>
   <Sidebar v-if="desk.sidebar" :locked="locked"/>
@@ -99,9 +100,9 @@ watch(()=>[desk.ready,desk.auth.registered,desk.auth.authenticated],()=>{if(wind
   <footer class="status-bar" :inert="Boolean(desk.dialog||desk.palette)">
    <template v-if="desk.project"><button v-if="desk.sourceError" class="status-item waiting" title="整合包目录无法读取，前往更换" @click="safely(()=>openView('settings','project'))"><i class="status-dot"/>整合包目录无法读取</button><button v-else class="status-item" :class="{waiting:pendingCount||desk.project.previewStale}" title="打开待发布改动" @click="safely(()=>openView('changes','changes'))"><Fish v-if="!pendingCount&&!desk.project.previewStale" class="status-fish" :size="14"/><i v-else class="status-dot"/>{{pendingCount?`${pendingCount} 项待发布`:desk.project.previewStale?'有改动待检查':'与当前发布一致'}}</button><span class="status-item">{{latestVersion?`当前版本 ${latestVersion}`:'尚未发布'}}</span><span class="status-item">{{desk.files.length}} 个文件 · {{bytes(totalSize)}}</span></template>
    <span class="status-spacer"/>
-   <button v-if="desk.tasks.length" class="status-item" :class="{active:desk.tasksOpen}" :title="desk.tasksOpen?'收起导入清单':'打开导入清单'" @click="desk.tasksOpen=!desk.tasksOpen"><Upload :size="13"/>{{jobs?`导入清单 · ${jobs} 项待处理`:'导入清单 · 已完成'}}</button>
+   <button v-if="desk.tasks.length||desk.jobs.some(t=>!t.dismissed)" class="status-item" :class="{active:desk.tasksOpen}" :title="desk.tasksOpen?'收起导入清单':'打开导入清单'" @click="desk.tasksOpen=!desk.tasksOpen"><Upload :size="13"/>{{jobs?`导入清单 · ${jobs} 项待处理`:'导入清单 · 已完成'}}</button>
    <button class="status-item" title="下载服务" @click="desk.dialog='service'"><i class="status-dot" :class="{off:!running}"/>下载服务{{running?'运行中':'已停止'}}</button>
-   <span class="status-item">管理端 0.2.5</span>
+   <span class="status-item">管理端 0.2.6</span>
   </footer>
   <Tasks v-if="desk.tasksOpen"/>
   <div class="toast-stack" aria-live="polite"><div v-if="desk.busy" class="toast busy"><Fish class="swim" :size="18"/>{{desk.busyText||'正在处理…'}}</div><div v-if="desk.notice" class="toast"><Check :size="15"/>{{desk.notice}}</div><div v-if="desk.error" class="toast error" role="alert"><span>{{desk.error}}</span><button class="icon-button" aria-label="关闭错误提示" @click="desk.error=''"><X :size="14"/></button></div></div>

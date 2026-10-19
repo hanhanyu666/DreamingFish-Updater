@@ -69,7 +69,7 @@ final class AdminWebServer implements AutoCloseable {
     private static final long MAX_COVER_BYTES = 32L * 1024L * 1024L;
     private static final long MAX_MUSIC_BYTES = 20L * 1024L * 1024L;
     private static final String TOKEN_HEADER = "X-DFS-Token";
-    private static final String SESSION_COOKIE = "DFS_ADMIN_SESSION";
+    static final String SESSION_COOKIE = "DFS_ADMIN_SESSION";
     private static final String LOGGED_OUT_COOKIE = "DFS_ADMIN_LOGGED_OUT";
     private static final Map<String, StaticAsset> STATIC_ASSETS = loadAssets();
     private static final boolean WORKBENCH_AVAILABLE = AdminWebServer.class.getResource("web/workbench/index.html") != null;
@@ -78,12 +78,20 @@ final class AdminWebServer implements AutoCloseable {
     private final JsonCodec json = new JsonCodec();
     private final HttpServer server;
     private final ExecutorService executor;
+    private final java.util.concurrent.ScheduledThreadPoolExecutor requestDeadlines;
     private final PublicServiceController publicService;
-    private final ReentrantLock mutationLock = new ReentrantLock();
+    private final java.util.concurrent.locks.ReentrantReadWriteLock mutationGate=new java.util.concurrent.locks.ReentrantReadWriteLock();
+    private final ThreadLocal<Boolean> projectRequest=ThreadLocal.withInitial(()->false);
+    private final TaskHttpHandler tasks;
+    private final TransferHttpHandler transfers;
+    private final PublicationHttpHandler publications;
+    private final DistributionHttpHandler distribution;
+    private final AuthHttpHandler authentication;
+    private final StorageHttpHandler storage;
+    private final ProjectHttpHandler projects;
     private final AtomicBoolean closed = new AtomicBoolean();
     private final String sessionToken;
     private final WebAuthStore auth;
-    private final Map<String, LoginAttempts> loginAttempts = new java.util.concurrent.ConcurrentHashMap<>();
 
     AdminWebServer(ManagementCli root) {
         this(root, new InetSocketAddress(root.settings().webHost(), root.settings().webPort()));
@@ -96,6 +104,7 @@ final class AdminWebServer implements AutoCloseable {
         if (!address.getAddress().isLoopbackAddress() && !auth.registered())
             throw new ManagementException("启用公网 Web 监听前必须先通过本机或 SSH 隧道注册管理账户");
         try {
+            cn.dreamingfish.updater.management.HttpServerResources.configure();
             server = HttpServer.create(address, 0);
         } catch (IOException e) {
             if (e instanceof BindException) {
@@ -106,13 +115,17 @@ final class AdminWebServer implements AutoCloseable {
             throw new ManagementException("无法启动 Web 管理界面"
                     + (detail == null || detail.isBlank() ? "" : "：" + detail), e);
         }
-        executor = Executors.newFixedThreadPool(4,
-                Thread.ofPlatform().daemon().name("dfs-admin-web-", 0).factory());
+        executor = new java.util.concurrent.ThreadPoolExecutor(8,8,0,java.util.concurrent.TimeUnit.MILLISECONDS,
+                new java.util.concurrent.ArrayBlockingQueue<>(64),Thread.ofPlatform().daemon().name("dfs-admin-web-",0).factory(),new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        requestDeadlines = new java.util.concurrent.ScheduledThreadPoolExecutor(1,
+                Thread.ofPlatform().daemon().name("dfs-admin-request-deadline").factory());
+        requestDeadlines.setRemoveOnCancelPolicy(true);
         publicService = new PublicServiceController(root);
         byte[] token = new byte[32];
         new SecureRandom().nextBytes(token);
         sessionToken = Base64.getUrlEncoder().withoutPadding().encodeToString(token);
         server.setExecutor(executor);
+        tasks=new TaskHttpHandler(root,this::handle);transfers=new TransferHttpHandler(this,root);publications=new PublicationHttpHandler(this,root);distribution=new DistributionHttpHandler(this,root);authentication=new AuthHttpHandler(this,auth);storage=new StorageHttpHandler(this,root);projects=new ProjectHttpHandler(this);
         server.createContext("/", this::handle);
     }
 
@@ -125,13 +138,18 @@ final class AdminWebServer implements AutoCloseable {
     }
 
     private void handle(HttpExchange exchange) throws IOException {
+        boolean previousProject=projectRequest.get();
+        projectRequest.set(exchange.getRequestURI().getPath().matches("/api/projects/[^/]+.*"));
         try {
             String path = exchange.getRequestURI().getPath();
             if (path.startsWith("/api/")) {
-                handleApi(exchange, path);
+                prepareJsonBody(exchange);
+                try(var scope=root.requestScope()){handleApi(exchange,path);}
             } else {
                 handleStatic(exchange, path);
             }
+        } catch (cn.dreamingfish.updater.management.ApplicationTasks.Failure e) {
+            sendJson(exchange,e.status(),Map.of("error","task_failed","message",e.getMessage()));
         } catch (WebApiException e) {
             sendJson(exchange, e.status, Map.of(
                     "error", e.code,
@@ -158,8 +176,25 @@ final class AdminWebServer implements AutoCloseable {
                             + "），详细信息已写入管理端日志"
             ));
         } finally {
+            projectRequest.set(previousProject);
             exchange.close();
         }
+    }
+
+    /** Consume even unused small control bodies before closing the response. With
+     * drainAmount=0, leaving them unread can reset a completed response on Linux.
+     * Binary uploads keep streaming; JSON is bounded in both size and read time. */
+    private void prepareJsonBody(HttpExchange exchange) throws IOException {
+        String contentType=exchange.getRequestHeaders().getFirst("Content-Type");
+        if(!mutating(exchange.getRequestMethod()) || contentType==null
+                || !contentType.toLowerCase(Locale.ROOT).startsWith("application/json"))return;
+        InputStream input=exchange.getRequestBody();
+        if(input instanceof java.io.ByteArrayInputStream)return; // detached application task
+        var deadline=requestDeadlines.schedule(exchange::close,30,java.util.concurrent.TimeUnit.SECONDS);
+        try {
+            byte[] body=readLimited(input);
+            exchange.setStreams(new java.io.ByteArrayInputStream(body),null);
+        } finally { deadline.cancel(false); }
     }
 
     private void handleStatic(HttpExchange exchange, String path) throws IOException {
@@ -204,7 +239,7 @@ final class AdminWebServer implements AutoCloseable {
                             + "img-src 'self' data: blob: https:; font-src 'self'; media-src 'self' blob:; "
                             + "connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'");
             exchange.getResponseHeaders().set("Content-Type", assetContentType(resource));
-            exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+            exchange.getResponseHeaders().set("Cache-Control",resource.contains("/assets/")?"public, max-age=31536000, immutable":"no-cache");
             sendBytes(exchange, 200, input.readAllBytes());
         }
     }
@@ -223,7 +258,7 @@ final class AdminWebServer implements AutoCloseable {
             previewSecurityHeaders(exchange.getResponseHeaders());
             exchange.getResponseHeaders().set(
                     "Content-Type", assetContentType(resourcePath));
-            exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+            exchange.getResponseHeaders().set("Cache-Control",resourcePath.contains("/assets/")?"public, max-age=31536000, immutable":"no-cache");
             sendBytes(exchange, 200, input.readAllBytes());
         }
     }
@@ -243,69 +278,10 @@ final class AdminWebServer implements AutoCloseable {
         return "application/octet-stream";
     }
 
-    private void handleAuth(HttpExchange exchange, String path) throws IOException {
-        boolean local = isLocalClient(exchange);
-        if (path.equals("/api/auth/status") && exchange.getRequestMethod().equals("GET")) {
-            exchange.getResponseHeaders().set("Cache-Control", "no-store");
-            sendJson(exchange, 200, Map.of("registered", auth.registered(), "authenticated",
-                    authenticated(exchange), "local", local, "localBypass", auth.localBypass(),
-                    "username", authenticated(exchange) ? auth.username() : ""));
-            return;
-        }
-        if (path.equals("/api/auth/register") && exchange.getRequestMethod().equals("POST")) {
-            if (!local) throw new WebApiException(403, "local_only", "首次注册只能从管理端本机访问；远程服务器请先使用 SSH 隧道");
-            if (auth.registered()) {
-                throw new WebApiException(409, "already_registered",
-                        "Web 管理账户已经注册");
-            }
-            AuthRequest request = readJson(exchange, AuthRequest.class);
-            if (!Objects.equals(request.password, request.confirmPassword))
-                throw new WebApiException(400, "password_mismatch", "两次输入的密码不一致");
-            auth.register(request.username, request.password == null ? new char[0] : request.password.toCharArray(),
-                    Boolean.TRUE.equals(request.allowLocalBypass));
-            setSessionCookie(exchange, auth.createSession(), secureRequest(exchange));
-            clearLoggedOutCookie(exchange);
-            sendJson(exchange, 201, Map.of("authenticated", true)); return;
-        }
-        if (path.equals("/api/auth/login") && exchange.getRequestMethod().equals("POST")) {
-            if (!local && !secureRequest(exchange))
-                throw new WebApiException(400, "https_required", "远程登录必须使用 HTTPS，请配置 Caddy/Nginx TLS 反向代理");
-            AuthRequest request = readJson(exchange, AuthRequest.class);
-            String ip = clientAddress(exchange);
-            LoginAttempts attempts = loginAttempts.computeIfAbsent(
-                    ip, ignored -> new LoginAttempts());
-            trimAttempts();
-            if (attempts.blocked()) throw new WebApiException(429, "login_limited", "登录失败次数过多，请稍后再试");
-            if (!auth.verify(request.username, request.password == null ? new char[0] : request.password.toCharArray())) {
-                attempts.fail();
-                throw new WebApiException(401, "invalid_credentials", "用户名或密码错误");
-            }
-            loginAttempts.remove(ip); setSessionCookie(exchange, auth.createSession(), secureRequest(exchange));
-            clearLoggedOutCookie(exchange);
-            sendJson(exchange, 200, Map.of("authenticated", true)); return;
-        }
-        if (path.equals("/api/auth/logout") && exchange.getRequestMethod().equals("POST")) {
-            auth.logout(cookie(exchange, SESSION_COOKIE));
-            clearSessionCookie(exchange);
-            setLoggedOutCookie(exchange);
-            sendJson(exchange, 200, Map.of("authenticated", false)); return;
-        }
-        if (path.equals("/api/auth/account") && exchange.getRequestMethod().equals("PUT")) {
-            requireAuthentication(exchange); requireToken(exchange); AuthRequest request = readJson(exchange, AuthRequest.class);
-            if (request.newPassword != null && !Objects.equals(request.newPassword, request.confirmPassword))
-                throw new WebApiException(400, "password_mismatch", "两次输入的新密码不一致");
-            try { auth.update(request.password, request.username, request.newPassword, Boolean.TRUE.equals(request.allowLocalBypass)); }
-            catch (SecurityException e) { throw new WebApiException(401, "invalid_credentials", "当前密码错误"); }
-            setSessionCookie(exchange, auth.createSession(), secureRequest(exchange));
-            sendJson(exchange, 200, Map.of("updated", true)); return;
-        }
-        throw new WebApiException(404, "not_found", "认证 API 不存在");
-    }
-
-    private void requireAuthentication(HttpExchange exchange) {
+    void requireAuthentication(HttpExchange exchange) {
         if (!authenticated(exchange)) throw new WebApiException(401, "authentication_required", "请先登录管理账户");
     }
-    private boolean authenticated(HttpExchange exchange) {
+    boolean authenticated(HttpExchange exchange) {
         boolean local = isLocalClient(exchange);
         boolean sessionValid = auth.sessionValid(cookie(exchange, SESSION_COOKIE));
         boolean explicitlyLoggedOut = "1".equals(cookie(exchange, LOGGED_OUT_COOKIE));
@@ -314,8 +290,8 @@ final class AdminWebServer implements AutoCloseable {
                 || sessionValid))
                 || (secureRequest(exchange) && sessionValid);
     }
-    private boolean isLocalClient(HttpExchange exchange) { return isLoopback(clientAddress(exchange)); }
-    private String clientAddress(HttpExchange exchange) {
+    boolean isLocalClient(HttpExchange exchange) { return isLoopback(clientAddress(exchange)); }
+    String clientAddress(HttpExchange exchange) {
         String peer = exchange.getRemoteAddress().getAddress().getHostAddress();
         if (isLoopback(peer)) {
             String forwarded = exchange.getRequestHeaders().getFirst("X-Forwarded-For");
@@ -349,53 +325,45 @@ final class AdminWebServer implements AutoCloseable {
             return false;
         }
     }
-    private boolean secureRequest(HttpExchange exchange) {
+    boolean secureRequest(HttpExchange exchange) {
         if (exchange instanceof com.sun.net.httpserver.HttpsExchange) return true;
         return exchange.getRemoteAddress().getAddress().isLoopbackAddress()
                 && "https".equalsIgnoreCase(exchange.getRequestHeaders().getFirst("X-Forwarded-Proto"));
     }
-    private static void setSessionCookie(HttpExchange exchange, String id, boolean secure) {
+    static void setSessionCookie(HttpExchange exchange, String id, boolean secure) {
         exchange.getResponseHeaders().add("Set-Cookie", SESSION_COOKIE + "=" + id
                 + "; Path=/; HttpOnly; SameSite=Strict" + (secure ? "; Secure" : ""));
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
     }
-    private void clearSessionCookie(HttpExchange exchange) {
+    void clearSessionCookie(HttpExchange exchange) {
         exchange.getResponseHeaders().add("Set-Cookie",
                 SESSION_COOKIE + "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
                         + (secureRequest(exchange) ? "; Secure" : ""));
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
     }
-    private void setLoggedOutCookie(HttpExchange exchange) {
+    void setLoggedOutCookie(HttpExchange exchange) {
         exchange.getResponseHeaders().add("Set-Cookie",
                 LOGGED_OUT_COOKIE + "=1; Path=/; HttpOnly; SameSite=Strict"
                         + (secureRequest(exchange) ? "; Secure" : ""));
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
     }
-    private void clearLoggedOutCookie(HttpExchange exchange) {
+    void clearLoggedOutCookie(HttpExchange exchange) {
         exchange.getResponseHeaders().add("Set-Cookie",
                 LOGGED_OUT_COOKIE + "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
                         + (secureRequest(exchange) ? "; Secure" : ""));
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
     }
-    private static String cookie(HttpExchange exchange, String name) {
+    static String cookie(HttpExchange exchange, String name) {
         for (String header : exchange.getRequestHeaders().getOrDefault("Cookie", List.of()))
             for (String part : header.split(";")) { String[] pair = part.trim().split("=", 2); if (pair.length == 2 && pair[0].equals(name)) return pair[1]; }
         return null;
     }
-    private void trimAttempts() {
-        if (loginAttempts.size() > 1024) loginAttempts.entrySet().removeIf(e -> e.getValue().stale());
-        while (loginAttempts.size() > 1024) {
-            String candidate = loginAttempts.keySet().stream()
-                    .findFirst().orElse(null);
-            if (candidate == null) break;
-            loginAttempts.remove(candidate);
-        }
-    }
 
     private void handleApi(HttpExchange exchange, String path) throws Exception {
-        if (path.startsWith("/api/auth/")) { handleAuth(exchange, path); return; }
+        if (path.startsWith("/api/auth/")) { authentication.handle(exchange, path); return; }
         requireAuthentication(exchange);
         if (mutating(exchange.getRequestMethod())) requireToken(exchange);
+        if(tasks.handle(exchange,path))return;
         if (path.equals("/api/session") && exchange.getRequestMethod().equals("GET")) {
             exchange.getResponseHeaders().set("Cache-Control", "no-store");
             sendJson(exchange, 200, Map.of(
@@ -409,6 +377,7 @@ final class AdminWebServer implements AutoCloseable {
             sendJson(exchange, 200, stateView());
             return;
         }
+        if(storage.handle(exchange,path))return;
         if (path.equals("/api/settings") && exchange.getRequestMethod().equals("PUT")) {
             SettingsRequest request = readJson(exchange, SettingsRequest.class);
             sendJson(exchange, 200, mutate(() -> updateSettings(request)));
@@ -450,27 +419,12 @@ final class AdminWebServer implements AutoCloseable {
         }
 
         List<String> segments = pathSegments(path);
-        if (segments.size() == 2 && segments.get(1).equals("projects")
-                && exchange.getRequestMethod().equals("POST")) {
-            ProjectRequest request = readJson(exchange, ProjectRequest.class);
-            sendJson(exchange, 201, mutate(() -> createProject(request)));
-            return;
-        }
+        if(projects.handle(exchange,segments))return;
         if (segments.size() < 3 || !segments.get(1).equals("projects")) {
             throw new WebApiException(404, "not_found", "API 不存在");
         }
 
         String projectId = segments.get(2);
-        if (segments.size() == 3 && exchange.getRequestMethod().equals("GET")) {
-            sendJson(exchange, 200,
-                    projectDetails(projectId, query(exchange.getRequestURI(), "platform")));
-            return;
-        }
-        if (segments.size() == 3 && exchange.getRequestMethod().equals("PUT")) {
-            ProjectRequest request = readJson(exchange, ProjectRequest.class);
-            sendJson(exchange, 200, mutate(() -> configureProject(projectId, request)));
-            return;
-        }
         if (segments.size() == 4 && segments.get(3).equals("cover")) {
             if (exchange.getRequestMethod().equals("GET")) {
                 sendProjectCover(exchange, projectId);
@@ -584,50 +538,8 @@ final class AdminWebServer implements AutoCloseable {
             return;
         }
         if (segments.size() == 5 && segments.get(3).equals("files")) {
+            if(transfers.handle(exchange,projectId,segments.get(4)))return;
             switch (segments.get(4)) {
-                case "stage" -> {
-                    if (exchange.getRequestMethod().equals("DELETE")) {
-                        sourceTransfers().discard(projectId, required(query(exchange.getRequestURI(), "id"), "暂存 ID"));
-                        sendJson(exchange, 200, Map.of("discarded", true));
-                    } else {
-                        requireMethod(exchange, "PUT");
-                        requireBinary(exchange);
-                        sendJson(exchange, 201, mutate(() -> sourceTransfers().stage(projectId,
-                                required(query(exchange.getRequestURI(), "path"), "目标路径"),
-                                exchange.getRequestBody(), contentLength(exchange))));
-                    }
-                }
-                case "recheck" -> {
-                    requireMethod(exchange, "POST");
-                    IdRequest request = readJson(exchange, IdRequest.class);
-                    sendJson(exchange, 200, sourceTransfers().plan(projectId, required(request.id, "暂存 ID")));
-                }
-                case "stage-server" -> {
-                    requireMethod(exchange, "POST");
-                    ServerStageRequest request = readJson(exchange, ServerStageRequest.class);
-                    sendJson(exchange, 201, mutate(() -> sourceTransfers().stageServer(projectId,
-                            Path.of(required(request.sourcePath, "服务器文件路径")), required(request.targetPath, "目标路径"))));
-                }
-                case "commit" -> {
-                    requireMethod(exchange, "POST");
-                    SourceCommitRequest request = readJson(exchange, SourceCommitRequest.class);
-                    sendJson(exchange, 200, mutate(() -> sourceTransfers().commit(projectId,
-                            required(request.id, "暂存 ID"), required(request.action, "导入动作"), required(request.stamp, "检查凭据"), false)));
-                }
-                case "check-imports" -> {
-                    requireMethod(exchange, "POST");
-                    ImportCheckRequest request = readJson(exchange, ImportCheckRequest.class);
-                    sendJson(exchange, 200, mutate(() -> previewView(sourceTransfers().checkImports(projectId, request.ids))));
-                }
-                case "import-history" -> {
-                    requireMethod(exchange, "GET");
-                    sendJson(exchange, 200, sourceTransfers().history(projectId));
-                }
-                case "undo-import" -> {
-                    requireMethod(exchange, "POST");
-                    IdRequest request = readJson(exchange, IdRequest.class);
-                    sendJson(exchange, 200, mutate(() -> sourceTransfers().undo(projectId, required(request.id, "导入 ID"))));
-                }
                 case "upload" -> {
                     if (!exchange.getRequestMethod().equals("PUT")) {
                         throw new WebApiException(405, "method_not_allowed",
@@ -754,176 +666,12 @@ final class AdminWebServer implements AutoCloseable {
             throw new WebApiException(404, "not_found", "API 不存在");
         }
 
+        if(publications.handle(exchange,projectId,segments.get(3))||distribution.handle(exchange,projectId,segments.get(3)))return;
         switch (segments.get(3)) {
-            case "scan" -> sendJson(exchange, 200,
-                    mutate(() -> previewView(
-                            root.services().scanner().createPreview(projectId))));
-            case "publish" -> {
-                PublishRequest request = readJson(exchange, PublishRequest.class);
-                sendJson(exchange, 201, mutate(() -> {
-                    String previewId = required(request.previewId, "预览标识");
-                    String previewDigest = required(request.previewDigest, "预览摘要");
-                    PublishPreview preview = root.services().scanner().load(projectId);
-                    if (preview.requiresPlayerProgramAcknowledgement()
-                            && !Boolean.TRUE.equals(request.acknowledgePlayerUpgrade)) {
-                        throw playerUpgradeRequired();
-                    }
-                    return publishAndRefreshService(() ->
-                            root.services().publisher().publish(
-                                    projectId,
-                                    required(request.displayVersion, "显示版本"),
-                                    defaultValue(request.minimumPlayerVersion,
-                                            ScanService.POLICY_PLAYER_VERSION),
-                                    defaultValue(request.changelog, ""),
-                                    previewId,
-                                    previewDigest));
-                }));
-            }
-            case "removals" -> {
-                RemovalDecisionsRequest request = readJson(
-                        exchange, RemovalDecisionsRequest.class);
-                sendJson(exchange, 200, mutate(() -> previewView(
-                        root.services().scanner().decideRemovals(
-                                projectId,
-                                required(request.previewId, "预览标识"),
-                                required(request.previewDigest, "预览摘要"),
-                                request.decisions == null
-                                        ? List.of() : request.decisions))));
-            }
-            case "rollback" -> {
-                RollbackRequest request = readJson(exchange, RollbackRequest.class);
-                sendJson(exchange, 201, mutate(() -> {
-                    if (!Boolean.TRUE.equals(request.acknowledgePlayerUpgrade)
-                            && !root.services().scanner().policyPlayerPublished(projectId)) {
-                        throw playerUpgradeRequired();
-                    }
-                    return publishAndRefreshService(() ->
-                            root.services().publisher().rollback(
-                                    projectId,
-                                    required(request.targetReleaseId, "目标发布"),
-                                    required(request.displayVersion, "显示版本"),
-                                    request.changelog));
-                }));
-            }
-            case "programs" -> {
-                PlayerProgramRequest request = readJson(exchange, PlayerProgramRequest.class);
-                sendJson(exchange, 201, mutate(() -> programView(
-                        root.services().playerPrograms().publish(
-                                projectId,
-                                defaultValue(request.platform, "windows-x64"),
-                                defaultValue(request.version, ""),
-                                Path.of(required(request.sourceDirectory, "玩家端程序目录")),
-                                defaultValue(request.launchPath, ""),
-                                defaultValue(request.minimumBootstrapVersion, "0.1.2")
-                        ))));
-            }
             case "instance" -> {
                 InstanceRequest request = readJson(exchange, InstanceRequest.class);
                 sendJson(exchange, 200,
                         mutate(() -> prepareInstance(projectId, request)));
-            }
-            case "deployment" -> {
-                DeploymentRequest request = readJson(
-                        exchange, DeploymentRequest.class);
-                sendJson(exchange, 201, mutate(() -> {
-                    var prepared = root.services().deployments().create(
-                            projectId,
-                            defaultValue(request.platform, "windows-x64"),
-                            required(request.releaseId, "整合包发布版本"),
-                            Path.of(required(request.outputDirectory, "输出父目录")),
-                            root.bootstrapAgentPath());
-                    Map<String, Object> result = new LinkedHashMap<>();
-                    result.put("outputDirectory",
-                            prepared.outputDirectory().toString());
-                    result.put("releaseId", prepared.releaseId());
-                    result.put("releaseDisplayVersion",
-                            prepared.releaseDisplayVersion());
-                    result.put("playerVersion", prepared.playerVersion());
-                    return result;
-                }));
-            }
-            case "distribution-export" -> {
-                StaticDistributionRequest request = readJson(
-                        exchange, StaticDistributionRequest.class);
-                sendJson(exchange, 201, mutate(() -> {
-                    var exported = root.services().staticDistribution().exportProject(
-                            projectId,
-                            Path.of(required(request.outputDirectory, "静态分发目录")));
-                    Map<String, Object> result = new LinkedHashMap<>();
-                    result.put("projectId", exported.projectId());
-                    result.put("outputDirectory",
-                            exported.outputDirectory().toString());
-                    result.put("generatedAt", exported.generatedAt());
-                    result.put("releaseCount", exported.releaseCount());
-                    result.put("playerProgramCount",
-                            exported.playerProgramCount());
-                    result.put("objectCount", exported.objectCount());
-                    result.put("copiedObjectCount",
-                            exported.copiedObjectCount());
-                    result.put("reusedObjectCount",
-                            exported.reusedObjectCount());
-                    result.put("totalObjectBytes",
-                            exported.totalObjectBytes());
-                    result.put("copiedObjectBytes",
-                            exported.copiedObjectBytes());
-                    return result;
-                }));
-            }
-            case "distribution-webdav" -> {
-                DistributionWebDavRequest request = readJson(
-                        exchange, DistributionWebDavRequest.class);
-                sendJson(exchange, 200, mutate(() -> {
-                    Path output = Path.of(required(
-                            request.outputDirectory, "静态分发目录"));
-                    if (!Boolean.FALSE.equals(request.exportFirst)) {
-                        root.services().staticDistribution()
-                                .exportProject(projectId, output);
-                    }
-                    var result = root.services().distributionUploader().uploadWebDav(
-                            output,
-                            new WebDavUploadConfiguration(
-                                    URI.create(required(request.baseUrl,
-                                            "WebDAV / HTTP PUT 地址")),
-                                    defaultValue(request.username, ""),
-                                    request.password == null ? "" : request.password));
-                    return distributionUploadView(result);
-                }));
-            }
-            case "distribution-s3" -> {
-                DistributionS3Request request = readJson(
-                        exchange, DistributionS3Request.class);
-                sendJson(exchange, 200, mutate(() -> {
-                    Path output = Path.of(required(
-                            request.outputDirectory, "静态分发目录"));
-                    if (!Boolean.FALSE.equals(request.exportFirst)) {
-                        root.services().staticDistribution()
-                                .exportProject(projectId, output);
-                    }
-                    S3AddressingStyle style;
-                    try {
-                        style = S3AddressingStyle.valueOf(defaultValue(
-                                request.addressingStyle, "PATH")
-                                .toUpperCase(Locale.ROOT));
-                    } catch (IllegalArgumentException e) {
-                        throw new ManagementException("S3 寻址方式无效");
-                    }
-                    var result = root.services().distributionUploader().uploadS3(
-                            output,
-                            new S3UploadConfiguration(
-                                    URI.create(required(request.endpoint,
-                                            "S3 API Endpoint")),
-                                    required(request.region, "S3 Region"),
-                                    required(request.bucket, "S3 Bucket"),
-                                    defaultValue(request.prefix, ""),
-                                    required(request.accessKeyId,
-                                            "Access Key ID"),
-                                    request.secretAccessKey == null
-                                            ? "" : request.secretAccessKey,
-                                    request.sessionToken == null
-                                            ? "" : request.sessionToken,
-                                    style));
-                    return distributionUploadView(result);
-                }));
             }
             default -> throw new WebApiException(404, "not_found", "API 不存在");
         }
@@ -937,6 +685,9 @@ final class AdminWebServer implements AutoCloseable {
                 .toList();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("version", ManagementCli.VERSION);
+        result.put("apiVersion", 2);
+        result.put("serviceInitializations",root.serviceInitializations());
+        result.put("capabilities", List.of("source-request-id", "source-recheck", "source-recovery", "application-tasks"));
         result.put("dataDirectory", settings.dataDirectory());
         result.put("settingsFile", root.settingsFile().toString());
         result.put("defaultProjectId", settings.defaultProjectId());
@@ -946,7 +697,7 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
-    private Map<String, Object> projectDetails(String projectId, String requestedPlatform) {
+    Map<String, Object> projectDetails(String projectId, String requestedPlatform) {
         String platform = defaultValue(requestedPlatform, "windows-x64");
         ManagementCli.Services services = root.services();
         ProjectRecord project = services.database().requireProject(projectId);
@@ -970,7 +721,7 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
-    private Map<String, Object> createProject(ProjectRequest request) {
+    Map<String, Object> createProject(ProjectRequest request) {
         String id = required(request.id, "项目 ID");
         String displayName = required(request.displayName, "项目名称");
         Branding branding = branding(request, displayName, null);
@@ -995,7 +746,7 @@ final class AdminWebServer implements AutoCloseable {
         return projectView(project);
     }
 
-    private Map<String, Object> configureProject(String projectId, ProjectRequest request) {
+    Map<String, Object> configureProject(String projectId, ProjectRequest request) {
         ManagementCli.Services services = root.services();
         ProjectRecord current = services.database().requireProject(projectId);
         Branding branding = branding(request, current.displayName(), current.branding());
@@ -1400,7 +1151,7 @@ final class AdminWebServer implements AutoCloseable {
         }
     }
 
-    private static WebApiException playerUpgradeRequired() {
+    static WebApiException playerUpgradeRequired() {
         return new WebApiException(409, "player_upgrade_required",
                 "这次发布需要玩家端 " + ScanService.POLICY_PLAYER_VERSION + " 或更新版本，"
                         + "但项目还没有发布这样的玩家端。请先在“玩家端程序”中发布新版玩家端；"
@@ -1573,8 +1324,8 @@ final class AdminWebServer implements AutoCloseable {
     }
 
     private Map<String, Object> sourceFilesView(String projectId) {
-        List<Map<String, Object>> files = root.services().sourceFiles()
-                .list(projectId).stream()
+        var listing=root.services().sourceFiles().listing(projectId);
+        List<Map<String, Object>> files = listing.files().stream()
                 .map(AdminWebServer::sourceFileView)
                 .toList();
         long totalBytes = files.stream()
@@ -1582,23 +1333,22 @@ final class AdminWebServer implements AutoCloseable {
                 .sum();
         return Map.of(
                 "files", files,
-                "directories", root.services().sourceFiles()
-                        .listDirectories(projectId),
+                "directories", listing.directories(),
                 "count", files.size(),
                 "totalBytes", totalBytes
         );
     }
 
     private SourceTransferService sourceTransfers() {
-        return new SourceTransferService(root.services().paths(), root.services().database(), root.services().json());
+        return root.services().transfers();
     }
 
-    private static void requireMethod(HttpExchange exchange, String method) {
+    static void requireMethod(HttpExchange exchange, String method) {
         if (!exchange.getRequestMethod().equals(method))
             throw new WebApiException(405, "method_not_allowed", "此操作只允许 " + method);
     }
 
-    private static void requireBinary(HttpExchange exchange) {
+    static void requireBinary(HttpExchange exchange) {
         if (!defaultValue(exchange.getRequestHeaders().getFirst("Content-Type"), "").toLowerCase(Locale.ROOT)
                 .startsWith("application/octet-stream"))
             throw new WebApiException(415, "unsupported_media_type", "文件必须以二进制内容上传");
@@ -1629,7 +1379,7 @@ final class AdminWebServer implements AutoCloseable {
                 expectedBytes, overwrite, refreshPreview));
     }
 
-    private static long contentLength(HttpExchange exchange) {
+    static long contentLength(HttpExchange exchange) {
         String value = exchange.getRequestHeaders().getFirst("Content-Length");
         if (value == null || value.isBlank()) return -1;
         try {
@@ -1644,27 +1394,10 @@ final class AdminWebServer implements AutoCloseable {
 
     private Map<String, Object> prepareInstance(
             String projectId, InstanceRequest request) {
-        ProjectCommand parent = new ProjectCommand();
-        parent.root = root;
-        ProjectBindingCommand command = new ProjectBindingCommand();
-        command.parent = parent;
-        command.projectId = projectId;
-        command.instance = Path.of(required(
-                request.instanceDirectory, "Minecraft 实例目录"));
-        command.playerHome = defaultValue(
-                request.playerHome, "DreamingFishUpdater");
-        command.platform = defaultValue(request.platform, "windows-x64");
-        command.releaseId = required(request.releaseId, "整合包发布版本");
-        command.bundledCover = present(request.bundledCover)
-                ? request.bundledCover.trim() : null;
-        command.run();
-        return Map.of(
-                "instanceDirectory",
-                command.instance.toAbsolutePath().normalize().toString(),
-                "releaseId", command.releaseId,
-                "platform", command.platform,
-                "playerHome", command.playerHome
-        );
+        Path instance=Path.of(required(request.instanceDirectory,"Minecraft 实例目录"));
+        String home=defaultValue(request.playerHome,"DreamingFishUpdater"),platform=defaultValue(request.platform,"windows-x64"),release=required(request.releaseId,"整合包发布版本");
+        root.services().instances().prepare(projectId,instance,null,home,platform,release,present(request.bundledCover)?request.bundledCover.trim():null);
+        return Map.of("instanceDirectory",instance.toAbsolutePath().normalize().toString(),"releaseId",release,"platform",platform,"playerHome",home);
     }
 
     private Branding branding(
@@ -1774,19 +1507,13 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
-    private Map<String, Object> publishAndRefreshService(
+    Map<String, Object> publishAndRefreshService(
             Callable<StoredRelease> operation) throws Exception {
         StoredRelease release = operation.call();
-        boolean restarted = false;
-        String warning = null;
-        if (publicService.managedRunning()) {
-            try {
-                publicService.restartIfRunning();
-                restarted = true;
-            } catch (RuntimeException e) {
-                warning = "版本已经发布，但 HTTP 文件服务重启失败：" + usefulMessage(e);
-            }
-        }
+        // Public endpoints read the immutable release store and current pointer on each
+        // request; restarting would interrupt downloads without making content fresher.
+        boolean restarted=false;
+        String warning=null;
         Map<String, Object> result = new LinkedHashMap<>(releaseView(release));
         result.put("publicServiceRestarted", restarted);
         result.put("publicService", publicService.status());
@@ -1794,7 +1521,7 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
-    private static Map<String, Object> programView(StoredPlayerProgram program) {
+    static Map<String, Object> programView(StoredPlayerProgram program) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("platform", program.platform());
         result.put("version", program.version());
@@ -1843,7 +1570,7 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
-    private Map<String, Object> previewView(PublishPreview preview) {
+    Map<String, Object> previewView(PublishPreview preview) {
         Map<String, ManifestFile> previous = new java.util.HashMap<>();
         if (preview.baseReleaseId() != null) {
             var database = root.services().database();
@@ -1924,7 +1651,7 @@ final class AdminWebServer implements AutoCloseable {
         );
     }
 
-    private static Map<String, Object> distributionUploadView(
+    static Map<String, Object> distributionUploadView(
             cn.dreamingfish.updater.management.DistributionUploadResult result) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("provider", result.provider());
@@ -1938,16 +1665,10 @@ final class AdminWebServer implements AutoCloseable {
         return view;
     }
 
-    private Object mutate(Callable<Object> operation) throws Exception {
-        if (!mutationLock.tryLock()) {
-            throw new WebApiException(
-                    409, "operation_in_progress", "另一个管理操作正在执行");
-        }
-        try {
-            return operation.call();
-        } finally {
-            mutationLock.unlock();
-        }
+    Object mutate(Callable<Object> operation)throws Exception {
+        java.util.concurrent.locks.Lock lock=projectRequest.get()?mutationGate.readLock():mutationGate.writeLock();
+        if(!lock.tryLock())throw new WebApiException(409,"operation_in_progress","全局维护或目录切换正在执行，请稍后重试");
+        try{return operation.call();}finally{lock.unlock();}
     }
 
     /**
@@ -1962,27 +1683,23 @@ final class AdminWebServer implements AutoCloseable {
         DeploymentArchive archive = (DeploymentArchive) mutate(() ->
                 createDeploymentArchive(projectId, request));
         try {
-            streamDownload(exchange, archive.archive(), archive.fileName());
-        } finally {
-            deleteRecursivelyQuietly(archive.cleanupRoot());
-        }
+            streamDownload(exchange,archive.archive(),archive.fileName(),()->{deleteDeploymentTree(archive.cleanupRoot());archive.budget().close();});
+        }finally{try{deleteDeploymentTree(archive.cleanupRoot());}finally{archive.budget().close();}}
     }
 
     private DeploymentArchive createDeploymentArchive(
             String projectId, DeploymentDownloadRequest request) {
+        var services=root.services();String platform=defaultValue(request.platform,"windows-x64"),releaseId=required(request.releaseId,"整合包发布版本");
+        var budget=services.storage().reserve(services.deployments().temporaryBudget(projectId,platform,releaseId,root.bootstrapAgentPath()),0);
         Path temporaryRoot;
         try {
             temporaryRoot = Files.createTempDirectory(
                     root.services().paths().temporary(),
                     ".dfs-web-deployment-download-");
-        } catch (IOException e) {
-            throw new ManagementException("无法创建首次部署包临时目录", e);
-        }
+        } catch (IOException e) {budget.close();throw new ManagementException("无法创建首次部署包临时目录",e);}
         try {
             Path outputParent = Files.createDirectories(
                     temporaryRoot.resolve("output"));
-            String platform = defaultValue(request.platform, "windows-x64");
-            String releaseId = required(request.releaseId, "整合包发布版本");
             var prepared = root.services().deployments().create(
                     projectId, platform, releaseId, outputParent,
                     root.bootstrapAgentPath());
@@ -1991,9 +1708,9 @@ final class AdminWebServer implements AutoCloseable {
             String fileName = deploymentFileName(
                     projectId, prepared.releaseDisplayVersion(),
                     prepared.playerVersion());
-            return new DeploymentArchive(archive, fileName, temporaryRoot);
+            return new DeploymentArchive(archive,fileName,temporaryRoot,budget);
         } catch (RuntimeException | IOException e) {
-            deleteRecursivelyQuietly(temporaryRoot);
+            try{deleteDeploymentTree(temporaryRoot);}catch(IOException cleanup){e.addSuppressed(cleanup);}finally{budget.close();}
             if (e instanceof RuntimeException runtime) throw runtime;
             throw new ManagementException("无法生成首次部署包", e);
         }
@@ -2043,51 +1760,27 @@ final class AdminWebServer implements AutoCloseable {
                 + ".zip";
     }
 
-    private static void streamDownload(
-            HttpExchange exchange, Path archive, String fileName)
-            throws IOException {
-        long size = Files.size(archive);
-        String safeName = fileName.replaceAll("[^A-Za-z0-9._-]", "_");
-        Headers headers = exchange.getResponseHeaders();
-        securityHeaders(headers);
-        headers.set("Content-Type", "application/zip");
-        headers.set("Content-Disposition",
-                "attachment; filename=\"" + safeName + "\"");
-        headers.set("Cache-Control", "no-store");
-        headers.set("Content-Length", Long.toString(size));
-        boolean head = exchange.getRequestMethod().equals("HEAD");
-        exchange.sendResponseHeaders(200, head ? -1 : size);
-        if (head) return;
-        try (InputStream input = Files.newInputStream(archive);
-             OutputStream output = exchange.getResponseBody()) {
-            try {
-                input.transferTo(output);
-            } catch (IOException clientDisconnected) {
-                // The browser may be closed while the package is streaming.
-                // Cleanup is handled by sendDeploymentDownload's finally block.
+    @FunctionalInterface private interface BeforeFinalBytes {void run()throws IOException;}
+    private static void streamDownload(HttpExchange exchange,Path archive,String fileName,BeforeFinalBytes cleanup)throws IOException {
+        long size=Files.size(archive);String safeName=fileName.replaceAll("[^A-Za-z0-9._-]","_");
+        Headers headers=exchange.getResponseHeaders();securityHeaders(headers);headers.set("Content-Type","application/zip");headers.set("Content-Disposition","attachment; filename=\""+safeName+"\"");headers.set("Cache-Control","no-store");headers.set("Content-Length",Long.toString(size));
+        boolean head=exchange.getRequestMethod().equals("HEAD");exchange.sendResponseHeaders(200,head?-1:size);if(head)return;
+        try(InputStream input=Files.newInputStream(archive);OutputStream output=exchange.getResponseBody()){
+            byte[] buffer=new byte[128*1024];long remaining=size;
+            while(remaining>0){int read=input.read(buffer,0,(int)Math.min(buffer.length,remaining));if(read<0)throw new IOException("部署 ZIP 在传输期间发生变化");remaining-=read;
+                if(remaining==0){input.close();cleanup.run();} // A complete body proves cache cleanup completed.
+                output.write(buffer,0,read);
             }
-        } catch (IOException clientDisconnected) {
-            // Closing a response whose browser went away can also report a
-            // broken pipe; it is still a completed, safely-cleaned request.
         }
     }
-
-    private static void deleteRecursivelyQuietly(Path root) {
-        try {
-            if (!Files.exists(root, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                return;
-            }
-            try (var stream = Files.walk(root)) {
-                for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
-                    Files.deleteIfExists(path);
-                }
-            }
-        } catch (IOException ignored) {
-            // A failed cleanup must not hide the package generation result.
-        }
+    private void deleteDeploymentTree(Path directory)throws IOException {
+        Path rootPath=directory.toAbsolutePath().normalize(),boundary=root.services().paths().temporary().toAbsolutePath().normalize();
+        if(!rootPath.startsWith(boundary)||rootPath.equals(boundary)||!rootPath.getFileName().toString().startsWith(".dfs-web-deployment-download-"))throw new IOException("部署暂存清理边界无效");
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(rootPath);if(!Files.exists(rootPath,java.nio.file.LinkOption.NOFOLLOW_LINKS))return;
+        try(var entries=Files.walk(rootPath)){for(Path file:entries.sorted(Comparator.reverseOrder()).toList()){cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(file);Files.deleteIfExists(file);}}
     }
 
-    private <T> T readJson(
+    <T> T readJson(
             HttpExchange exchange, Class<T> type) throws IOException {
         String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
         if (contentType == null
@@ -2120,7 +1813,7 @@ final class AdminWebServer implements AutoCloseable {
         return output.toByteArray();
     }
 
-    private void requireToken(HttpExchange exchange) {
+    void requireToken(HttpExchange exchange) {
         String provided = exchange.getRequestHeaders().getFirst(TOKEN_HEADER);
         if (provided == null || !MessageDigest.isEqual(
                 provided.getBytes(StandardCharsets.UTF_8),
@@ -2130,7 +1823,7 @@ final class AdminWebServer implements AutoCloseable {
         }
     }
 
-    private void sendJson(
+    void sendJson(
             HttpExchange exchange, int status, Object value) throws IOException {
         byte[] bytes = json.write(value);
         securityHeaders(exchange.getResponseHeaders());
@@ -2146,7 +1839,7 @@ final class AdminWebServer implements AutoCloseable {
         exchange.getResponseHeaders().set(
                 "Content-Length", Integer.toString(bytes.length));
         exchange.sendResponseHeaders(status, head ? -1 : bytes.length);
-        if (!head) exchange.getResponseBody().write(bytes);
+        if(!head)try(OutputStream output=exchange.getResponseBody()){output.write(bytes);}
     }
 
     private static void securityHeaders(Headers headers) {
@@ -2185,7 +1878,7 @@ final class AdminWebServer implements AutoCloseable {
         return result;
     }
 
-    private static String query(URI uri, String name) {
+    static String query(URI uri, String name) {
         if (uri.getRawQuery() == null) return null;
         for (String pair : uri.getRawQuery().split("&")) {
             int separator = pair.indexOf('=');
@@ -2207,14 +1900,14 @@ final class AdminWebServer implements AutoCloseable {
                 || method.equals("DELETE");
     }
 
-    private static String required(String value, String label) {
+    static String required(String value, String label) {
         if (value == null || value.isBlank()) {
             throw new ManagementException(label + "不能为空");
         }
         return value.trim();
     }
 
-    private static String defaultValue(String value, String fallback) {
+    static String defaultValue(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
     }
 
@@ -2266,6 +1959,7 @@ final class AdminWebServer implements AutoCloseable {
         }
     }
 
+    private record StorageRequest(String stamp,Boolean forgetUndo) {}
     private record OperationRequest(String id, String stamp) {}
 
     @Override
@@ -2274,13 +1968,16 @@ final class AdminWebServer implements AutoCloseable {
         publicService.close();
         server.stop(0);
         executor.shutdownNow();
+        requestDeadlines.shutdownNow();
+        root.closeServices();
     }
 
     boolean closeForDesktop(java.time.Duration timeout) {
         try {
-            if (!mutationLock.tryLock(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)) return false;
-            try { close(); return true; }
-            finally { mutationLock.unlock(); }
+            if(root.services().tasks().hasPending())return false;
+            if(!mutationGate.writeLock().tryLock(timeout.toMillis(),java.util.concurrent.TimeUnit.MILLISECONDS))return false;
+            try{if(root.services().tasks().hasPending())return false;close();return true;}
+            finally{mutationGate.writeLock().unlock();}
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -2290,7 +1987,7 @@ final class AdminWebServer implements AutoCloseable {
     private record StaticAsset(byte[] bytes, String contentType) {
     }
 
-    private record ProjectRequest(
+    record ProjectRequest(
             String id,
             String displayName,
             String sourceDirectory,
@@ -2317,8 +2014,6 @@ final class AdminWebServer implements AutoCloseable {
     ) {
     }
 
-    private record RemovalDecisionsRequest(List<RemovalDecision> decisions, String previewId, String previewDigest) {
-    }
 
     private record PathItem(String path, Boolean directory) {
     }
@@ -2368,7 +2063,7 @@ final class AdminWebServer implements AutoCloseable {
 
     private record SourceCommitRequest(String id, String action, String stamp) {}
     private record ImportCheckRequest(List<String> ids) {}
-    private record ServerStageRequest(String sourcePath, String targetPath) {}
+    private record ServerStageRequest(String sourcePath, String targetPath, String requestId) {}
     private record PackagePublishRequest(String id, String minimumBootstrapVersion) {}
     private record AddressCheckRequest(String url) {}
 
@@ -2402,32 +2097,8 @@ final class AdminWebServer implements AutoCloseable {
     ) {
     }
 
-    private record PublishRequest(
-            String displayVersion,
-            String minimumPlayerVersion,
-            String changelog,
-            String previewId,
-            String previewDigest,
-            Boolean acknowledgePlayerUpgrade
-    ) {
-    }
 
-    private record RollbackRequest(
-            String targetReleaseId,
-            String displayVersion,
-            String changelog,
-            Boolean acknowledgePlayerUpgrade
-    ) {
-    }
 
-    private record PlayerProgramRequest(
-            String platform,
-            String version,
-            String sourceDirectory,
-            String launchPath,
-            String minimumBootstrapVersion
-    ) {
-    }
 
     private record InstanceRequest(
             String instanceDirectory,
@@ -2438,12 +2109,6 @@ final class AdminWebServer implements AutoCloseable {
     ) {
     }
 
-    private record DeploymentRequest(
-            String outputDirectory,
-            String platform,
-            String releaseId
-    ) {
-    }
 
     private record DeploymentDownloadRequest(
             String platform,
@@ -2454,35 +2119,13 @@ final class AdminWebServer implements AutoCloseable {
     private record DeploymentArchive(
             Path archive,
             String fileName,
-            Path cleanupRoot
+            Path cleanupRoot,
+            cn.dreamingfish.updater.management.StorageService.Lease budget
     ) {
     }
 
-    private record StaticDistributionRequest(String outputDirectory) {
-    }
 
-    private record DistributionWebDavRequest(
-            String outputDirectory,
-            String baseUrl,
-            String username,
-            String password,
-            Boolean exportFirst
-    ) {
-    }
 
-    private record DistributionS3Request(
-            String outputDirectory,
-            String endpoint,
-            String region,
-            String bucket,
-            String prefix,
-            String accessKeyId,
-            String secretAccessKey,
-            String sessionToken,
-            String addressingStyle,
-            Boolean exportFirst
-    ) {
-    }
 
     private record SettingsRequest(
             String httpHost,
@@ -2492,21 +2135,13 @@ final class AdminWebServer implements AutoCloseable {
     ) {
     }
 
-    private record AuthRequest(String username, String password, String confirmPassword,
-                               String newPassword, Boolean allowLocalBypass) { }
 
-    private static final class LoginAttempts {
-        private int failures; private long first = System.currentTimeMillis();
-        synchronized void fail() { if (stale()) { failures = 0; first = System.currentTimeMillis(); } failures++; }
-        synchronized boolean blocked() { return !stale() && failures >= 5; }
-        synchronized boolean stale() { return System.currentTimeMillis() - first > 5 * 60_000L; }
-    }
 
-    private static final class WebApiException extends RuntimeException {
+    static final class WebApiException extends RuntimeException {
         private final int status;
         private final String code;
 
-        private WebApiException(
+        WebApiException(
                 int status, String code, String message) {
             super(message);
             this.status = status;

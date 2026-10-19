@@ -5,7 +5,7 @@ import cn.dreamingfish.updater.engine.UpdateException;
 
 /** Version and launch-policy metadata shared by the Java sidecar and tests. */
 public final class PlayerRuntime {
-    public static final String VERSION = "0.2.1";
+    public static final String VERSION = "0.2.2";
     public static final String BOOTSTRAP_AGENT_VERSION = "0.1.2";
 
     private PlayerRuntime() {

@@ -51,11 +51,13 @@ public final class UpdateEngine {
 
         try (InstanceUpdateLock ignored = InstanceUpdateLock.acquire(paths.instanceLock());
              GameUpdateLock gameUpdateLock = GameUpdateLock.tryAcquire(paths.gameLock())) {
-            storageMaintenance.cleanExpiredStaging(paths);
-            if (gameUpdateLock == null && installer.hasPendingTransactions(paths)) {
-                throw gameRunning();
+            // Lock order is instance -> game. Every engine path, including offline fallback,
+            // recovery, maintenance state and music commits, runs inside this ownership scope.
+            if (gameUpdateLock == null && installer.hasPendingTransactions(paths)) throw gameRunning();
+            if (gameUpdateLock != null) {
+                storageMaintenance.cleanExpiredStaging(paths);
+                installer.recover(paths, progress);
             }
-            installer.recover(paths, progress);
             Optional<LocalInstallation> optionalLocal = localStore.loadMetadata(paths,
                     request.binding(), publicKey, request.supportedCapabilities());
             LocalInstallation local = optionalLocal.orElseGet(() -> localStore.loadBundledBaseline(
@@ -69,7 +71,7 @@ public final class UpdateEngine {
                         local == null ? null : local.trustState());
             } catch (UpdateException e) {
                 if (e.code() != UpdateErrorCode.NETWORK_UNAVAILABLE) throw e;
-                return allowOfflineOrFail(paths, local, request, progress, e);
+                return allowOfflineOrFail(paths, local, request, progress, e, gameUpdateLock != null);
             }
             if (local != null && cn.dreamingfish.updater.protocol.MaintenanceModel.of(local.release().manifest()).simplified()
                     && !cn.dreamingfish.updater.protocol.MaintenanceModel.of(target.manifest()).simplified()) {
@@ -78,7 +80,7 @@ public final class UpdateEngine {
             }
 
             LocalFileOverrides choices = request.localFileOverrides();
-            LocalFileIndex index = LocalFileIndex.load(paths.fileIndex());
+            LocalFileIndex index = LocalFileIndex.verified(paths.fileIndex());
             UpdatePlan plan = planner.create(paths, target, local, choices, index, progress,
                     request.cancellationToken());
             boolean sameRelease = local != null && local.release().sha256().equals(target.sha256());
@@ -87,9 +89,9 @@ public final class UpdateEngine {
                     syncMusicTracks(request, paths, target.manifest().branding().musicTracks(),
                             progress, local == null ? null : local.release().manifest().branding().musicTracks());
                     persistBundledBaseline(paths, local, plan.nextState());
+                    index.save();
+                    storageMaintenance.cleanObjectCache(paths);
                 }
-                index.save();
-                storageMaintenance.cleanObjectCache(paths);
                 progress.onProgress(new ProgressEvent(UpdateStage.COMPLETE,
                         "本地整合包已是最新版本", null, 1, 1));
                 return new UpdateResult(UpdateOutcome.UP_TO_DATE, target.manifest(),
@@ -182,7 +184,7 @@ public final class UpdateEngine {
 
     private UpdateResult allowOfflineOrFail(EnginePaths paths, LocalInstallation local,
                                              UpdateRequest request, ProgressListener progress,
-                                             UpdateException networkFailure) {
+                                             UpdateException networkFailure, boolean canMutate) {
         if (local == null) {
             throw new UpdateException(UpdateErrorCode.NETWORK_UNAVAILABLE,
                     "The update service is unavailable and this instance has no verified installation",
@@ -191,7 +193,7 @@ public final class UpdateEngine {
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
                 "更新服务暂时不可用，正在验证上次安装", null, 0, 0));
         LocalFileOverrides choices = request.localFileOverrides();
-        LocalFileIndex index = LocalFileIndex.load(paths.fileIndex());
+        LocalFileIndex index = LocalFileIndex.verified(paths.fileIndex());
         UpdatePlan localPlan = planner.create(paths, local.release(), local,
                 choices, index, progress,
                 request.cancellationToken());
@@ -206,6 +208,7 @@ public final class UpdateEngine {
                 .anyMatch(id -> local.state() == null || !local.state().correctionApplied(id));
         if (!localPlan.operations().isEmpty() && ownerActions
                 && objectsAvailableOffline(paths, localPlan)) {
+            if (!canMutate) throw gameRunning();
             InstallResult installed = installer.install(paths, localPlan, progress, choices, index, request.cancellationToken());
             index.save();
             return new UpdateResult(UpdateOutcome.OFFLINE_ALLOWED, local.release().manifest(),
@@ -226,8 +229,10 @@ public final class UpdateEngine {
             throw new UpdateException(UpdateErrorCode.LOCAL_CONTENT_CHANGED,
                     "The offline installation has managed files that require repair", networkFailure);
         }
-        index.save();
-        persistBundledBaseline(paths, local, localPlan.nextState());
+        if (canMutate) {
+            index.save();
+            persistBundledBaseline(paths, local, localPlan.nextState());
+        }
         progress.onProgress(new ProgressEvent(UpdateStage.OFFLINE,
                 "已使用上次完整验证的本地版本", null, 1, 1));
         return new UpdateResult(UpdateOutcome.OFFLINE_ALLOWED, local.release().manifest(),

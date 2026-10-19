@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="04-paperfish-title 04-paperfish-desc">
+<title id="04-paperfish-title">梦鱼更新器 · 杏桃纸鱼</title>
+<desc id="04-paperfish-desc">暖奶油底、珊瑚色折纸鱼，用两块柔和色面形成折叠感。</desc>
+<rect width="512" height="512" rx="120" fill="#FFF0DA"/>
+<g transform="rotate(-12 256 256)">
+<path d="m202 255-79-60c-9-7-17-2-13 9l21 52-21 52c-4 11 4 16 13 9l79-56Z" fill="#C96C79"/>
+<path d="M187 250c40-51 72-78 101-78 36 0 77 32 114 77 4 5 4 10 0 15-39 47-78 76-114 76-31 0-64-27-101-77-4-5-4-8 0-13Z" fill="#EB857A"/>
+<path d="M187 250c40-51 72-78 101-78 36 0 77 32 114 77 2 3 3 5 3 7H184c0-2 1-4 3-6Z" fill="#F5AD8E"/>
+<path d="m267 256 21 84c-30 0-64-28-101-77-2-3-3-5-3-7Z" fill="#D97278"/>
+<circle cx="348" cy="239" r="10" fill="#643D59"/>
+</g>
+</svg>

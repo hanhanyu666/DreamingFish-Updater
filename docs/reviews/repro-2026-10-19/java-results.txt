@@ -1,0 +1,4 @@
+STAGE_CONFLICT rejected=true originalStageRetained=false
+PARTIAL_COPY commitFailed=true restartRecoveryBlocked=true scratchRetained=true targetExists=false
+LIVE_TASK owner=RUNNING disk=UNKNOWN CHILD_READ state=UNKNOWN
+Artifacts: D:\Desktop\DreamingFish-Updater\target\review-2026-10-19\java-c2e2aaa0-4600-4121-86d0-7ddb26ea0a5a

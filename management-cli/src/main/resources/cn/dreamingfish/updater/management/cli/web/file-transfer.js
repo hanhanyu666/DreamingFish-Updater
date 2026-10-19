@@ -1,6 +1,6 @@
 "use strict";
 
-const TRANSFER_STATES = {WAITING:"等待检查", CHECKING:"正在暂存检查", READY:"已检查，等待确认", COMMITTING:"正在导入", DONE:"已导入，等待发布", FAILED:"失败，可重试", SKIPPED:"已跳过"};
+const TRANSFER_STATES = {WAITING:"等待检查", CHECKING:"正在暂存检查", READY:"已检查，等待确认", COMMITTING:"正在导入", DONE:"已导入，等待发布", FAILED:"失败，可重试", SKIPPED:"已跳过", UNDONE:"已恢复"};
 let transferSequence = 0;
 
 function transferPath(directory, relative) {
@@ -21,11 +21,11 @@ function addTransferFiles(files, folder = false) {
     let relative=value.relativePath || file.webkitRelativePath || file.name;
     if (folder && !byId("source-keep-folder").checked && relative.includes("/")) relative=relative.split("/").slice(1).join("/");
     const path = transferPath(app.uploadTargetDirectory || "", relative);
-    if (app.transferTasks.some(task => foldPath(task.path) === foldPath(path) && !["DONE","SKIPPED"].includes(task.state))) {
+    if (app.transferTasks.some(task => foldPath(task.path) === foldPath(path) && !["DONE","SKIPPED","UNDONE"].includes(task.state))) {
       byId("transfer-result").textContent = `${path} 已在清单中；移除旧项或修改保存路径后再添加。`;
       continue;
     }
-    app.transferTasks.push({key:++transferSequence,file,path,state:"WAITING",percent:0,action:"ADD",error:"",plan:null});
+    app.transferTasks.push({key:++transferSequence,requestId:crypto.randomUUID(),projectId:app.project.id,file,path,state:"WAITING",percent:0,action:"ADD",error:"",plan:null});
   }
   app.pendingUploads = app.transferTasks.filter(task => task.file && task.state === "WAITING").map(task => task.file);
   renderTransferQueue();
@@ -52,7 +52,7 @@ function renderTransferQueue() {
     heading.append(title, state);
     const path = document.createElement("label"); path.className = "transfer-path field";
     const caption = document.createElement("span"); caption.textContent = "保存路径";
-    const input = document.createElement("input"); input.value = task.draftPath ?? task.path; input.disabled = app.transferBusy || ["DONE","SKIPPED"].includes(task.state);
+    const input = document.createElement("input"); input.value = task.draftPath ?? task.path; input.disabled = app.transferBusy || ["DONE","SKIPPED","UNDONE"].includes(task.state);
     const rememberPath=()=>{task.draftPath=input.value; updateSourceAddActions();};
     input.addEventListener("input",rememberPath); input.addEventListener("change",rememberPath);
     path.append(caption, input);
@@ -65,7 +65,7 @@ function renderTransferQueue() {
         + (task.plan.replacements.length ? `\n发现同一模组的旧文件：${task.plan.replacements.map(item => `${item.path} (${item.version || "未知版本"})`).join("、")}。替换时沿用维护方式和可选组。` : "");
     } else details.textContent = `${formatBytes(task.file?.size || 0)} · 暂存检查不会改动整合包文件`;
     const controls = document.createElement("div"); controls.className = "transfer-item-actions";
-    if (task.plan && !["DONE","SKIPPED"].includes(task.state)) {
+    if (task.plan && !["DONE","SKIPPED","UNDONE"].includes(task.state)) {
       const action = document.createElement("select"); action.setAttribute("aria-label", `${task.path} 的导入动作`); action.disabled = app.transferBusy;
       if (!task.plan.existing && !task.plan.replacements.length) action.append(option("ADD", "新增文件"));
       if (task.plan.existing && !task.plan.replacements.length) action.append(option("OVERWRITE", "归档并覆盖同名文件"));
@@ -95,7 +95,7 @@ function renderTransferQueue() {
 
 function updateSourceAddActions() {
   const tasks = app.transferTasks || [];
-  const remaining = tasks.filter(task => !["DONE","SKIPPED"].includes(task.state));
+  const remaining = tasks.filter(task => !["DONE","SKIPPED","UNDONE"].includes(task.state));
   const pathChanged=task=>task.draftPath!=null && task.draftPath.trim()!==task.path;
   byId("check-source-files").disabled = app.transferBusy || !remaining.some(task => task.state !== "READY" || pathChanged(task));
   byId("upload-source-files").disabled = app.transferBusy || !remaining.length || remaining.some(task => task.state !== "READY" || pathChanged(task));
@@ -108,9 +108,19 @@ function updateSourceAddActions() {
 }
 
 async function discardTransferPlan(task) {
-  const projectId = app.transferProjectId;
-  const id = task.plan?.id; task.plan = null;
-  if (id) try { await api(`/api/projects/${encodeURIComponent(projectId)}/files/stage?id=${encodeURIComponent(id)}`, {method:"DELETE"}); } catch (_) { /* Plan expiry is safe: it never changed source content. */ }
+  const projectId=task.projectId||app.transferProjectId,id=task.plan?.id;
+  if(task.resultUnknown)throw new Error("结果尚未确认，请先复查原操作再移出清单");
+  if(!id)return true;
+  const released=await api(`/api/projects/${encodeURIComponent(projectId)}/files/stage?id=${encodeURIComponent(id)}`,{method:"DELETE"});
+  if(released?.discarded===false){
+    const plan=await api(`/api/projects/${encodeURIComponent(projectId)}/files/recheck`,{method:"POST",body:{id}});
+    task.plan=plan;task.resultUnknown=false;
+    if(plan.undone){task.state="UNDONE";return false;}
+    if(plan.committed){task.state="DONE";return false;}
+    throw new Error("原导入仍受恢复保护，不能标为已跳过");
+  }
+  if(released?.discarded!==true)throw new Error("管理端无法确认暂存释放，请升级并复查原任务");
+  task.plan=null;return true;
 }
 
 function startTransfer() {
@@ -121,15 +131,16 @@ function finishTransfer() { app.transferBusy = false; renderTransferQueue(); }
 
 async function checkTransferTasks(selected = null) {
   if (app.transferBusy || !app.project) return;
-  for (const task of app.transferTasks.filter(task=>!["DONE","SKIPPED"].includes(task.state) && task.draftPath!=null && task.draftPath.trim()!==task.path)) {
+  for (const task of app.transferTasks.filter(task=>!["DONE","SKIPPED","UNDONE"].includes(task.state) && task.draftPath!=null && task.draftPath.trim()!==task.path)) {
     try {
       const next=transferPath("",task.draftPath.trim());
-      if(app.transferTasks.some(other=>other!==task && foldPath(other.draftPath?.trim() || other.path)===foldPath(next) && !["DONE","SKIPPED"].includes(other.state))) throw new Error("另一个待导入文件正在使用此路径");
-      const oldPlan=task.plan; task.plan=null; task.path=next; task.draftPath=next; task.state="WAITING"; task.error="";
+      if(app.transferTasks.some(other=>other!==task && foldPath(other.draftPath?.trim() || other.path)===foldPath(next) && !["DONE","SKIPPED","UNDONE"].includes(other.state))) throw new Error("另一个待导入文件正在使用此路径");
+      if(task.resultUnknown)throw new Error("原操作结果待确认，请先复查，不能改路径开始另一项上传");
+      const oldPlan=task.plan; task.requestId=crypto.randomUUID();task.plan=null; task.path=next; task.draftPath=next; task.state="WAITING"; task.error="";
       if(oldPlan) try {await api(`/api/projects/${encodeURIComponent(app.transferProjectId)}/files/stage?id=${encodeURIComponent(oldPlan.id)}`,{method:"DELETE"});} catch(_) {}
     } catch(error) {task.state="FAILED"; task.error=error.message; renderTransferQueue(); return;}
   }
-  const tasks = selected || app.transferTasks.filter(task => !["DONE","SKIPPED","READY"].includes(task.state));
+  const tasks = selected || app.transferTasks.filter(task => !["DONE","SKIPPED","UNDONE","READY"].includes(task.state));
   const projectId = app.transferProjectId; startTransfer(); let recovered = false;
   try {
     for (const task of tasks) {
@@ -137,21 +148,27 @@ async function checkTransferTasks(selected = null) {
       task.state = "CHECKING"; task.error = ""; task.percent = 0; renderTransferQueue();
       try {
         let plan;
-        if (task.plan) plan = await api(`/api/projects/${encodeURIComponent(projectId)}/files/recheck`, {method:"POST",body:{id:task.plan.id}});
-        else if (task.serverPath) plan = await api(`/api/projects/${encodeURIComponent(projectId)}/files/stage-server`, {method:"POST",body:{sourcePath:task.serverPath,targetPath:task.path}});
-        else plan = await AdminTransport.upload(`/api/projects/${encodeURIComponent(projectId)}/files/stage?path=${encodeURIComponent(task.path)}`, task.file, app.token, (loaded) => {
+        task.requestId ||= crypto.randomUUID();
+        if (task.plan || task.resultUnknown) {
+          try { plan = await api(`/api/projects/${encodeURIComponent(projectId)}/files/recheck`, {method:"POST",body:{id:task.plan?.id || task.requestId}}); }
+          catch(error) {if(error.status!==410) throw new Error(`尚不能确认结果，请保持原任务并检查管理端版本：${error.message}`); task.plan=null;task.requestId=crypto.randomUUID();task.resultUnknown=false;}
+        }
+        if (plan) { /* Durable result is authoritative. */ }
+        else if (task.plan) plan = await api(`/api/projects/${encodeURIComponent(projectId)}/files/recheck`, {method:"POST",body:{id:task.plan.id}});
+        else if (task.serverPath) plan = await api(`/api/projects/${encodeURIComponent(projectId)}/files/stage-server`, {method:"POST",body:{sourcePath:task.serverPath,targetPath:task.path,requestId:task.requestId}});
+        else plan = await AdminTransport.upload(`/api/projects/${encodeURIComponent(projectId)}/files/stage?path=${encodeURIComponent(task.path)}&requestId=${encodeURIComponent(task.requestId)}`, task.file, app.token, (loaded) => {
           task.percent = task.file.size ? Math.round(100 * loaded / task.file.size) : 100;
           byId("source-upload-progress").hidden = false; byId("source-upload-label").textContent = `暂存 ${task.file.name}，然后由服务器检查`;
           byId("source-upload-meter").value = task.percent; byId("source-upload-percent").textContent = `${task.percent}%`;
         }, app.activeUploads);
-        if (plan.undone) throw new Error("该导入已恢复，移出此项并重新选择文件即可开始新的导入");
-        task.plan = plan; task.state = plan.committed ? "DONE" : "READY";
+        if(plan.undone){task.plan=plan;task.resultUnknown=false;task.state="UNDONE";task.error="该导入已恢复，需要另选文件开始新的导入";continue;}
+        task.plan = plan; task.resultUnknown=false; task.state = plan.committed ? "DONE" : "READY";
         if (plan.committed) recovered = true;
         task.action = plan.existing?.sha256 === plan.sha256 ? "SKIP" : plan.replacements.length ? "REPLACE_MOD" : plan.existing ? "OVERWRITE" : "ADD";
       } catch (error) {
         task.state = app.transferPaused ? "WAITING" : "FAILED";
         task.error = app.transferPaused ? "已暂停，可以继续检查" : error.message;
-        if (error.status === 400 && task.plan) task.plan = null;
+        task.resultUnknown=true; // Keep the same identity until the server proves it is absent/expired.
       }
       renderTransferQueue();
     }
@@ -173,12 +190,12 @@ async function commitTransferTasks() {
   try {
     for (const task of tasks) {
       if (app.transferPaused) break;
-      if (task.action === "SKIP") { task.state = "SKIPPED"; await discardTransferPlan(task); continue; }
+      if(task.action==="SKIP"){if(await discardTransferPlan(task))task.state="SKIPPED";else if(task.state==="DONE")completed++;continue;}
       task.state = "COMMITTING"; task.error = ""; renderTransferQueue();
       try {
         await api(`/api/projects/${encodeURIComponent(projectId)}/files/commit`, {method:"POST",body:{id:task.plan.id,action:task.action,stamp:task.plan.stamp}});
         task.state = "DONE"; completed++;
-      } catch (error) { task.state = "FAILED"; task.error = `${error.message}；重新检查这一项后可再次确认。`; }
+      } catch (error) { task.state = "FAILED"; task.resultUnknown=true; task.error = `结果待确认：${error.message}；重新检查这一项会先查询原操作。`; }
       renderTransferQueue();
     }
     if (completed) {
@@ -195,7 +212,7 @@ function abortActiveUploads() { [...app.activeUploads].forEach(request => reques
 
 function bindSourceFiles() {
   byId("source-keep-folder").addEventListener("change",()=>{byId("source-keep-folder").dataset.edited="true";});
-  byId("clear-completed-transfers").addEventListener("click",()=>{app.transferTasks=app.transferTasks.filter(task=>!["DONE","SKIPPED"].includes(task.state)); renderTransferQueue();});
+  byId("clear-completed-transfers").addEventListener("click",()=>{app.transferTasks=app.transferTasks.filter(task=>!["DONE","SKIPPED","UNDONE"].includes(task.state)); renderTransferQueue();});
   byId("source-file-select-all").addEventListener("change", event => {setPathsSelected(app.sourceFileSelection, app.sourceScope || [], event.target.checked); renderSourceFiles();});
   byId("clear-source-selection").addEventListener("click", () => {app.sourceFileSelection.clear(); renderSourceFiles();});
   byId("remove-selected-source-files").addEventListener("click", () => removeSourceFiles(selectedSourceFiles()));
@@ -233,8 +250,8 @@ function bindSourceFiles() {
   byId("import-server-source").addEventListener("click", async () => {
     const serverPath = form.elements.serverSourcePath.value.trim();
     const path = transferPath(app.uploadTargetDirectory || "", serverPath.replaceAll("\\", "/").split("/").pop());
-    if (app.transferTasks.some(task => foldPath(task.path) === foldPath(path) && !["DONE","SKIPPED"].includes(task.state))) {showErrorDialog("此保存路径已在清单中"); return;}
-    const task = {key:++transferSequence,serverPath,path,state:"WAITING",percent:0,action:"ADD",error:"",plan:null};
+    if (app.transferTasks.some(task => foldPath(task.path) === foldPath(path) && !["DONE","SKIPPED","UNDONE"].includes(task.state))) {showErrorDialog("此保存路径已在清单中"); return;}
+    const task = {key:++transferSequence,requestId:crypto.randomUUID(),projectId:app.project.id,serverPath,path,state:"WAITING",percent:0,action:"ADD",error:"",plan:null};
     app.transferTasks.push(task); await checkTransferTasks([task]);
   });
 }

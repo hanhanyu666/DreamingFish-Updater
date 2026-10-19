@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ManagementCliTest {
@@ -25,7 +26,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.2.5"));
+        assertTrue(version.out().contains("0.2.6"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -354,7 +355,7 @@ class ManagementCliTest {
     }
 
     @Test
-    void relocatedAdminPrefersAndPersistsItsLocalExistingDataDirectory() throws Exception {
+    void relocatedLegacyAbsoluteDataRequiresExplicitIdentityConfirmation() throws Exception {
         Path newHome = Files.createDirectories(temporary.resolve("new-admin"));
         Path settingsFile = newHome.resolve("management-settings.json");
         Path oldData = temporary.resolve("old-version/data").toAbsolutePath().normalize();
@@ -371,13 +372,15 @@ class ManagementCliTest {
         Path localData = Files.createDirectories(newHome.resolve("data"));
         Files.writeString(localData.resolve("management.db"), "moved-database");
 
-        ManagementSettings settings = new ManagementSettingsStore(settingsFile).load();
+        assertThrows(cn.dreamingfish.updater.management.ManagementException.class,
+                () -> new ManagementSettingsStore(settingsFile).load());
+        assertTrue(Files.readString(settingsFile).contains("old-version"));
+        Files.createDirectories(oldData);
+        assertEquals(oldData.toString(), new ManagementSettingsStore(settingsFile).load().dataDirectory());
+        ManagementSettingsStore store = new ManagementSettingsStore(settingsFile);
+        store.save(store.load().withDataDirectory(localData.toString()));
+        assertEquals("data", new com.fasterxml.jackson.databind.ObjectMapper().readTree(settingsFile.toFile()).get("dataDirectory").asText());
 
-        assertEquals(localData.toAbsolutePath().normalize().toString(),
-                settings.dataDirectory());
-        assertTrue(Files.readString(settingsFile)
-                .contains(localData.toAbsolutePath().normalize().toString()
-                        .replace("\\", "\\\\")));
     }
 
     @Test

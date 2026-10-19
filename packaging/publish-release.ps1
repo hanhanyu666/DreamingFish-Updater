@@ -35,67 +35,53 @@ if (-not $PlayerVersion) {
 }
 if (-not (Test-Path -LiteralPath $NotesFile -PathType Leaf)) { throw "Release notes not found: $NotesFile" }
 
+# Resolve user paths before any work-directory change; planning never rewrites dist.
+. (Join-Path $PSScriptRoot 'lib\release-plan.ps1')
+$plan = Get-ReleasePlan -Dist $dist -NotesFile $NotesFile -Tag $Tag -Repository $Repository -AdminVersion $AdminVersion -PlayerVersion $PlayerVersion
+Write-Host "Release $Tag (admin $AdminVersion, player $PlayerVersion):"
+$plan.Assets | ForEach-Object { Write-Host "  $([IO.Path]::GetFileName($_))" }
+Write-Host '  latest.json'
+Write-Host '  SHA256SUMS.txt'
+Write-Host "Notes: $($plan.Notes)"
+if ($plan.CarryLatest) { Write-Host 'Manifest decision: carry the previous release latest.json; remote contents are checked only during execution.' }
+else { Write-Host 'Manifest decision: use the matching signed desktop manifest.' }
+if ($DryRun) { Write-Host 'DryRun: no remote mutation, download, staging file or dist manifest was written.'; return }
+
 $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
 $gh = if ($ghCommand) { $ghCommand.Source } else { Join-Path $env:LOCALAPPDATA 'Programs\GitHubCLI\bin\gh.exe' }
 if (-not (Test-Path -LiteralPath $gh)) { throw 'GitHub CLI (gh) is required' }
 if (-not (& git -C $repoRoot ls-remote --tags origin "refs/tags/$Tag")) { throw "Push the tag $Tag before publishing" }
 
-$installer = "dfs-admin-desktop-windows-x64-$AdminVersion-setup.exe"
-$candidates = @(
-    "dfs-admin-desktop-windows-x64-$AdminVersion.zip",
-    $installer,
-    "dfs-admin-linux-x64-$AdminVersion.zip",
-    "dfs-admin-windows-x64-$AdminVersion.zip",
-    "dreamingfish-player-windows-x64-$PlayerVersion.zip"
-)
-$assets = @($candidates | Where-Object { Test-Path -LiteralPath (Join-Path $dist $_) -PathType Leaf })
-if (-not $assets) { throw "No release files for admin $AdminVersion / player $PlayerVersion in $dist" }
-
-# latest.json: this release's desktop build, or the previous release's file carried over.
-$latest = Join-Path $dist 'latest.json'
-$fresh = $false
-if ((Test-Path -LiteralPath $latest) -and ($assets -contains $installer)) {
-    $manifest = Get-Content -LiteralPath $latest -Raw -Encoding utf8 | ConvertFrom-Json
-    if ($manifest.version -eq $AdminVersion) {
-        $expected = "https://github.com/$Repository/releases/download/$Tag/$installer"
-        if ($manifest.platforms.'windows-x86_64'.url -ne $expected) {
-            throw "latest.json points to $($manifest.platforms.'windows-x86_64'.url); rebuild the desktop with -ReleaseTag $Tag"
-        }
-        $fresh = $true
-    }
-}
-if (-not $fresh) {
-    $carried = Join-Path ([IO.Path]::GetTempPath()) ('dfs-latest-' + [Guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $carried | Out-Null
-    & $gh release download --repo $Repository --pattern latest.json --dir $carried
-    if ($LASTEXITCODE -ne 0) { throw 'Could not download latest.json from the current latest release' }
-    Copy-Item -LiteralPath (Join-Path $carried 'latest.json') -Destination $latest -Force
-    Remove-Item -LiteralPath $carried -Recurse -Force
-    Write-Host 'No new desktop build in this release; carried over the previous latest.json.'
-}
-$assets += 'latest.json'
-
-$sums = foreach ($name in $assets) {
-    "$((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $dist $name)).Hash.ToLowerInvariant())  $name"
-}
-[IO.File]::WriteAllText((Join-Path $dist 'SHA256SUMS.txt'), (($sums -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
-$assets += 'SHA256SUMS.txt'
-
-Write-Host "Release $Tag (admin $AdminVersion, player $PlayerVersion):"
-$assets | ForEach-Object { Write-Host "  $_" }
-if ($DryRun) { return }
-
-Push-Location $dist
+$stagingParent = Join-Path $repoRoot 'target'
+New-Item -ItemType Directory -Path $stagingParent -Force | Out-Null
+$staging = Join-Path $stagingParent ('release-upload-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $staging | Out-Null
 try {
-    & $gh release create $Tag --repo $Repository --verify-tag --latest --title "DreamingFish Updater $Tag" --notes-file (Resolve-Path -LiteralPath $NotesFile).Path @assets
+    $latest = $plan.Latest
+    if ($plan.CarryLatest) {
+        & $gh release download --repo $Repository --pattern latest.json --dir $staging
+        if ($LASTEXITCODE -ne 0) { throw 'Could not read latest.json from the current latest release' }
+        $latest = Join-Path $staging 'latest.json'
+        $manifest = Get-Content -LiteralPath $latest -Raw -Encoding utf8 | ConvertFrom-Json
+        $carried = $manifest.platforms.'windows-x86_64'
+        if (-not $carried.signature -or $carried.url -notlike "https://github.com/$Repository/releases/download/*") { throw 'Carried latest.json has an unexpected signature or artifact URL' }
+    }
+    $assets = @($plan.Assets) + @($latest)
+    $sums = foreach ($path in $assets) { "$((Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($path))" }
+    $sumsFile = Join-Path $staging 'SHA256SUMS.txt'
+    [IO.File]::WriteAllText($sumsFile, (($sums -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+    $assets += $sumsFile
+    & $gh release create $Tag --repo $Repository --verify-tag --latest --title "DreamingFish Updater $Tag" --notes-file $plan.Notes @assets
     if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
-} finally { Pop-Location }
-
-# Check what installed copies will actually read.
-$check = Join-Path ([IO.Path]::GetTempPath()) ('dfs-latest-check-' + [Guid]::NewGuid().ToString('N') + '.json')
-Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/$Repository/releases/latest/download/latest.json" -OutFile $check
-if ((Get-FileHash -LiteralPath $check).Hash -ne (Get-FileHash -LiteralPath $latest).Hash) { throw 'releases/latest/download/latest.json does not match the uploaded file' }
-$url = (Get-Content -LiteralPath $check -Raw -Encoding utf8 | ConvertFrom-Json).platforms.'windows-x86_64'.url
-Remove-Item -LiteralPath $check -Force
-$head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $url
-Write-Host "Update check OK: latest.json is served and $url answers $($head.StatusCode)."
+    $check = Join-Path $staging 'served-latest.json'
+    Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/$Repository/releases/latest/download/latest.json" -OutFile $check
+    if ((Get-FileHash -LiteralPath $check).Hash -ne (Get-FileHash -LiteralPath $latest).Hash) { throw 'Served latest.json does not match the uploaded file' }
+    $url = (Get-Content -LiteralPath $check -Raw -Encoding utf8 | ConvertFrom-Json).platforms.'windows-x86_64'.url
+    $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $url
+    Write-Host "Update check OK: latest.json and its artifact answer $($head.StatusCode)."
+} finally {
+    $absolute = [IO.Path]::GetFullPath($staging)
+    $boundary = [IO.Path]::GetFullPath($stagingParent).TrimEnd('\') + '\'
+    if (-not $absolute.StartsWith($boundary, [StringComparison]::OrdinalIgnoreCase) -or ((Get-Item -LiteralPath $absolute -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe release staging cleanup path' }
+    Remove-Item -LiteralPath $absolute -Recurse -Force
+}

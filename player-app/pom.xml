@@ -25,7 +25,17 @@
     </dependency>
   </dependencies>
   <build>
+    <resources><resource><directory>src/main/resources</directory></resource>
+      <resource><directory>${project.build.directory}/generated-resources</directory></resource>
+    </resources>
     <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.6.4</version>
+        <executions><execution><id>verify-build-resources</id><phase>generate-resources</phase><goals><goal>exec</goal></goals>
+          <configuration><executable>node</executable><arguments><argument>${project.basedir}/../packaging/check-build-resources.mjs</argument><argument>player-app</argument></arguments></configuration>
+        </execution></executions>
+      </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>

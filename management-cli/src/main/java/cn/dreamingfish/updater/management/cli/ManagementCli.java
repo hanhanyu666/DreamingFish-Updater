@@ -25,7 +25,7 @@ import java.nio.file.Path;
 @CommandLine.Command(
         name = "dfs-admin",
         mixinStandardHelpOptions = true,
-        version = "DreamingFish Update System 0.2.5",
+        version = "DreamingFish Update System 0.2.6",
         description = "Self-hosted Minecraft modpack update management",
         subcommands = {
                 InitCommand.class,
@@ -35,11 +35,13 @@ import java.nio.file.Path;
                 WebCommand.class,
                 DesktopCommand.class,
                 BackupCommand.class,
+                StorageCommand.class,
+                TasksCommand.class,
                 InteractiveCommand.class
         }
 )
 public final class ManagementCli implements Runnable {
-    static final String VERSION = "0.2.5";
+    static final String VERSION = "0.2.6";
     private static final Charset CONSOLE_OUTPUT_CHARSET =
             WindowsConsoleEncoding.outputCharset();
 
@@ -63,7 +65,22 @@ public final class ManagementCli implements Runnable {
             System.err, true, CONSOLE_OUTPUT_CHARSET);
     private java.io.BufferedReader input;
     private final ManagementSettingsStore settingsStore;
-    private ManagementSettings settings;
+    private volatile ManagementSettings settings;
+    private Services cachedServices;
+    private int serviceInitializations;
+    private final java.util.concurrent.locks.ReentrantReadWriteLock contextGate=new java.util.concurrent.locks.ReentrantReadWriteLock();
+    private final ThreadLocal<Services> requestServices=new ThreadLocal<>();
+    AutoCloseable requestScope(){
+        if(!contextGate.readLock().tryLock())throw new ManagementException("管理实例正在切换，请稍后重试");
+        try {Services current=services();Services previous=requestServices.get();requestServices.set(current);return ()->{if(previous==null)requestServices.remove();else requestServices.set(previous);contextGate.readLock().unlock();};}
+        catch(RuntimeException error){contextGate.readLock().unlock();throw error;}
+    }
+    int serviceInitializations(){return serviceInitializations;}
+    synchronized cn.dreamingfish.updater.management.ApplicationTasks.Snapshot cancelQueuedTask(String id){
+        if(cachedServices==null)throw new ManagementException("请在任务所属的网页或桌面管理端取消排队；独立查询命令不会接管其他进程的任务");
+        return cachedServices.tasks().cancel(id);
+    }
+    synchronized void closeServices(){if(cachedServices!=null)cachedServices.tasks().close();}
 
     public ManagementCli() {
         this(defaultSettingsFile(), new AdaptiveConsoleReader(System.in));
@@ -126,8 +143,12 @@ public final class ManagementCli implements Runnable {
         new InteractiveConsole(this).run();
     }
 
-    Services services() {
+    synchronized Services services() {
+        Services bound=requestServices.get();if(bound!=null)return bound;
         ManagementPaths paths = ManagementPaths.at(dataDirectory);
+        if(cachedServices!=null&&cachedServices.paths().root().equals(paths.root()))return cachedServices;
+        if(cachedServices!=null&&cachedServices.tasks().hasPending())throw new ManagementException("原管理实例仍有活动或排队任务，不能切换数据根");
+        if(cachedServices!=null)cachedServices.tasks().close();
         JsonCodec json = new JsonCodec();
         ManagementDatabase database = new ManagementDatabase(paths, json);
         database.initialize();
@@ -138,12 +159,31 @@ public final class ManagementCli implements Runnable {
         SourceFileService sourceFiles = new SourceFileService(paths, database, json);
         PlayerDeploymentService deployments = new PlayerDeploymentService(
                 paths, database, json);
-        return new Services(paths, json, database, projects, scanner, publisher,
+        serviceInitializations++;
+        cachedServices=new Services(paths, json, database, projects, scanner, publisher,
                 playerPrograms, deployments, sourceFiles, new ObjectStore(paths),
                 new BackupService(paths, database, json),
                 new StaticDistributionService(paths, database, json),
                 new StaticDistributionUploader(json),
-                new ProjectPolicyService(paths, database));
+                new ProjectPolicyService(paths, database),
+                new cn.dreamingfish.updater.management.WorkspaceOperationService(paths,database,json),
+                new cn.dreamingfish.updater.management.SourceTransferService(paths,database,json),
+                new cn.dreamingfish.updater.management.PlayerPackageService(paths,database,json),
+                new cn.dreamingfish.updater.management.StorageService(paths,database,json),
+                new cn.dreamingfish.updater.management.ApplicationTasks(paths,json),
+                new cn.dreamingfish.updater.management.PlayerInstanceService(paths,database,json));
+        return cachedServices;
+    }
+
+    <T> T tracked(String project,String kind,boolean credentials,java.util.concurrent.Callable<T> work) {
+        Services application=services();String id=java.util.UUID.randomUUID().toString();var result=new java.util.concurrent.atomic.AtomicReference<T>();
+        try{
+            try(var admission=requestScope()){
+                application.tasks().submit(id,project,kind,null,id,credentials,()->{try(var scope=requestScope()){if(services()!=application)throw new ManagementException("管理实例已切换，任务未执行");T value=work.call();result.set(value);return value;}});
+            }
+            if(!jsonOutput)err.println("管理任务："+id+"（可通过 tasks 查询）");
+            application.tasks().await(id);return result.get();
+        }catch(RuntimeException error){throw error;}catch(Exception error){throw new ManagementException("管理任务失败："+id,error);}
     }
 
     void printJson(Object value) {
@@ -175,9 +215,15 @@ public final class ManagementCli implements Runnable {
     }
 
     void saveSettings(ManagementSettings value) {
-        settingsStore.save(value);
-        settings = settingsStore.load();
-        dataDirectory = Path.of(settings.dataDirectory());
+        boolean changing=!Path.of(value.dataDirectory()).toAbsolutePath().normalize().equals(dataDirectory.toAbsolutePath().normalize());
+        if(changing&&!contextGate.writeLock().tryLock())throw new ManagementException("仍有管理请求或任务使用当前实例，不能切换数据根");
+        try {
+            synchronized(this){
+                if(changing&&cachedServices!=null&&cachedServices.tasks().hasPending())throw new ManagementException("当前实例仍有活动或排队任务，不能切换数据根");
+                settingsStore.save(value);settings=settingsStore.load();dataDirectory=Path.of(settings.dataDirectory());
+                if(changing&&cachedServices!=null){cachedServices.tasks().close();cachedServices=null;}
+            }
+        }finally{if(changing)contextGate.writeLock().unlock();}
     }
 
     private static Path defaultSettingsFile() {
@@ -199,12 +245,14 @@ public final class ManagementCli implements Runnable {
             BackupService backups,
             StaticDistributionService staticDistribution,
             StaticDistributionUploader distributionUploader,
-            ProjectPolicyService policies
-    ) {
-        cn.dreamingfish.updater.management.WorkspaceOperationService operations() {
-            return new cn.dreamingfish.updater.management.WorkspaceOperationService(paths, database, json);
-        }
-    }
+            ProjectPolicyService policies,
+            cn.dreamingfish.updater.management.WorkspaceOperationService operations,
+            cn.dreamingfish.updater.management.SourceTransferService transfers,
+            cn.dreamingfish.updater.management.PlayerPackageService packages,
+            cn.dreamingfish.updater.management.StorageService storage,
+            cn.dreamingfish.updater.management.ApplicationTasks tasks,
+            cn.dreamingfish.updater.management.PlayerInstanceService instances
+    ) {}
 
     Path bootstrapAgentPath() {
         String override = System.getProperty("dfs.bootstrapAgent", "").trim();

@@ -1,0 +1,93 @@
+{
+  "javaFlags": "-Xms64m -Xmx256m",
+  "jdk": "D:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+  "files": 1088,
+  "managedBytes": 268566528,
+  "logicalCPUs": 32,
+  "hostMemoryGiB": 31.8,
+  "phases": [
+    {
+      "name": "idle_empty_5s",
+      "seconds": 5.001,
+      "cpuSeconds": 4.641,
+      "peakRssMiB": 113.9,
+      "endRssMiB": 110.7,
+      "readMiB": 0.0,
+      "writeMiB": 0.0
+    },
+    {
+      "name": "list_1088_files",
+      "seconds": 0.331,
+      "cpuSeconds": 0.797,
+      "peakRssMiB": 137.7,
+      "endRssMiB": 139.7,
+      "readMiB": 0.2,
+      "writeMiB": 0.0
+    },
+    {
+      "name": "scan_256MiB",
+      "seconds": 2.663,
+      "cpuSeconds": 3.453,
+      "peakRssMiB": 159.4,
+      "endRssMiB": 160.2,
+      "readMiB": 256.2,
+      "writeMiB": 0.5
+    },
+    {
+      "name": "first_publish",
+      "seconds": 18.825,
+      "cpuSeconds": 19.281,
+      "peakRssMiB": 171.8,
+      "endRssMiB": 143.2,
+      "readMiB": 514.5,
+      "writeMiB": 257.5
+    },
+    {
+      "name": "scan_unchanged",
+      "seconds": 2.403,
+      "cpuSeconds": 2.891,
+      "peakRssMiB": 168.6,
+      "endRssMiB": 163.1,
+      "readMiB": 256.7,
+      "writeMiB": 0.3
+    },
+    {
+      "name": "publish_unchanged",
+      "seconds": 5.782,
+      "cpuSeconds": 5.484,
+      "peakRssMiB": 173.0,
+      "endRssMiB": 160.6,
+      "readMiB": 514.6,
+      "writeMiB": 1.4
+    },
+    {
+      "name": "scan_one_small_change",
+      "seconds": 2.328,
+      "cpuSeconds": 2.625,
+      "peakRssMiB": 171.0,
+      "endRssMiB": 171.0,
+      "readMiB": 256.7,
+      "writeMiB": 0.3
+    },
+    {
+      "name": "publish_one_small_change",
+      "seconds": 5.698,
+      "cpuSeconds": 5.172,
+      "peakRssMiB": 184.6,
+      "endRssMiB": 161.2,
+      "readMiB": 515.1,
+      "writeMiB": 1.6
+    },
+    {
+      "name": "idle_after_work_5s",
+      "seconds": 5.001,
+      "cpuSeconds": 0.031,
+      "peakRssMiB": 161.2,
+      "endRssMiB": 148.4,
+      "readMiB": 0.0,
+      "writeMiB": 0.0
+    }
+  ],
+  "maxThreadsAtEnd": 58,
+  "dataBytes": 270571615
+}

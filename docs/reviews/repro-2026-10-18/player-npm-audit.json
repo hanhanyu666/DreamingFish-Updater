@@ -1,0 +1,345 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@vitejs/plugin-vue": {
+      "name": "@vitejs/plugin-vue",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "vite",
+        "vue"
+      ],
+      "effects": [],
+      "range": "",
+      "nodes": [
+        "node_modules/@vitejs/plugin-vue"
+      ],
+      "fixAvailable": false
+    },
+    "@vitest/mocker": {
+      "name": "@vitest/mocker",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1193684,
+          "name": "@vitest/mocker",
+          "dependency": "@vitest/mocker",
+          "title": "Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock",
+          "url": "https://github.com/advisories/GHSA-82fw-gwwq-j7x9",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-22"
+          ],
+          "cvss": {
+            "score": 5.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+          },
+          "range": ">=2.1.0 <4.1.11"
+        },
+        "vite"
+      ],
+      "effects": [
+        "vitest"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/@vitest/mocker"
+      ],
+      "fixAvailable": false
+    },
+    "@vue/compiler-core": {
+      "name": "@vue/compiler-core",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "source-map-js"
+      ],
+      "effects": [
+        "@vue/compiler-dom"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/@vue/compiler-core"
+      ],
+      "fixAvailable": false
+    },
+    "@vue/compiler-dom": {
+      "name": "@vue/compiler-dom",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@vue/compiler-core"
+      ],
+      "effects": [
+        "@vue/compiler-ssr",
+        "@vue/language-core"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/@vue/compiler-dom"
+      ],
+      "fixAvailable": false
+    },
+    "@vue/compiler-sfc": {
+      "name": "@vue/compiler-sfc",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@vue/compiler-core",
+        "@vue/compiler-dom",
+        "@vue/compiler-ssr",
+        "postcss",
+        "source-map-js"
+      ],
+      "effects": [],
+      "range": "",
+      "nodes": [
+        "node_modules/@vue/compiler-sfc"
+      ],
+      "fixAvailable": true
+    },
+    "@vue/compiler-ssr": {
+      "name": "@vue/compiler-ssr",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@vue/compiler-dom"
+      ],
+      "effects": [
+        "@vue/server-renderer"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/@vue/compiler-ssr"
+      ],
+      "fixAvailable": false
+    },
+    "@vue/language-core": {
+      "name": "@vue/language-core",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@vue/compiler-dom"
+      ],
+      "effects": [
+        "vue-tsc"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/@vue/language-core"
+      ],
+      "fixAvailable": false
+    },
+    "@vue/server-renderer": {
+      "name": "@vue/server-renderer",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@vue/compiler-ssr",
+        {
+          "source": 1241259,
+          "name": "@vue/server-renderer",
+          "dependency": "@vue/server-renderer",
+          "title": "@vue/server-renderer: XSS via missing CR in attribute-name blacklist",
+          "url": "https://github.com/advisories/GHSA-g2v6-rqmx-r4w6",
+          "severity": "high",
+          "cwe": [
+            "CWE-79",
+            "CWE-116"
+          ],
+          "cvss": {
+            "score": 7.2,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:L/I:L/A:N"
+          },
+          "range": "<3.5.42"
+        }
+      ],
+      "effects": [
+        "vue"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/@vue/server-renderer"
+      ],
+      "fixAvailable": false
+    },
+    "nanoid": {
+      "name": "nanoid",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1139427,
+          "name": "nanoid",
+          "dependency": "nanoid",
+          "title": "nanoid: custom generators can loop indefinitely when size is zero",
+          "url": "https://github.com/advisories/GHSA-2v37-7h3g-55p8",
+          "severity": "high",
+          "cwe": [
+            "CWE-835"
+          ],
+          "cvss": {
+            "score": 5.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<3.3.18"
+        }
+      ],
+      "effects": [
+        "postcss"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/nanoid"
+      ],
+      "fixAvailable": false
+    },
+    "postcss": {
+      "name": "postcss",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "nanoid",
+        "source-map-js"
+      ],
+      "effects": [
+        "vite"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/postcss"
+      ],
+      "fixAvailable": false
+    },
+    "source-map-js": {
+      "name": "source-map-js",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1241209,
+          "name": "source-map-js",
+          "dependency": "source-map-js",
+          "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets",
+          "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q",
+          "severity": "high",
+          "cwe": [
+            "CWE-1284"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": ">=1.0.0 <1.2.2"
+        }
+      ],
+      "effects": [
+        "@vue/compiler-core",
+        "@vue/compiler-sfc"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/source-map-js"
+      ],
+      "fixAvailable": false
+    },
+    "vite": {
+      "name": "vite",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "postcss"
+      ],
+      "effects": [
+        "@vitest/mocker"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/vite"
+      ],
+      "fixAvailable": false
+    },
+    "vitest": {
+      "name": "vitest",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@vitest/mocker",
+        {
+          "source": 1193683,
+          "name": "vitest",
+          "dependency": "vitest",
+          "title": "Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock",
+          "url": "https://github.com/advisories/GHSA-82fw-gwwq-j7x9",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-22"
+          ],
+          "cvss": {
+            "score": 5.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+          },
+          "range": ">=2.1.0 <4.1.11"
+        },
+        "vite"
+      ],
+      "effects": [],
+      "range": "",
+      "nodes": [
+        "node_modules/vitest"
+      ],
+      "fixAvailable": false
+    },
+    "vue": {
+      "name": "vue",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@vue/compiler-dom",
+        "@vue/compiler-sfc",
+        "@vue/server-renderer"
+      ],
+      "effects": [
+        "@vitejs/plugin-vue"
+      ],
+      "range": "",
+      "nodes": [
+        "node_modules/vue"
+      ],
+      "fixAvailable": false
+    },
+    "vue-tsc": {
+      "name": "vue-tsc",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@vue/language-core"
+      ],
+      "effects": [],
+      "range": "",
+      "nodes": [
+        "node_modules/vue-tsc"
+      ],
+      "fixAvailable": false
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 15,
+      "critical": 0,
+      "total": 15
+    },
+    "dependencies": {
+      "prod": 25,
+      "dev": 124,
+      "optional": 68,
+      "peer": 6,
+      "peerOptional": 0,
+      "total": 150
+    }
+  }
+}

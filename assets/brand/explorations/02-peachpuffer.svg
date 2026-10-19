@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="02-peachpuffer-title 02-peachpuffer-desc">
+<title id="02-peachpuffer-title">梦鱼更新器 · 桃桃河豚</title>
+<desc id="02-peachpuffer-desc">蜜桃橘色底、圆圆的小河豚，正面表情与柔软的双侧鱼鳍。</desc>
+<rect width="512" height="512" rx="120" fill="#F79B80"/>
+<path d="M164 235c-24-14-46-10-63 8 11 23 34 37 62 34Zm184 0c24-14 46-10 63 8-11 23-34 37-62 34Z" fill="#FFD7A3"/>
+<path d="M220 165c5-25 18-42 34-45-1 21 8 31 24 42Z" fill="#FFF3D8"/>
+<path d="M154 258c0-62 44-104 102-104s102 42 102 104c0 62-39 102-102 102s-102-40-102-102Z" fill="#FFF3D8"/>
+<circle cx="212" cy="247" r="10" fill="#69424C"/>
+<circle cx="300" cy="247" r="10" fill="#69424C"/>
+<ellipse cx="196" cy="276" rx="14" ry="9" fill="#F4B7A0"/>
+<ellipse cx="316" cy="276" rx="14" ry="9" fill="#F4B7A0"/>
+<path d="M240 278q16 17 32 0" fill="none" stroke="#69424C" stroke-width="6" stroke-linecap="round"/>
+<circle cx="382" cy="153" r="11" fill="none" stroke="#FFE6C6" stroke-width="6"/>
+</svg>

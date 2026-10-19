@@ -20,6 +20,19 @@ class ObjectDownloaderTest {
     @TempDir
     Path temporary;
 
+    @Test void overloadRetriesAreBoundedAndNeverReportedAsCorruptContent()throws Exception {
+        try(var server=new TestUpdateServer()){
+            Path instance=Files.createDirectories(temporary.resolve("overloaded"));EnginePaths paths=EnginePaths.of(instance,instance.resolve("DreamingFishUpdater"));paths.createDirectories();
+            var file=server.file("a.txt","content",FilePolicy.ENFORCED);server.overloadedObjectResponses.set(2);
+            var request=UpdateRequest.defaults(instance,instance.resolve("DreamingFishUpdater"),server.binding(),"0.2.0",Set.of());
+            new ObjectDownloader().download(request,paths,Map.of(file.sha256(),(long)file.bytes().length),ProgressListener.NONE);
+            assertArrayEquals(file.bytes(),Files.readAllBytes(paths.cacheObject(file.sha256())));
+            Files.delete(paths.cacheObject(file.sha256()));server.overloadedObjectResponses.set(100);
+            var error=assertThrows(UpdateException.class,()->new ObjectDownloader().download(request,paths,Map.of(file.sha256(),(long)file.bytes().length),ProgressListener.NONE));
+            assertEquals(UpdateErrorCode.DOWNLOAD_FAILED,error.code());assertTrue(error.getMessage().contains("繁忙"));assertEquals(97,server.overloadedObjectResponses.get());
+        }
+    }
+
     @Test
     void cancelsAParallelBatchWithoutHanging() throws Exception {
         try (TestUpdateServer server = new TestUpdateServer()) {

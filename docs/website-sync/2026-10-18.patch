@@ -1,0 +1,102 @@
+--- a/docs/admin.html
++++ b/docs/admin.html
+@@ -62,6 +62,8 @@
+ 
+     <main class="docs-main">
+       <article class="docs-article">
++<div class="callout warning" data-remediation="2026-10-18"><span class="callout-icon">!</span><div><strong>2026-10-18 本地修复候选，尚未发布</strong><p>当前代码基线为管理端 / 桌面 0.2.5、玩家端 0.2.1、Bootstrap 0.1.2。下面补充的是本轮本地修复后的行为，不能当作现有下载已经包含全部修复；正式升级与上线需另行安排。</p></div></div>
++<section><h2 id="remediation-session">连接、数据位置与恢复</h2><p>默认便携管理目录相对于本次实际桌面 data 根解析；选定的外部管理目录和标准源目录保持独立身份。迁移提示会说明实际使用位置，以及已迁移、继续使用旧位置或待清理的状态，不承诺没有残留。损坏连接配置可从有效 previous 恢复，原件和备份保留。旧绝对路径出现副本歧义时，需要重新选择目录，不能静默创建空项目。</p><p>浏览器进程、渲染进程退出与无响应使用每个窗口一分钟最多三次的共同恢复预算，达到上限后可从托盘手动重建。断开连接会取消所属网络工作并等待退出；它不撤销服务端已经提交的操作。</p><p>支持新任务协议的管理端会返回可查询任务 ID，队列和并发均有上限。网络断开后先复查原 ID；重启后的未知发布或外部上传不会自动重放。旧基本连接仍可使用，新增恢复能力不足时需升级后端。密码、令牌和签名私钥不写入任务输入记录。</p></section>
+         <div class="docs-breadcrumb"><span>DreamingFish Updater</span><span>/</span><span>远程管理与 AI agent</span></div>
+         <h1>远程管理与 AI agent</h1>
+ <!-- 正文开始 -->
+--- a/docs/changelog.html
++++ b/docs/changelog.html
+@@ -61,6 +61,8 @@
+ 
+     <main class="docs-main">
+       <article class="docs-article">
++<div class="callout warning" data-remediation="2026-10-18"><span class="callout-icon">!</span><div><strong>2026-10-18 本地修复候选，尚未发布</strong><p>当前代码基线为管理端 / 桌面 0.2.5、玩家端 0.2.1、Bootstrap 0.1.2。下面补充的是本轮本地修复后的行为，不能当作现有下载已经包含全部修复；正式升级与上线需另行安排。</p></div></div>
++<section><h2 id="remediation-unreleased">未发布：可靠性修复候选</h2><ul><li>迁移实际目录、损坏连接恢复和便携路径身份。</li><li>项目会话隔离、跳过与导入复查、持久恢复和提交收据。</li><li>完整内容证明、引擎游戏锁、公共下载和桌面网络边界。</li><li>存储配额与清理预览、窗口限次恢复、发布预演和玩家内容隔离。</li><li>按实例复用服务、有界任务、目录聚合与分页、依赖和构建资源一致性。</li></ul><p>本轮没有发布新的 Release，没有部署线上；最终版本编号和更新交付需要另行确认。下面的历史版本记录保持原事实。</p></section>
+         <div class="docs-breadcrumb"><span>DreamingFish Updater</span><span>/</span><span>版本与更新日志</span></div>
+         <h1>版本与更新日志</h1>
+ <!-- 正文开始 -->
+--- a/docs/create-project.html
++++ b/docs/create-project.html
+@@ -62,6 +62,8 @@
+ 
+     <main class="docs-main">
+       <article class="docs-article">
++<div class="callout warning" data-remediation="2026-10-18"><span class="callout-icon">!</span><div><strong>2026-10-18 本地修复候选，尚未发布</strong><p>当前代码基线为管理端 / 桌面 0.2.5、玩家端 0.2.1、Bootstrap 0.1.2。下面补充的是本轮本地修复后的行为，不能当作现有下载已经包含全部修复；正式升级与上线需另行安排。</p></div></div>
++<section><h2 id="remediation-imports">导入的跳过、重试与确认</h2><p>跳过在客户端结束，不作为导入动作提交，也不计入已导入数量。网络出错时保留原任务与暂存身份，先复查是否已提交；服务端已经导入时不重新上传。查不到确定结果时显示“结果待确认”，不能盲目覆盖原 ID。</p><p>浏览器刷新后不能恢复原 File 对象，需要按提示重新选择；服务器本地导入保留服务器路径并可复查。暂存过期后重新检查和确认。暂停只停止后续任务，取消当前上传不撤销已提交内容。</p><p>文件已导入但发布检查失败时，文件列表仍刷新；重做检查不会再次导入。发布预览过期后刷新检查，必须重新确认，不能自动再次发布。撤销依赖原文件归档；主动放弃归档后不能再承诺撤销。</p></section>
+         <div class="docs-breadcrumb"><span>DreamingFish Updater</span><span>/</span><span>创建第一个项目</span></div>
+         <h1>创建第一个项目</h1>
+ <!-- 正文开始 -->
+@@ -118,7 +120,7 @@
+ <li><strong>导入整个文件夹</strong>：点“导入文件”旁边的小箭头，选“导入文件夹”。比如在 <code>mods</code> 里导入你电脑上的 mods 文件夹，通常要的是它里面的内容，别变成 <code>mods/mods/</code>；拿不准的时候，以清单里显示的保存路径为准。</li>
+ <li><strong>文件在服务器上</strong>：小箭头里还有“从服务器导入”，可以浏览管理端所在服务器上的文件，同样先检查再导入。</li>
+ </ul>
+-<p>某一项上传失败了可以单独重试，导入清单收起来也不影响后台继续处理。导完之后想反悔，打开“操作记录”撤销这次导入就行，后面「日常维护」里会讲。</p>
++<p>某一项网络出错时先复查原任务结果，不能据此认为服务端没有导入；收起清单不会取消已发出的工作。撤销需要可验证的原文件归档，主动清理后会失去对应恢复能力。</p>
+ 
+ <h3 id="web-step-3-modes">三种维护方式<a class="anchor-link" href="#web-step-3-modes">#</a></h3>
+ <p>文件放进来以后，默认都是<span class="rule-chip sync">普通同步</span>。管理端一共有三种维护方式：</p>
+--- a/docs/faq.html
++++ b/docs/faq.html
+@@ -61,6 +61,8 @@
+ 
+     <main class="docs-main">
+       <article class="docs-article">
++<div class="callout warning" data-remediation="2026-10-18"><span class="callout-icon">!</span><div><strong>2026-10-18 本地修复候选，尚未发布</strong><p>当前代码基线为管理端 / 桌面 0.2.5、玩家端 0.2.1、Bootstrap 0.1.2。下面补充的是本轮本地修复后的行为，不能当作现有下载已经包含全部修复；正式升级与上线需另行安排。</p></div></div>
++<section><h2 id="remediation-verification">“已验证”和离线许可意味着什么？</h2><p>完整校验和严格离线许可读取当前文件内容，不以相同大小、修改时间或显示缓存作为内容未变的证明。自行管理和首次提供等原有策略允许的差异仍然保留；更新器不是反作弊系统。</p><p>只有网络不可用才能进入相应离线检查。需要修正文件、恢复事务、写入维护状态或音乐资源时，由引擎自身取得游戏锁；游戏运行中不能提交这些修改。纯只读检查与明确的本地差异选择不等于记录了一次完整验证。</p><p>内容预览保留普通文字、外部链接、本地和受支持 HTTP / HTTPS 图片、音乐与字体。原始 HTML、事件属性和危险 URL 不作为脚本执行；原生命令只允许内置玩家主页面调用，管理预览消息只接受同源父页面。</p></section>
+         <div class="docs-breadcrumb"><span>DreamingFish Updater</span><span>/</span><span>常见问题</span></div>
+         <h1>常见问题</h1>
+ <!-- 正文开始 -->
+--- a/docs/maintenance.html
++++ b/docs/maintenance.html
+@@ -62,6 +62,8 @@
+ 
+     <main class="docs-main">
+       <article class="docs-article">
++<div class="callout warning" data-remediation="2026-10-18"><span class="callout-icon">!</span><div><strong>2026-10-18 本地修复候选，尚未发布</strong><p>当前代码基线为管理端 / 桌面 0.2.5、玩家端 0.2.1、Bootstrap 0.1.2。下面补充的是本轮本地修复后的行为，不能当作现有下载已经包含全部修复；正式升级与上线需另行安排。</p></div></div>
++<section><h2 id="remediation-storage">存储、恢复与备份边界</h2><p>发布对象、历史版本、原文件归档、未提交暂存、可重建缓存和持久收据分别管理。默认暂存 16 GiB、可恢复归档 64 GiB、磁盘余量 512 MiB、活动暂存 4 个、未提交暂存保留 24 小时。未知长度上传和 ZIP 展开同样受配额约束。已发布玩家 ZIP 与解压副本在对象和收据完成后释放，收据仍可确认成功。</p><p>在设置的服务页或 <code>dfs-admin storage</code> 预览容量和清理；内容或选择变化后必须重新预览。明确选择放弃撤销才清理导入原件；活动任务和未完成恢复不会被当成缓存删除。部分失败会报告实际保留项，所有签名发布与对象保守保留。</p><p>导入在修改源文件前保存恢复意图，首次项目访问先核对未完成操作。人工修改、归档缺失或路径冲突会阻止自动覆盖与发布。请保留恢复材料，从独立备份找回可核对原件，不要删除日志伪装成功。</p><p>加密归档恢复的是发布能力：SQLite、项目配置、密钥、清单、玩家程序清单和对象库。标准源目录、运行设置、账户、桌面连接、导入撤销历史与恢复材料需另外保存。完整搬迁必须同时带走管理 home、桌面 data 和外部目录。备份生成需要数据库快照、ZIP 和加密中间文件空间。</p><p>管理 JVM 默认 <code>-Xms64m -Xmx512m</code>，桌面与脚本可通过经过整数校验的 <code>DFS_JAVA_HEAP_MB</code> 调整；Xmx 不是整个进程或桌面总内存上限。公共下载默认 16 个活动传输，超额返回可重试的 503，不以更多线程代替资源边界。</p></section>
+         <div class="docs-breadcrumb"><span>DreamingFish Updater</span><span>/</span><span>日常维护</span></div>
+         <h1>日常维护</h1>
+ <!-- 正文开始 -->
+@@ -154,7 +156,7 @@
+ <p>导出以后，记得把项目的“玩家更新地址”改成实际托管的地址，再从另一台电脑测试一次。上传用的账户和密钥只用于这一次上传，管理端不会保存，也不会进到玩家包里。第一次请选一个空目录；以后选同一个目录导出，就只会增量更新。终端用主菜单 <code>[13]</code> 导出。</p>
+ 
+ <h2 id="backup">备份与恢复<a class="anchor-link" href="#backup">#</a></h2>
+-<p>如果你特别看重安全性，可以给管理端做加密备份——它包含项目数据、发布记录和签名私钥，跨机器迁移或保护重要环境时用得上（只有交互式命令行提供，桌面版和网页管理界面没有）。日常维护不做备份也没有关系。创建备份：</p>
++<p>如果你特别看重安全性，可以给管理端做加密备份——它包含发布数据库、清单、对象库和签名私钥，完整工作台的其他目录需另存，跨机器迁移或保护重要环境时用得上（只有交互式命令行提供，桌面版和网页管理界面没有）。请按发布身份和源文件的重要程度定期保存可验证的独立备份。创建备份：</p>
+ <div class="code-block"><div class="code-head"><span>创建加密备份</span><button class="copy-button" type="button">复制</button></div><pre><code>dfs-admin backup create --output D:\备份\dreamingfish-20261014.dfb</code></pre></div>
+ <p>密码从环境变量 <code>DFS_BACKUP_PASSWORD</code> 读取；未设置时会在终端中交互式输入并确认。恢复备份：</p>
+ <div class="code-block"><div class="code-head"><span>恢复加密备份</span><button class="copy-button" type="button">复制</button></div><pre><code>dfs-admin backup restore D:\备份\dreamingfish-20261014.dfb --force</code></pre></div>
+--- a/docs/quickstart.html
++++ b/docs/quickstart.html
+@@ -62,6 +62,8 @@
+ 
+     <main class="docs-main">
+       <article class="docs-article">
++<div class="callout warning" data-remediation="2026-10-18"><span class="callout-icon">!</span><div><strong>2026-10-18 本地修复候选，尚未发布</strong><p>当前代码基线为管理端 / 桌面 0.2.5、玩家端 0.2.1、Bootstrap 0.1.2。下面补充的是本轮本地修复后的行为，不能当作现有下载已经包含全部修复；正式升级与上线需另行安排。</p></div></div>
++<section><h2 id="remediation-data-location">先确认实际的数据位置</h2><p>桌面连接页会显示本次实际 data 根；默认 management 随它解析，外部目录保持原路径。终端版 data 通常指数据库目录，运行设置和账户可能在其上层 home；桌面 data 还包含连接记录及默认管理 home。不能只凭同名文件夹推断全部数据都在其中。</p><p>新格式默认连接搬家后打开新副本；旧绝对路径缺失或有多个合理副本时，需要重新定位。标准源目录独立选择，搬程序不会擅自改写外部源目录。先保存完整搬迁清单，再替换程序，保留原签名身份。</p></section>
+         <div class="docs-breadcrumb"><span>DreamingFish Updater</span><span>/</span><span>下载与首次配置</span></div>
+         <h1>下载与首次配置</h1>
+ <!-- 正文开始 -->
+@@ -96,7 +98,7 @@
+ </tbody></table></div>
+ 
+ <h3 id="desktop-start" data-toc-label="方式一：桌面版">方式一：桌面版，直接运行<a class="anchor-link" href="#desktop-start">#</a></h3>
+-<p>桌面版<strong>免安装</strong>：下载便携版 <code>dfs-admin-desktop-windows-x64-0.2.1.zip</code>，解压到一个固定的目录（比如 <code>D:\梦鱼管理端桌面版</code>），双击里面的 <code>DreamingFishAdminDesktop.exe</code> 就能用。它自带 Java 和管理核心，不需要另外装任何东西，也不需要先在终端里跑首次引导。习惯装软件的，也可以下载安装版 <code>dfs-admin-desktop-windows-x64-0.2.1-setup.exe</code>，装好后从开始菜单打开，用起来完全一样。</p>
++<p>桌面版<strong>免安装</strong>：下载便携版 <code>dfs-admin-desktop-windows-x64-0.2.5.zip</code>，解压到一个固定的目录（比如 <code>D:\梦鱼管理端桌面版</code>），双击里面的 <code>DreamingFishAdminDesktop.exe</code> 就能用。它自带 Java 和管理核心，不需要另外装任何东西，也不需要先在终端里跑首次引导。习惯装软件的，也可以下载安装版 <code>dfs-admin-desktop-windows-x64-0.2.5-setup.exe</code>，装好后从开始菜单打开，用起来完全一样。</p>
+ <div class="steps">
+ <div class="step-card"><h3>选“本机管理”</h3><p>打开后先看到连接页。选上方的“本机管理”，填个好认的连接名称。</p></div>
+ <div class="step-card"><h3>确认管理数据目录</h3><p>第一次用可以保留默认目录；以前用过终端版，就点旁边的文件夹按钮，选中原来放 <code>management-settings.json</code> 的那个目录，项目和发布记录都会接着用。</p></div>
+@@ -133,7 +135,7 @@
+      和 management-web-auth.json（如果已经注册 Web 账户）
+      移动或复制到新版管理端根目录。
+   2. 启动新版管理端，程序会自动读取原有数据。</pre></div>
+-<div class="callout"><span class="callout-icon">i</span><div><strong>data 里面会放什么？为什么重要</strong><p>项目设置、发布记录、签名密钥、操作记录和全部内容对象都存在 <code>data</code> 里，相当于管理端的“全部家当”。升级或迁移管理端时，把旧版本的 <code>data</code> 连同 <code>management-settings.json</code> 等设置文件一起搬到新版本根目录，项目和发布历史就会原样恢复；备份时也请优先备份 <code>data</code>，不要只复制一个空目录。</p></div></div>
++<div class="callout"><span class="callout-icon">i</span><div><strong>data 里面会放什么？为什么重要</strong><p>数据库、密钥和内容对象通常在管理数据目录；连接、运行设置、账户、标准源目录和恢复材料还需按实际位置分别保存。升级或迁移时，按连接页和管理设置确认实际 home / data，连同账户、标准源目录和恢复材料保存；外部目录单独搬迁并明确重新定位。保留原签名密钥和信任序列，在副本上验证项目与历史后再决定清理旧位置。</p></div></div>
+ <div class="terminal"><div class="terminal-bar"><span class="terminal-dot" style="background:#ff5f57"></span><span class="terminal-dot" style="background:#febc2e"></span><span class="terminal-dot" style="background:#28c840"></span><span class="terminal-title">第 2 步 · 玩家下载服务</span></div>
+ <pre>[2/3] 配置玩家下载服务
+ 玩家更新器会通过这项服务下载模组和配置文件。

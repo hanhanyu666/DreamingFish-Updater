@@ -18,9 +18,9 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Cache of content hashes and mod metadata keyed by instance-relative path.
+ * Optional display cache of content hashes and mod metadata keyed by instance-relative path.
  * A file is hashed again whenever its size or modification time changes, in
- * the same way version control tools avoid re-reading unchanged files. The
+ * the same way version control tools avoid re-reading unchanged files. Content proofs use verified(), which bypasses this cache. The
  * cache is an optimization only: losing or corrupting it just costs time.
  */
 public final class LocalFileIndex {
@@ -43,6 +43,7 @@ public final class LocalFileIndex {
     private final Map<String, Entry> entries = new HashMap<>();
     private final Set<String> touched = new HashSet<>();
     private boolean dirty;
+    private boolean contentProof;
 
     private LocalFileIndex(Path storage) {
         this.storage = storage;
@@ -66,6 +67,13 @@ public final class LocalFileIndex {
         return index;
     }
 
+    /** Content proof for installation and strict offline checks; disk metadata is not evidence. */
+    public static LocalFileIndex verified(Path storage) {
+        LocalFileIndex index = new LocalFileIndex(storage);
+        index.contentProof = true;
+        return index;
+    }
+
     /** An index that never persists, for one-off inspections. */
     public static LocalFileIndex transientIndex() {
         return new LocalFileIndex(null);
@@ -81,11 +89,11 @@ public final class LocalFileIndex {
         long modified = before.lastModifiedTime().toMillis();
         touched.add(key);
         Entry cached = entries.get(key);
-        if (cached != null && cached.size() == size && cached.modifiedMillis() == modified
+        if (!contentProof && cached != null && cached.size() == size && cached.modifiedMillis() == modified
                 && cached.sha256() != null && (!needMetadata || cached.metadataRead())) {
             return inspection(cached);
         }
-        String hash = cached != null && cached.size() == size && cached.modifiedMillis() == modified
+        String hash = !contentProof && cached != null && cached.size() == size && cached.modifiedMillis() == modified
                 && cached.sha256() != null ? cached.sha256() : CryptoSupport.sha256(file);
         ModMetadata metadata = null;
         boolean metadataRead = false;
@@ -117,7 +125,9 @@ public final class LocalFileIndex {
             throws IOException {
         if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return false;
         if (Files.size(file) != size) return false;
-        return inspect(file, relativePath, false).sha256().equals(sha256);
+        // This method is a content assertion even when the caller loaded the optional
+        // display cache. Disk size/mtime records can never satisfy the assertion.
+        return CryptoSupport.sha256(file).equals(sha256);
     }
 
     /**

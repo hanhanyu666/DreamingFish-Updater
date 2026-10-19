@@ -1,6 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec "$SCRIPT_DIR/runtime/bin/java" -Dfile.encoding=UTF-8 -Ddfs.home="$SCRIPT_DIR" \
+DFS_JAVA_HEAP_MB=${DFS_JAVA_HEAP_MB:-512}
+case "$DFS_JAVA_HEAP_MB" in *[!0-9]*|'') echo "DFS_JAVA_HEAP_MB must be 128-16384" >&2; exit 2;; esac
+if [ "${#DFS_JAVA_HEAP_MB}" -gt 5 ] || [ "$DFS_JAVA_HEAP_MB" -lt 128 ] || [ "$DFS_JAVA_HEAP_MB" -gt 16384 ]; then
+  echo "DFS_JAVA_HEAP_MB must be 128-16384" >&2; exit 2
+fi
+exec "$SCRIPT_DIR/runtime/bin/java" -Xms64m "-Xmx${DFS_JAVA_HEAP_MB}m" -Dfile.encoding=UTF-8 -Ddfs.home="$SCRIPT_DIR" \
   -Djava.net.preferIPv4Stack=true \
   -jar "$SCRIPT_DIR/app/dfs-admin.jar" "$@"

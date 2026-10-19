@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dismiss-notice"
+description = "Enables the dismiss_notice command without any pre-configured scope."
+commands.allow = ["dismiss_notice"]
+
+[[permission]]
+identifier = "deny-dismiss-notice"
+description = "Denies the dismiss_notice command without any pre-configured scope."
+commands.deny = ["dismiss_notice"]

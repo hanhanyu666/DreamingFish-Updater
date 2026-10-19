@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {acceptedPreviewMessage} from "./lib/previewBoundary";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import AppIcon from "./components/AppIcon.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
@@ -51,8 +52,7 @@ const countdownProgress = computed(() => {
 });
 
 function onPreviewMessage(event: MessageEvent): void {
-  if (!adminPreview || event.origin !== window.location.origin
-      || event.data?.type !== "dfs-admin-preview") return;
+  if (!acceptedPreviewMessage(event,window.location.origin,window.parent,window,adminPreview)) return;
   applyAdminPreview(event.data);
 }
 
@@ -272,7 +272,7 @@ function formatNewsDate(value: string): string {
         class="updater-info reveal"
         style="--reveal-delay: 310ms; --from-y: 8px"
       >
-        DreamingFish Updater {{ "0.2.1" }}
+        DreamingFish Updater {{ "0.2.2" }}
       </div>
 
       <ContentPages />

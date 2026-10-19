@@ -1,0 +1,12 @@
+OFFLINE_WHILE_GAME_LOCKED outcome=OFFLINE_ALLOWED badFileExists=false archived=1
+SAME_SIZE_MTIME outcome=OFFLINE_ALLOWED currentContent=evil
+SKIP rejected=请选择新增、覆盖或替换旧模组
+RETAINED_IMPORT=[demo\914219d3-8b04-4bf8-8897-bc82c04793bf\payload.bin, demo\914219d3-8b04-4bf8-8897-bc82c04793bf\receipt.json, demo\914219d3-8b04-4bf8-8897-bc82c04793bf\stage.json]
+PUBLIC_POOL workers=64 queueRemainingCapacity=2147483647
+HEALTH_BEFORE=200
+SLOW_READERS active=64
+HEALTH_DURING=TIMEOUT queueSize=1
+HEALTH_AFTER=200
+SKIP_UI state=error sentAction=SKIP
+RETRY uploads=1 stage=new-stage requests=[{"method":"PUT","path":"/api/projects/demo/files/stage?path=config%2Fa"}]
+PROJECT_RACE selected=b displayed=a file=config/from-b

@@ -8,7 +8,7 @@ import {profilePayload,type Profile} from './connections';
 import Fish from './workbench/Fish.vue';
 type Snapshot={profiles:Profile[];defaultHome:string;logs:string;dataRoot:string;installed:boolean;dataBesideProgram:boolean;portableNotice:boolean;overlayNotice:boolean;programName:string;active:string|null;version:string;notice:string|null};
 type UpdateInfo={version:string;notes:string;installable:boolean};
-const state=ref<Snapshot>({profiles:[],defaultHome:'',logs:'',dataRoot:'',installed:false,dataBesideProgram:true,portableNotice:false,overlayNotice:false,programName:'',active:null,version:'0.2.5',notice:null});
+const state=ref<Snapshot>({profiles:[],defaultHome:'',logs:'',dataRoot:'',installed:false,dataBesideProgram:true,portableNotice:false,overlayNotice:false,programName:'',active:null,version:'0.2.6',notice:null});
 const update=ref<UpdateInfo|null>(null),updating=ref(''),checking=ref(false);
 const form=reactive<Profile>({id:'',name:'本机管理',kind:'local',home:'',url:'',target:'',remotePort:18080});
 const busy=ref(false),status=ref(''),error=ref(false),menu=ref(''),dialog=ref('');
@@ -20,10 +20,10 @@ function message(text:string,failed=false){status.value=text;error.value=failed;
 async function attempt(work:()=>Promise<unknown>){try{await work();}catch(e){message(String(e),true);}}
 async function refresh(){state.value=await invoke<Snapshot>('load_desktop');if(state.value.notice)message(state.value.notice,true);}
 function newProfile(kind:'local'|'remote'|'ssh'='local'){selected.value='';Object.assign(form,{id:'',name:kind==='local'?'本机管理':'我的服务器',kind,home:state.value.defaultHome,url:'',target:'',remotePort:18080});menu.value='';message('');}
-function edit(profile:Profile){selected.value=profile.id;Object.assign(form,{home:'',url:'',target:'',remotePort:18080,...profile});menu.value='';message('');}
+function edit(profile:Profile){selected.value=profile.id;Object.assign(form,{home:'',url:'',target:'',remotePort:18080,...profile,confirmRelocation:false});menu.value='';message('');}
 async function connect(profile:Profile){if(busy.value)return;busy.value=true;message(profile.kind==='local'?'正在启动本机管理端…':profile.kind==='ssh'?'正在建立 SSH 连接…':'正在连接管理端…');try{const saved=await invoke<Profile>('save_profile',{profile:profilePayload(profile)});await invoke('connect_profile',{id:saved.id});selected.value=saved.id;form.id=saved.id;await refresh();message('工作区已打开');}catch(e){message(String(e),true);}finally{busy.value=false;}}
 async function remove(profile:Profile){busy.value=true;try{await invoke('delete_profile',{id:profile.id});if(selected.value===profile.id)newProfile();await refresh();message('已移除连接记录');}catch(e){message(String(e),true);}finally{busy.value=false;menu.value='';}}
-async function chooseHome(){const path=await invoke<string|null>('choose_home');if(path)form.home=path;}
+async function chooseHome(){const path=await invoke<string|null>('choose_home');if(path){form.home=path;form.confirmRelocation=true;}}
 async function disconnect(){busy.value=true;try{await invoke(dialog.value==='quit'?'quit_application':'disconnect_workspace');await refresh();message('工作区已断开');}catch(e){message(String(e),true);}finally{dialog.value='';busy.value=false;}}
 async function quit(){if(active.value)dialog.value='quit';else await invoke('quit_application');}
 async function dismissNotice(name:'portable'|'overlay'){await invoke('dismiss_notice',{name});if(name==='portable')state.value.portableNotice=false;else state.value.overlayNotice=false;}

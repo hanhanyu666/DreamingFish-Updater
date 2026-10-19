@@ -1,0 +1,13 @@
+OFFLINE_WHILE_GAME_LOCKED outcome=OFFLINE_ALLOWED badFileExists=false archived=1
+SAME_SIZE_MTIME outcome=OFFLINE_ALLOWED currentContent=evil
+SKIP rejected=请选择新增、覆盖或替换旧模组
+RETAINED_IMPORT=[demo\89672d76-c949-4f91-b5a0-cd493c57e367\payload.bin, demo\89672d76-c949-4f91-b5a0-cd493c57e367\receipt.json, demo\89672d76-c949-4f91-b5a0-cd493c57e367\stage.json]
+PUBLIC_POOL workers=64 queueRemainingCapacity=2147483647
+HEALTH_BEFORE=200
+SLOW_READERS active=64
+HEALTH_DURING=TIMEOUT queueSize=1
+HEALTH_AFTER=200
+SKIP_UI state=error sentAction=SKIP
+RETRY uploads=1 stage=new-stage requests=[{"method":"PUT","path":"/api/projects/demo/files/stage?path=config%2Fa"}]
+PROJECT_RACE selected=b displayed=a file=config/from-b
+Probe artifacts: D:\Desktop\DreamingFish-Updater\target\review-2026-10-14\run-9947b148-b542-486e-8cd1-77d7188d024e

@@ -23,12 +23,13 @@ public final class PlayerPackageService {
             throw new ManagementException("请选择玩家端发行 ZIP");
         String id = UUID.randomUUID().toString();
         Path directory = directory(projectId, id);
-        try {
+        try (ProjectLock lock=ProjectLock.acquire(paths.locks().resolve("package-"+id+".lock"));
+             StorageService.Lease budget=new StorageService(paths,database,json).reserve(Math.addExact(length<0?SourceFileService.MAX_UPLOAD_BYTES:length,MAX_EXPANDED_BYTES),0)) {
             Files.createDirectories(directory);
             Path zip = directory.resolve("package.zip");
-            SourceTransferService.copyLimited(input, zip, length, SourceFileService.MAX_UPLOAD_BYTES);
+            budget.copy(input, zip, length, SourceFileService.MAX_UPLOAD_BYTES);
             Path extracted = directory.resolve("bundle");
-            extract(zip, extracted);
+            extract(zip, extracted,budget);
             var resolved = PlayerProgramService.resolveSource(extracted, "", "");
             String platform = resolved.launcher().toLowerCase(Locale.ROOT).endsWith(".exe") ? "windows-x64" : "linux-x64";
             String relative = extracted.relativize(resolved.root()).toString().replace('\\', '/');
@@ -45,27 +46,57 @@ public final class PlayerPackageService {
         }
     }
 
-    public StoredPlayerProgram publish(String projectId, String id, String minimumBootstrapVersion) {
-        Path directory = directory(projectId, id);
-        try {
-            PackageView view = json.read(Files.readAllBytes(directory.resolve("package.json")), PackageView.class);
-            Path root = directory.resolve("bundle");
-            if (!view.sourceRelative().isEmpty()) root = PathSafety.resolveInside(root, view.sourceRelative());
-            return new PlayerProgramService(paths, database, json).publish(projectId, view.platform(), view.version(),
-                    root, view.launcher(), minimumBootstrapVersion == null ? "0.1.2" : minimumBootstrapVersion);
-        } catch (IOException error) { throw new ManagementException("玩家端暂存包不存在，请重新上传", error); }
-    }
-
-    public void discard(String projectId, String id) {
-        Path directory = directory(projectId, id);
-        try {
-            if (Files.exists(directory)) try (var stream = Files.walk(directory)) {
-                for (Path item : stream.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(item);
+    public StoredPlayerProgram publish(String projectId,String id,String minimumBootstrapVersion) {
+        Path directory=directory(projectId,id);
+        try(ProjectLock project=ProjectLock.acquire(paths.locks().resolve(projectId+".lock"));ProjectLock lock=ProjectLock.acquire(paths.locks().resolve("package-"+id+".lock"))) {
+            var programs=new PlayerProgramService(paths,database,json);
+            Path published=directory.resolve("published.json");
+            if(Files.isRegularFile(published,LinkOption.NOFOLLOW_LINKS)){
+                var previous=json.read(published,StoredPlayerProgram.class);return programs.read(projectId,previous.platform(),previous.version());
             }
-        } catch (IOException ignored) { /* Leave failed temporary cleanup for operator recovery. */ }
+            PackageView view=json.read(directory.resolve("package.json"),PackageView.class);
+            if(!view.publishable())throw new ManagementException(view.problem());
+            Path root=directory.resolve("bundle");if(!view.sourceRelative().isEmpty())root=PathSafety.resolveInside(root,view.sourceRelative());
+            String minimum=minimumBootstrapVersion==null?"0.1.2":minimumBootstrapVersion;
+            Path intent=directory.resolve("publish-intent.json");
+            boolean retry=Files.isRegularFile(intent,LinkOption.NOFOLLOW_LINKS);
+            if(retry){String expected=json.read(intent,PublishIntent.class).minimumBootstrapVersion();if(!minimum.equals(expected))throw new ManagementException("发布重试的 Bootstrap 约束与原请求不同");}
+            else AtomicFiles.write(intent,json.write(new PublishIntent(minimum)));
+            StoredPlayerProgram result;
+            Path manifestPath=paths.playerProgramDirectory(projectId,view.platform(),view.version()).resolve("manifest.json");
+            if(retry&&Files.isRegularFile(manifestPath,LinkOption.NOFOLLOW_LINKS)){
+                result=programs.read(projectId,view.platform(),view.version());
+                var manifest=json.read(result.manifestPath(),PlayerProgramManifest.class);
+                if(!manifest.minimumBootstrapVersion().equals(minimum)||!manifest.launchPath().equals(view.launcher()))throw new ManagementException("已有发布与原请求身份不同，保留暂存待人工核对");
+                Set<String> expected=new HashSet<>();
+                for(var file:manifest.files()){
+                    Path source=PathSafety.resolveInside(root,file.path());
+                    if(!Files.isRegularFile(source,LinkOption.NOFOLLOW_LINKS)||Files.size(source)!=file.size()||!CryptoSupport.sha256(source).equals(file.sha256()))throw new ManagementException("已有发布内容与暂存不同，不能当作成功重试");
+                    expected.add(file.path());
+                }
+                try(var files=Files.walk(root)){for(Path file:files.filter(p->Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)).toList())if(!expected.contains(root.relativize(file).toString().replace('\\','/')))throw new ManagementException("暂存有未发布的额外内容，请人工核对");}
+            }else result=programs.publish(projectId,view.platform(),view.version(),root,view.launcher(),minimum);
+            AtomicFiles.write(published,json.write(result));
+            releaseCopies(directory);
+            return result;
+        }catch(IOException error){throw new ManagementException("玩家端暂存或发布收据不可用；保留原请求后复查",error);}
+    }
+    private record PublishIntent(String minimumBootstrapVersion){}
+    public void discard(String projectId,String id) {
+        Path directory=directory(projectId,id);
+        try(ProjectLock lock=ProjectLock.acquire(paths.locks().resolve("package-"+id+".lock"))){
+            if(Files.exists(directory.resolve("published.json"))){releaseCopies(directory);return;}
+            if(Files.exists(directory.resolve("publish-intent.json")))throw new ManagementException("玩家程序发布结果待确认，不能丢弃原请求");
+            AtomicFiles.deleteRecursively(directory);
+        }catch(IOException error){throw new ManagementException("暂存清理未完成，请查看存储清理预览",error);}
+    }
+    private static void releaseCopies(Path directory)throws IOException {
+        AtomicFiles.deleteRecursively(directory.resolve("bundle"));Files.deleteIfExists(directory.resolve("package.zip"));
+        Files.deleteIfExists(directory.resolve("publish-intent.json"));
     }
 
-    static void extract(Path zip, Path root) throws IOException {
+    static void extract(Path zip, Path root) throws IOException {extract(zip,root,null);}
+    private static void extract(Path zip,Path root,StorageService.Lease budget)throws IOException {
         PathSafety.createSafeDirectories(root);
         Set<String> names = new HashSet<>();
         long expanded = 0;
@@ -86,6 +117,7 @@ public final class PlayerPackageService {
                     for (int lengthRead; (lengthRead = input.read(buffer)) >= 0;) {
                         expanded += lengthRead;
                         if (expanded > MAX_EXPANDED_BYTES) throw new ManagementException("ZIP 解压后超过 4 GiB");
+                        if(budget!=null)budget.charge(lengthRead);
                         output.write(buffer, 0, lengthRead);
                     }
                 }

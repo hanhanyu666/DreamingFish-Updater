@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="74 63 364 364" fill="none" role="img" aria-labelledby="mono-title mono-desc">
+<title id="mono-title">梦鱼更新器 · 单色标志</title>
+<desc id="mono-desc">保留双叶尾鳍、鱼身和更新弧线。内联使用时继承 currentColor。</desc>
+<g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<path d="M329 116C265 91 171 95 113 130m11-22-11 22 24 3" stroke-width="6"/>
+<path d="M136 357c62 42 148 45 224 10m-29-10 29 10-19 25" stroke-width="8"/>
+</g>
+<g fill="currentColor" transform="translate(-5 -3) translate(268 257) scale(1.06) translate(-268 -257)">
+<path d="M251 213c11-47 32-52 65-21l-8 25Zm5 88c10 44 35 48 64 13Z"/>
+<path d="M219 254c-29-24-60-45-89-43-1 25 9 45 28 59-21 17-29 37-26 62 32 1 64-20 88-53l10-13Z"/>
+<path fill-rule="evenodd" d="M201 260c32-50 72-70 117-65 37 3 64 25 84 62-22 38-50 57-86 60-46 4-85-16-115-57Zm157-18a13 13 0 1 0-26 0 13 13 0 0 0 26 0Z"/>
+</g>
+</svg>

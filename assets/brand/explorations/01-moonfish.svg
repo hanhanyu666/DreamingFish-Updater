@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="01-moonfish-title 01-moonfish-desc">
+<title id="01-moonfish-title">梦鱼更新器 · 月眠鱼</title>
+<desc id="01-moonfish-desc">薰衣草色底、奶油白小鱼、闭上的眼睛和一颗暖金色小星星。</desc>
+<rect width="512" height="512" rx="120" fill="#AAA5EB"/>
+<g transform="rotate(-14 256 264)">
+<path d="M182 244c1-50 43-84 98-84 70 0 119 49 119 109 0 60-48 100-108 100-56 0-99-37-109-85l-46 27c-8 5-15-1-11-10l16-32-16-34c-4-9 2-15 11-10Z" fill="#FFF9EC"/>
+<path d="M257 254c-22-3-36 7-30 19 5 11 22 5 30-7" fill="#D6CEF4"/>
+<path d="M326 247q10 12 20 0" fill="none" stroke="#615579" stroke-width="7" stroke-linecap="round"/>
+<ellipse cx="335" cy="275" rx="13" ry="8" fill="#F3B9C4"/>
+<path d="M369 274q5 6 10 0" fill="none" stroke="#615579" stroke-width="4.5" stroke-linecap="round"/>
+</g>
+<path d="M382 105c4 14 10 20 24 24-14 4-20 10-24 24-4-14-10-20-24-24 14-4 20-10 24-24Z" fill="#FFE3A4"/>
+</svg>

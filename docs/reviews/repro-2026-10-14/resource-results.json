@@ -1,0 +1,73 @@
+{
+  "jdk": "D:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+  "files": 1088,
+  "managedBytes": 268566528,
+  "logicalCPUs": 32,
+  "hostMemoryGiB": 31.8,
+  "phases": [
+    {
+      "name": "idle_empty_5s",
+      "seconds": 5.001,
+      "cpuSeconds": 0.0,
+      "peakRssMiB": 128.9,
+      "endRssMiB": 118.3,
+      "readMiB": 0.0,
+      "writeMiB": 0.0
+    },
+    {
+      "name": "list_1088_files",
+      "seconds": 0.197,
+      "cpuSeconds": 0.578,
+      "peakRssMiB": 140.3,
+      "endRssMiB": 140.8,
+      "readMiB": 0.2,
+      "writeMiB": 0.0
+    },
+    {
+      "name": "scan_256MiB",
+      "seconds": 2.204,
+      "cpuSeconds": 2.906,
+      "peakRssMiB": 269.8,
+      "endRssMiB": 274.8,
+      "readMiB": 256.2,
+      "writeMiB": 0.5
+    },
+    {
+      "name": "first_publish",
+      "seconds": 14.84,
+      "cpuSeconds": 14.672,
+      "peakRssMiB": 421.3,
+      "endRssMiB": 421.0,
+      "readMiB": 514.5,
+      "writeMiB": 257.5
+    },
+    {
+      "name": "scan_unchanged",
+      "seconds": 2.022,
+      "cpuSeconds": 2.391,
+      "peakRssMiB": 433.0,
+      "endRssMiB": 180.1,
+      "readMiB": 256.7,
+      "writeMiB": 0.3
+    },
+    {
+      "name": "publish_unchanged",
+      "seconds": 5.084,
+      "cpuSeconds": 4.578,
+      "peakRssMiB": 180.1,
+      "endRssMiB": 170.1,
+      "readMiB": 514.6,
+      "writeMiB": 1.4
+    },
+    {
+      "name": "idle_after_work_5s",
+      "seconds": 5.001,
+      "cpuSeconds": 0.0,
+      "peakRssMiB": 170.1,
+      "endRssMiB": 161.0,
+      "readMiB": 0.0,
+      "writeMiB": 0.0
+    }
+  ],
+  "dataBytes": 269979708
+}

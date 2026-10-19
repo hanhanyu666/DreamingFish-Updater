@@ -32,6 +32,14 @@ public final class PlayerDeploymentService {
         this.programs = new PlayerProgramService(paths, database, json);
     }
 
+    /** Conservative space for private materialization, ZIP and metadata copies. */
+    public long temporaryBudget(String projectId,String platform,String releaseId,Path agent) {
+        var project=database.requireProject(projectId);var release=database.findRelease(projectId,releaseId).orElseThrow(()->new ManagementException("Unknown release: "+releaseId));
+        var program=programs.latest(projectId,platform).orElseThrow(()->new ManagementException("请先发布玩家程序"));
+        try{var manifest=readProgram(program);long payload=manifest.files().stream().mapToLong(cn.dreamingfish.updater.protocol.PlayerProgramFile::size).sum();long cover=project.branding().coverObject()==null?0:Files.size(objects.require(project.branding().coverObject()));return Math.addExact(Math.multiplyExact(payload,3),Math.addExact(Math.multiplyExact(Files.size(release.manifestPath()),4),Math.addExact(Files.size(agent),Math.addExact(cover*2,1024L*1024+manifest.files().size()*2048L))));}
+        catch(IOException error){throw new ManagementException("无法估算部署暂存空间",error);}
+    }
+
     public PreparedDeployment create(String projectId, String platform,
                                      String releaseId, Path outputParent,
                                      Path bootstrapAgent) {

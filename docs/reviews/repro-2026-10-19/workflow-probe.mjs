@@ -1,0 +1,16 @@
+import {createRequire} from 'node:module';
+import {resolve} from 'node:path';
+import assert from 'node:assert/strict';
+const repo=resolve(import.meta.dirname,'../../..');
+const require=createRequire(resolve(repo,'player-ui/package.json'));
+const {build}=require('esbuild');
+globalThis.location={search:''};globalThis.window={};
+globalThis.localStorage={getItem:()=>null,setItem:()=>{}};
+const bundle=await build({entryPoints:[resolve(repo,'admin-desktop/src/workbench/store.ts')],bundle:true,write:false,platform:'node',format:'esm'});
+const {desk,request}=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
+desk.projectId='demo';desk.project={id:'demo'};desk.state={capabilities:['application-tasks']};
+globalThis.fetch=async()=>({ok:true,status:200,json:async()=>({previewId:'completed-synchronous-scan'})});
+const result=await request('/api/projects/demo/scan','POST',{});
+assert.equal(result.previewId,'completed-synchronous-scan');
+assert.equal(desk.jobs[0].state,'QUEUED');
+console.log(`SYNC_FALLBACK result=${result.previewId} jobs=${desk.jobs.length} jobState=${desk.jobs[0].state}`);

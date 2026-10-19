@@ -1,0 +1,28 @@
+{
+  "kind": "hidden_startup_and_connection_smoke",
+  "seconds": 2.759,
+  "exitCode": 0,
+  "timedOut": false,
+  "peakSumWorkingSetMiB": 875.2,
+  "peakSumPrivateBytesMiB": 1078.3,
+  "maxProcesses": 15,
+  "groupsAtPeakWorkingSetMiB": {
+    "DreamingFishAdminDesktop.exe": 41.4,
+    "msedgewebview2.exe": 714.3,
+    "java.exe": 111.9,
+    "conhost.exe": 7.6
+  },
+  "check": {
+    "bundledLauncherIpc": true,
+    "desktopFrontendReady": true,
+    "ownedLoopbackClosed": true,
+    "profiles": 1,
+    "success": true,
+    "version": "0.2.5",
+    "windowsKeptHidden": true,
+    "workspaceFrameIpc": true,
+    "workspaceManagementCommandsDenied": true,
+    "workspaceUrl": "http://127.0.0.1:14118/workspace.html"
+  },
+  "note": "Working sets sum shared pages more than once; private bytes are committed memory. Neither is a steady-state idle measurement."
+}

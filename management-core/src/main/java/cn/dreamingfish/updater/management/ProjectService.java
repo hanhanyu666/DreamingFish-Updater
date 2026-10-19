@@ -36,10 +36,11 @@ public final class ProjectService {
     public ProjectRecord create(String id, String displayName, Path sourceDirectory,
                                 String publicBaseUrl, Branding branding, ProjectRules rules) {
         validateProjectId(id);
+        try(ProjectLock catalog=ProjectLock.acquire(paths.locks().resolve("projects-catalog.lock"));ProjectLock projectLock=ProjectLock.acquire(paths.locks().resolve(id+".lock"))){
         String name = normalizeDisplayName(displayName);
         Path source = validateSource(sourceDirectory);
         String baseUrl = normalizeOptionalBaseUrl(publicBaseUrl);
-        SourceDirectoryCheck.requireReadable(source);
+        SourceDirectoryCheck.requireReadable(source);requireIndependentSource(id,source);
         ProjectKeyStore.KeyMaterial key = keys.create(id);
         ProjectRecord project = new ProjectRecord(
                 id,
@@ -65,6 +66,7 @@ public final class ProjectService {
             }
             throw e;
         }
+            }catch(IOException error){throw new ManagementException("Unable to lock project creation",error);}
     }
 
     public ProjectRecord configure(String id, Path sourceDirectory, String publicBaseUrl,
@@ -75,7 +77,7 @@ public final class ProjectService {
     public ProjectRecord configure(String id, String displayName, Path sourceDirectory,
                                    String publicBaseUrl, Branding branding, ProjectRules rules) {
         validateProjectId(id);
-        try (ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(id + ".lock"))) {
+        try (ProjectLock catalog=ProjectLock.acquire(paths.locks().resolve("projects-catalog.lock"));ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(id + ".lock"))) {
             return configureLocked(id, displayName, sourceDirectory, publicBaseUrl, branding, rules);
         } catch (IOException error) { throw new ManagementException("Unable to lock project configuration", error); }
     }
@@ -88,6 +90,7 @@ public final class ProjectService {
         Path source = sourceDirectory == null ? current.sourceDirectory() : validateSource(sourceDirectory);
         String url = publicBaseUrl == null ? current.publicBaseUrl() : normalizeOptionalBaseUrl(publicBaseUrl);
         if (!source.equals(current.sourceDirectory())) SourceDirectoryCheck.requireReadable(source);
+        requireIndependentSource(id,source);
         Branding nextBranding = branding == null ? current.branding() : branding;
         ProjectRules nextRules = rules == null ? current.rules() : rules;
         ProjectRecord candidate = new ProjectRecord(
@@ -98,6 +101,11 @@ public final class ProjectService {
         new RuleSet(nextRules);
         database.updateProject(id, name, source, url, nextBranding, nextRules);
         return database.requireProject(id);
+    }
+
+    private void requireIndependentSource(String id,Path source) {
+        for(var other:database.listProjects())if(!other.id().equals(id)&&(source.startsWith(other.sourceDirectory())||other.sourceDirectory().startsWith(source)))
+            throw new ManagementException("项目标准目录不能与另一个项目共用或重叠："+other.id()+"（"+other.sourceDirectory()+"）");
     }
 
     public ProjectBinding bindingFor(ProjectRecord project, String playerHome, String bundledCoverPath) {

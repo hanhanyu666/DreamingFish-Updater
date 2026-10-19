@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="blue-moon-title blue-moon-desc">
+<title id="blue-moon-title">梦鱼更新器 · 蓝色月眠鱼</title>
+<desc id="blue-moon-desc">晴蓝色水面上，一条放大了百分之二十的奶油白小鱼闭眼漂浮，保留淡紫腹部和粉色腮红。右上方的小星星梦泡形成更新符号。</desc>
+<defs>
+<linearGradient id="blue-moon-bg" x1="92" y1="0" x2="391" y2="512" gradientUnits="userSpaceOnUse"><stop stop-color="#6399EC"/><stop offset="1" stop-color="#3D70CB"/></linearGradient>
+<linearGradient id="blue-moon-body" x1="230" y1="164" x2="314" y2="371" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFCF1"/><stop offset="1" stop-color="#FAEFD9"/></linearGradient>
+<linearGradient id="blue-moon-fin" x1="233" y1="254" x2="251" y2="279" gradientUnits="userSpaceOnUse"><stop stop-color="#D1C7EF"/><stop offset="1" stop-color="#BFB4E4"/></linearGradient>
+<clipPath id="blue-moon-tile"><rect width="512" height="512" rx="120"/></clipPath>
+<clipPath id="blue-moon-silhouette"><path d="M182 244c1-50 43-84 98-84 70 0 119 49 119 109 0 60-48 100-108 100-56 0-99-37-109-85l-46 27c-8 5-15-1-11-10l16-32-16-34c-4-9 2-15 11-10Z"/></clipPath>
+</defs>
+<rect width="512" height="512" rx="120" fill="url(#blue-moon-bg)"/>
+<g clip-path="url(#blue-moon-tile)">
+<path d="M0 397c112-38 172 27 278 6 82-17 144-33 234-9v118H0Z" fill="#AADCF0" opacity=".17"/>
+<path d="M0 440c120-25 202 20 308 1 80-15 143-14 204 3v68H0Z" fill="#2C62BA" opacity=".17"/>
+</g>
+<ellipse cx="266" cy="410" rx="111" ry="10" fill="#254E92" opacity=".08"/>
+<g transform="translate(-8 8) translate(256 264) scale(1.2) translate(-256 -264)">
+<g transform="rotate(-14 256 264)">
+<path d="M182 244c1-50 43-84 98-84 70 0 119 49 119 109 0 60-48 100-108 100-56 0-99-37-109-85l-46 27c-8 5-15-1-11-10l16-32-16-34c-4-9 2-15 11-10Z" fill="url(#blue-moon-body)"/>
+<path d="M174 295c72 50 159 49 229-18l25 108-228 26Z" fill="#EAE3F1" opacity=".78" clip-path="url(#blue-moon-silhouette)"/>
+<path d="M212 216c18-20 45-31 72-30" fill="none" stroke="#FFF" stroke-opacity=".7" stroke-width="6" stroke-linecap="round"/>
+<path d="m138 242 18 20m-18 31 19-18" fill="none" stroke="#D9D1EB" stroke-opacity=".65" stroke-width="4" stroke-linecap="round"/>
+<path d="M257 254c-22-3-36 7-30 19 5 11 22 5 30-7" fill="url(#blue-moon-fin)"/>
+<path d="M235 265q7-5 14-3" fill="none" stroke="#E7DFF6" stroke-width="3" stroke-linecap="round"/>
+<path d="M326 247q10 12 20 0" fill="none" stroke="#615579" stroke-width="7" stroke-linecap="round"/>
+<ellipse cx="335" cy="275" rx="13" ry="8" fill="#EFB3C4"/>
+<path d="M369 274q5 6 10 0" fill="none" stroke="#615579" stroke-width="4.5" stroke-linecap="round"/>
+</g>
+</g>
+<g transform="translate(8 -14)">
+<circle cx="382" cy="126" r="25" fill="#FFE6AD" opacity=".08"/>
+<g fill="none" stroke="#FFE6AD" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"><path d="M392.57 148.66A25 25 0 1 1 403.65 113.50"/><path d="M395.10 108.59L403.65 113.50 403.67 103.64"/></g>
+<path d="M382 116c2 6 4 8 10 10-6 2-8 4-10 10-2-6-4-8-10-10 6-2 8-4 10-10Z" fill="#FFE6AD"/>
+<circle cx="370" cy="164" r="4.2" fill="#E6DFFB" opacity=".8"/>
+<circle cx="359" cy="177" r="2.5" fill="#E6DFFB" opacity=".65"/>
+</g>
+</svg>

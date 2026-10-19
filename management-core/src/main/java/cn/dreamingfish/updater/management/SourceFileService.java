@@ -49,12 +49,17 @@ public final class SourceFileService {
         this.scanner = new ScanService(paths, database, json);
     }
 
-    public List<SourceFileEntry> list(String projectId) {
+    public record Listing(List<SourceFileEntry> files,List<String> directories){}
+    public List<SourceFileEntry> list(String projectId){return listing(projectId,false).files();}
+    public List<SourceFileEntry> listVerified(String projectId){return listing(projectId,true).files();}
+    public Listing listing(String projectId){return listing(projectId,false);}
+    private Listing listing(String projectId,boolean proof) {
         ProjectRecord project = database.requireProject(projectId);
         ProjectRules rules = project.rules();
         RuleSet ruleSet = new RuleSet(rules);
         Set<String> publishedFiles = latestPublishedFiles(projectId);
-        Map<String, ScannedFile> scanned = lastScannedFiles(projectId);
+        Map<String, ScannedFile> scanned = proof?Map.of():lastScannedFiles(projectId);
+        List<String> directories=new ArrayList<>();
         List<SourceFileEntry> result = new ArrayList<>();
         try (var stream = Files.walk(project.sourceDirectory())) {
             for (Path path : stream.sorted().toList()) {
@@ -64,6 +69,7 @@ public final class SourceFileService {
                     throw new ManagementException(
                             "Managed source path cannot be a symbolic link: " + relative);
                 }
+                if(Files.isDirectory(path,LinkOption.NOFOLLOW_LINKS)){directories.add(relative);continue;}
                 if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
                 RuleSet.Decision decision = ruleSet.decide(relative);
                 if (decision.excluded()) continue;
@@ -98,7 +104,8 @@ public final class SourceFileService {
             throw SourceDirectoryCheck.unreadable(project.sourceDirectory(), e);
         }
         result.sort(Comparator.comparing(SourceFileEntry::path));
-        return List.copyOf(result);
+        directories.sort(String::compareTo);
+        return new Listing(List.copyOf(result),List.copyOf(directories));
     }
 
     /** Mod details of the last check, reused while a jar is unchanged so listing stays fast. */
@@ -126,27 +133,7 @@ public final class SourceFileService {
     }
 
     /** Lists every real directory, including empty upload destinations. */
-    public List<String> listDirectories(String projectId) {
-        ProjectRecord project = database.requireProject(projectId);
-        List<String> result = new ArrayList<>();
-        try (var stream = Files.walk(project.sourceDirectory())) {
-            for (Path path : stream.sorted().toList()) {
-                if (path.equals(project.sourceDirectory())) continue;
-                String relative = relative(project, path);
-                if (Files.isSymbolicLink(path)) {
-                    throw new ManagementException(
-                            "Managed source path cannot be a symbolic link: " + relative);
-                }
-                if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-                    result.add(relative);
-                }
-            }
-        } catch (IOException | java.io.UncheckedIOException e) {
-            throw SourceDirectoryCheck.unreadable(project.sourceDirectory(), e);
-        }
-        result.sort(String::compareTo);
-        return List.copyOf(result);
-    }
+    public List<String> listDirectories(String projectId){return listing(projectId).directories();}
 
     /** Creates an empty upload destination below the standard source root. */
     public String createDirectory(String projectId, String relativePath) {
@@ -194,84 +181,28 @@ public final class SourceFileService {
         }
     }
 
-    public SourceMutation importFile(String projectId, Path externalFile,
-                                     String targetDirectory, boolean overwrite) {
-        return locked(projectId, () -> importFileLocked(projectId, externalFile, targetDirectory, overwrite));
+    public SourceMutation importFile(String projectId,Path externalFile,String targetDirectory,boolean overwrite) {
+        Path source=externalFile.toAbsolutePath().normalize();
+        String target=(targetDirectory==null||targetDirectory.isBlank()?"":PathSafety.normalizeManifestPath(targetDirectory.trim())+"/")+source.getFileName();
+        var transfer=new SourceTransferService(paths,database,new cn.dreamingfish.updater.protocol.JsonCodec());
+        var plan=transfer.stageServer(projectId,source,target);
+        return finishImport(projectId,plan,overwrite,true,transfer);
     }
-
-    private SourceMutation importFileLocked(String projectId, Path externalFile,
-                                           String targetDirectory, boolean overwrite) {
-        ProjectRecord project = database.requireProject(projectId);
-        Path source = externalFile.toAbsolutePath().normalize();
-        requireSafeRegularFile(source, "Imported source file");
-        String fileName = source.getFileName().toString();
-        String targetPath = targetDirectory == null || targetDirectory.isBlank()
-                ? fileName
-                : PathSafety.normalizeManifestPath(targetDirectory.trim()) + "/" + fileName;
-        Path temporary = prepareTemporary(project, targetPath);
+    public SourceMutation upload(String projectId,String targetPath,InputStream input,long expectedBytes,boolean overwrite) {
+        return upload(projectId,targetPath,input,expectedBytes,overwrite,true);
+    }
+    public SourceMutation upload(String projectId,String targetPath,InputStream input,long expectedBytes,boolean overwrite,boolean refreshPreview) {
         try {
-            BasicFileAttributes before = Files.readAttributes(
-                    source, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            Files.copy(source, temporary, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            BasicFileAttributes after = Files.readAttributes(
-                    source, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            if (before.size() != after.size()
-                    || !before.lastModifiedTime().equals(after.lastModifiedTime())
-                    || Files.size(temporary) != after.size()
-                    || !CryptoSupport.sha256(source).equals(CryptoSupport.sha256(temporary))) {
-                throw new ManagementException("Imported source file changed while it was being copied");
-            }
-            return install(project, targetPath, temporary, overwrite);
-        } catch (IOException e) {
-            throw new ManagementException("Unable to import source file: " + source, e);
-        } finally {
-            deleteQuietly(temporary);
-        }
+            var transfer=new SourceTransferService(paths,database,new cn.dreamingfish.updater.protocol.JsonCodec());
+            var plan=transfer.stage(projectId,targetPath,input,expectedBytes);
+            return finishImport(projectId,plan,overwrite,refreshPreview,transfer);
+        }catch(ManagementException error){throw new ManagementException("Unable to store uploaded source file: "+error.getMessage(),error);}
     }
-
-    public SourceMutation upload(String projectId, String targetPath, InputStream input,
-                                 long expectedBytes, boolean overwrite) {
-        return upload(projectId, targetPath, input, expectedBytes, overwrite, true);
-    }
-
-    public SourceMutation upload(String projectId, String targetPath, InputStream input,
-                                 long expectedBytes, boolean overwrite,
-                                 boolean refreshPreview) {
-        return locked(projectId, () -> uploadLocked(projectId, targetPath, input, expectedBytes, overwrite, refreshPreview));
-    }
-
-    private SourceMutation uploadLocked(String projectId, String targetPath, InputStream input,
-                                       long expectedBytes, boolean overwrite, boolean refreshPreview) {
-        ProjectRecord project = database.requireProject(projectId);
-        if (expectedBytes > MAX_UPLOAD_BYTES) {
-            throw new ManagementException("Uploaded file exceeds the 4 GiB limit");
-        }
-        String normalized = PathSafety.normalizeManifestPath(targetPath);
-        Path temporary = prepareTemporary(project, normalized);
-        long copied = 0;
-        try {
-        try (OutputStream output = Files.newOutputStream(
-                temporary, StandardOpenOption.TRUNCATE_EXISTING)) {
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                if (read == 0) continue;
-                copied += read;
-                if (copied > MAX_UPLOAD_BYTES) {
-                    throw new ManagementException("Uploaded file exceeds the 4 GiB limit");
-                }
-                output.write(buffer, 0, read);
-            }
-            if (expectedBytes >= 0 && copied != expectedBytes) {
-                throw new ManagementException("Uploaded file length does not match the request");
-            }
-        }
-            return install(project, normalized, temporary, overwrite, refreshPreview);
-        } catch (IOException e) {
-            throw new ManagementException("Unable to store uploaded source file", e);
-        } finally {
-            deleteQuietly(temporary);
-        }
+    private SourceMutation finishImport(String projectId,SourceTransferService.Plan plan,boolean overwrite,boolean refreshPreview,SourceTransferService transfer) {
+        transfer.commitLegacy(projectId,plan.id(),overwrite);
+        Path archive=plan.existing()==null?null:paths.root().resolve("source-imports").resolve(projectId).resolve(plan.id()).resolve("before").resolve(plan.path());
+        PublishPreview preview=refreshPreview?scanner.createPreview(projectId):null;
+        return new SourceMutation(plan.path(),archive,preview);
     }
 
     public SourceMutation remove(String projectId, String sourcePath,
@@ -383,55 +314,6 @@ public final class SourceFileService {
                         removal.removal().path(), removal.archive()))
                 .toList();
         return new SourceBatchMutation(removed, preview);
-    }
-
-    private SourceMutation install(ProjectRecord project, String targetPath,
-                                   Path temporary, boolean overwrite) {
-        return install(project, targetPath, temporary, overwrite, true);
-    }
-
-    private SourceMutation install(ProjectRecord project, String targetPath,
-                                   Path temporary, boolean overwrite,
-                                   boolean refreshPreview) {
-        String normalized = PathSafety.normalizeManifestPath(targetPath);
-        ensureManageable(project, normalized);
-        Path target = resolve(project, normalized);
-        Path archived = null;
-        try {
-            Files.createDirectories(target.getParent());
-            target = resolve(project, normalized);
-            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-                requireSafeRegularFile(target, "Existing managed source file");
-                if (!overwrite) {
-                    throw new ManagementException(
-                            "A source file already exists at " + normalized);
-                }
-                archived = archive(project, normalized, target);
-                Files.delete(target);
-            }
-            AtomicFiles.moveReplace(temporary, target);
-        } catch (IOException | RuntimeException e) {
-            if (archived != null && !Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-                restoreArchive(archived, target, e);
-            }
-            if (e instanceof ManagementException managementException) {
-                throw managementException;
-            }
-            throw new ManagementException("Unable to install managed source file: " + normalized, e);
-        }
-        SourceOperationJournal journal = new SourceOperationJournal(paths, database, new cn.dreamingfish.updater.protocol.JsonCodec());
-        List<SourceOperationJournal.Before> before = archived == null ? List.of()
-                : List.of(journal.archived(normalized, archived, Files.isExecutable(archived)));
-        try {
-            journal.record(project, "WRITE", before, List.of(normalized), null);
-        } catch (RuntimeException failure) {
-            if (archived != null) restoreArchive(archived, target, failure);
-            else try { Files.deleteIfExists(target); } catch (IOException restore) { failure.addSuppressed(restore); }
-            throw failure;
-        }
-        PublishPreview preview = refreshPreview
-                ? scanner.createPreview(project.id()) : null;
-        return new SourceMutation(normalized, archived, preview);
     }
 
     private Path prepareTemporary(ProjectRecord project, String targetPath) {

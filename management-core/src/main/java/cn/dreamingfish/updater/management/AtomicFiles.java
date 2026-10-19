@@ -21,10 +21,10 @@ final class AtomicFiles {
             try {
                 Files.move(source, target, StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING);
-                return;
+                syncDirectory(target.getParent());return;
             } catch (AtomicMoveNotSupportedException e) {
                 Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-                return;
+                syncDirectory(target.getParent());return;
             } catch (FileSystemException e) {
                 lastFailure = e;
                 if (attempt < 4) waitForTransientWindowsLock(attempt);
@@ -49,6 +49,7 @@ final class AtomicFiles {
         boolean moved = false;
         try {
             Files.write(temporary, bytes);
+            force(temporary);
             moveReplace(temporary, target);
             moved = true;
         } finally {
@@ -67,12 +68,25 @@ final class AtomicFiles {
         try {
             Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.COPY_ATTRIBUTES);
+            force(temporary);
             moveReplace(temporary, target);
             moved = true;
         } finally {
             if (!moved) {
                 Files.deleteIfExists(temporary);
             }
+        }
+    }
+
+    static void syncDirectory(Path directory)throws IOException {
+        if(directory!=null&&directory.getFileSystem().supportedFileAttributeViews().contains("posix")){
+            try(var channel=java.nio.channels.FileChannel.open(directory,java.nio.file.StandardOpenOption.READ)){channel.force(true);}
+        }
+    }
+
+    static void force(Path file) throws IOException {
+        try (var channel = java.nio.channels.FileChannel.open(file, java.nio.file.StandardOpenOption.WRITE)) {
+            channel.force(true);
         }
     }
 

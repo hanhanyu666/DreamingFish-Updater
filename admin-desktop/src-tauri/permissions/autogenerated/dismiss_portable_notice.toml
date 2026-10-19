@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dismiss-portable-notice"
+description = "Enables the dismiss_portable_notice command without any pre-configured scope."
+commands.allow = ["dismiss_portable_notice"]
+
+[[permission]]
+identifier = "deny-dismiss-portable-notice"
+description = "Denies the dismiss_portable_notice command without any pre-configured scope."
+commands.deny = ["dismiss_portable_notice"]

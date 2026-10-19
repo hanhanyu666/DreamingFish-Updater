@@ -12,6 +12,7 @@ import cn.dreamingfish.updater.protocol.SemanticVersion;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpHandler;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -25,12 +26,29 @@ import java.nio.file.StandardOpenOption;
 import java.util.Base64;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class PublicFileServer implements AutoCloseable {
     private static final String SERVER_NAME = "DreamingFishUpdateSystem/0.1";
     private static final int BUFFER_SIZE = 128 * 1024;
-    private static final int HTTP_WORKERS = 64;
+    public record Limits(int controlWorkers,int controlQueue,int downloads,int stalledSeconds,long totalSeconds) {
+        public Limits(int controlWorkers,int controlQueue,int downloads,int stalledSeconds){this(controlWorkers,controlQueue,downloads,stalledSeconds,3600);}
+        public Limits {
+            if(controlWorkers<2||controlWorkers>32||controlQueue<1||controlQueue>1024||downloads<1||downloads>128||stalledSeconds<1||stalledSeconds>3600||totalSeconds<60||totalSeconds>86400)
+                throw new IllegalArgumentException("Invalid public service limits");
+        }
+        public static Limits defaults(){return new Limits(Integer.getInteger("dfs.public.controlWorkers",8),Integer.getInteger("dfs.public.controlQueue",64),Integer.getInteger("dfs.public.downloads",16),Integer.getInteger("dfs.public.stalledSeconds",30),Long.getLong("dfs.public.totalSeconds",3600));}
+    }
+    private final Limits limits;
+    private final ThreadPoolExecutor downloads;
+    private final ScheduledExecutorService watchdog;
+    private final ConcurrentHashMap<HttpExchange,Transfer> active=new ConcurrentHashMap<>();
+    private final AtomicLong rejected=new AtomicLong(),stalled=new AtomicLong();
+    private final java.util.LinkedHashMap<String,SignedPresentation> presentations=new java.util.LinkedHashMap<>();
+    private static final class Transfer { volatile long progress=System.nanoTime(); final long started=progress; }
+    public record Metrics(int activeDownloads,int queuedControl,long rejected,long stalled,int downloadThreads,int downloadLimit) {}
+    public Metrics metrics(){return new Metrics(active.size(),((ThreadPoolExecutor)executor).getQueue().size(),rejected.get(),stalled.get(),downloads.getPoolSize(),limits.downloads());}
 
     private final ManagementDatabase database;
     private final ObjectStore objects;
@@ -42,6 +60,11 @@ public final class PublicFileServer implements AutoCloseable {
 
     public PublicFileServer(ManagementDatabase database, ObjectStore objects,
                             InetSocketAddress address) {
+        this(database,objects,address,Limits.defaults());
+    }
+    public PublicFileServer(ManagementDatabase database,ObjectStore objects,InetSocketAddress address,Limits limits) {
+        this.limits=limits;
+        HttpServerResources.configure();
         this.database = database;
         this.objects = objects;
         this.json = new JsonCodec();
@@ -53,16 +76,16 @@ public final class PublicFileServer implements AutoCloseable {
             throw new ManagementException("无法监听下载服务地址 " + address
                     + "，该端口可能已经被其他进程占用", e);
         }
-        // The JDK HTTP server can pin virtual-thread carriers while a slow client
-        // is reading a response. A handful of hostile public connections could
-        // therefore starve health checks and every legitimate download. A bounded
-        // platform pool keeps those connections isolated and caps resource use.
-        executor = Executors.newFixedThreadPool(HTTP_WORKERS,
-                Thread.ofPlatform().daemon().name("dfs-public-http-", 0).factory());
+        executor = new ThreadPoolExecutor(limits.controlWorkers(),limits.controlWorkers(),0,TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(limits.controlQueue()),Thread.ofPlatform().daemon().name("dfs-public-control-",0).factory(),new ThreadPoolExecutor.CallerRunsPolicy());
+        downloads = new ThreadPoolExecutor(limits.downloads(),limits.downloads(),0,TimeUnit.MILLISECONDS,
+                new SynchronousQueue<>(),Thread.ofPlatform().daemon().name("dfs-public-download-",0).factory(),new ThreadPoolExecutor.AbortPolicy());
+        watchdog=Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("dfs-public-watchdog").factory());
+        watchdog.scheduleWithFixedDelay(this::expireStalled,200,200,TimeUnit.MILLISECONDS);
         server.setExecutor(executor);
         server.createContext("/healthz", this::handleHealth);
-        server.createContext("/v1/projects/", this::handleProject);
-        server.createContext("/v1/objects/sha256/", this::handleObject);
+        server.createContext("/v1/projects/", exchange->dispatch(exchange,this::handleProject));
+        server.createContext("/v1/objects/sha256/", exchange->dispatch(exchange,this::handleObject));
     }
 
     public void start() {
@@ -75,14 +98,42 @@ public final class PublicFileServer implements AutoCloseable {
 
     @Override
     public void close() {
-        server.stop(1);
-        executor.close();
+        active.keySet().forEach(HttpExchange::close);
+        server.stop(0);watchdog.shutdownNow();downloads.shutdownNow();executor.shutdownNow();
+        try {downloads.awaitTermination(5,TimeUnit.SECONDS);executor.awaitTermination(5,TimeUnit.SECONDS);}
+        catch(InterruptedException e){Thread.currentThread().interrupt();}
     }
+
+    private void dispatch(HttpExchange exchange,HttpHandler handler)throws IOException {
+        if(exchange.getRequestHeaders().getFirst("Transfer-Encoding")!=null ||
+                !"0".equals(java.util.Objects.requireNonNullElse(exchange.getRequestHeaders().getFirst("Content-Length"),"0"))) {
+            exchange.getResponseHeaders().set("Connection","close");sendError(exchange,400,"request_body_not_supported");exchange.close();return;
+        }
+        try {
+            downloads.execute(()->{
+                active.put(exchange,new Transfer());
+                try {handler.handle(exchange);}catch(IOException ignored){exchange.close();}
+                finally {active.remove(exchange);exchange.close();}
+            });
+        } catch(RejectedExecutionException full) {
+            rejected.incrementAndGet();exchange.getResponseHeaders().set("Retry-After","2");
+            exchange.getResponseHeaders().set("Connection","close");sendError(exchange,503,"download_capacity");exchange.close();
+        }
+    }
+    private void expireStalled(){
+        long now=System.nanoTime();
+        active.forEach((exchange,transfer)->{
+            if(now-transfer.progress>TimeUnit.SECONDS.toNanos(limits.stalledSeconds()) || now-transfer.started>TimeUnit.SECONDS.toNanos(limits.totalSeconds())) {
+                if(active.remove(exchange,transfer)){stalled.incrementAndGet();exchange.close();}
+            }
+        });
+    }
+    private void progressed(HttpExchange exchange){var transfer=active.get(exchange);if(transfer!=null)transfer.progress=System.nanoTime();}
 
     private void handleHealth(HttpExchange exchange) throws IOException {
         try {
             if (!allowReadMethod(exchange)) return;
-            byte[] body = "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+            byte[] body = json.write(java.util.Map.of("status","ok","resources",metrics()));
             commonHeaders(exchange.getResponseHeaders());
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
             exchange.getResponseHeaders().set("Cache-Control", "no-store");
@@ -262,16 +313,19 @@ public final class PublicFileServer implements AutoCloseable {
         sendBytes(exchange, 200, body);
     }
 
-    private SignedPresentation signPlayerPresentation(ProjectRecord project) {
+    private synchronized SignedPresentation signPlayerPresentation(ProjectRecord project) {
         PlayerPresentation presentation = new PlayerPresentation(
                 ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION,
                 project.id(),
                 project.branding());
         ManifestValidator.validatePlayerPresentation(presentation);
         byte[] payload = json.writePretty(presentation);
-        String signature = Base64.getEncoder().encodeToString(
-                CryptoSupport.sign(payload, projectKeys.load(project)));
-        return new SignedPresentation(payload, signature);
+        SignedPresentation cached=presentations.get(project.id());
+        if(cached!=null&&java.util.Arrays.equals(cached.payload(),payload))return cached;
+        String signature = Base64.getEncoder().encodeToString(CryptoSupport.sign(payload, projectKeys.load(project)));
+        SignedPresentation signed=new SignedPresentation(payload,signature);
+        if(payload.length<=512*1024){presentations.put(project.id(),signed);while(presentations.size()>64)presentations.remove(presentations.keySet().iterator().next());}
+        return signed;
     }
 
     private void sendSignature(HttpExchange exchange, SignedPresentation presentation,
@@ -416,6 +470,7 @@ public final class PublicFileServer implements AutoCloseable {
                 }
                 buffer.flip();
                 output.write(buffer.array(), 0, read);
+                progressed(exchange);
                 remaining -= read;
             }
         }
@@ -471,7 +526,7 @@ public final class PublicFileServer implements AutoCloseable {
         sendBytes(exchange, status, body);
     }
 
-    private static void sendBytes(HttpExchange exchange, int status, byte[] body) throws IOException {
+    private void sendBytes(HttpExchange exchange, int status, byte[] body) throws IOException {
         exchange.getResponseHeaders().set("Content-Length", Integer.toString(body.length));
         if (exchange.getRequestMethod().equals("HEAD")) {
             exchange.sendResponseHeaders(status, -1);
@@ -479,7 +534,7 @@ public final class PublicFileServer implements AutoCloseable {
         }
         exchange.sendResponseHeaders(status, body.length);
         try (OutputStream output = exchange.getResponseBody()) {
-            output.write(body);
+            output.write(body);progressed(exchange);
         }
     }
 
