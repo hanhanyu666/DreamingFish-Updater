@@ -1,4 +1,4 @@
-function Assert-ReleaseNotes {
+﻿function Assert-ReleaseNotes {
     param([string]$NotesFile, [string]$AdminVersion, [string]$PlayerVersion)
     $text = Get-Content -LiteralPath $NotesFile -Raw -Encoding utf8
     $expected = "# [玩家 - $PlayerVersion][管理 - $AdminVersion] "

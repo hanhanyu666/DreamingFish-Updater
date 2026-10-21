@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $fixture = Join-Path $repo ('target\remediation-2026-10-18\release-plan-' + [guid]::NewGuid().ToString('N'))
@@ -30,6 +30,24 @@ $completeNotes = @'
 检查程序版本、原有项目与发布历史、公共下载服务和本次修复，路径异常时先定位原来的数据目录。
 '@
 Set-Content -LiteralPath $notes -Value $completeNotes -Encoding utf8
+if ($env:OS -eq 'Windows_NT' -and $PSVersionTable.PSVersion.Major -gt 5) {
+    # Windows PowerShell reads BOM-less scripts as ANSI; exercise the real UTF-8
+    # helper and notes in that runtime too, without any remote commands.
+    $legacyPowerShell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (Test-Path -LiteralPath $legacyPowerShell -PathType Leaf) {
+        $legacyProbe = Join-Path $fixture 'legacy-probe.ps1'
+        $probeSource = @'
+param([string]$Helper, [string]$Notes)
+$ErrorActionPreference = 'Stop'
+. $Helper
+Assert-ReleaseNotes -NotesFile $Notes -AdminVersion 1.2.3 -PlayerVersion 1.0.0
+'@
+        [IO.File]::WriteAllText($legacyProbe, $probeSource, [Text.UTF8Encoding]::new($false))
+        & $legacyPowerShell -NoProfile -NonInteractive -File $legacyProbe -Helper (Join-Path $fixture 'packaging\lib\release-plan.ps1') -Notes $notes
+        if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell could not read the release tutorial validator' }
+        Write-Output 'PASS: Windows PowerShell reads the UTF-8 tutorial validator and notes.'
+    }
+}
 $dist = Join-Path $fixture 'dist'
 Set-Content -LiteralPath (Join-Path $dist 'dfs-admin-windows-x64-1.2.3.zip') -Value 'synthetic asset'
 Set-Content -LiteralPath (Join-Path $dist 'latest.json') -Value 'original latest, must remain untouched during carry preview'
