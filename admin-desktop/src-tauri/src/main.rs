@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod frame;
+mod downloads;
 mod job;
 mod migrate;
 mod profiles;
@@ -47,6 +48,7 @@ struct Desktop {
     background_started: AtomicBool,
     disconnecting: AtomicBool,
     rebuilds: Mutex<recovery::Budget>,
+    downloads: downloads::Downloads,
 }
 
 struct Active {
@@ -109,6 +111,55 @@ fn launcher(window: &WebviewWindow) -> Result<(), String> {
     } else {
         Err("连接选择页来源无效".into())
     }
+}
+
+fn download_workspace(window: &WebviewWindow, state: &Desktop) -> Result<(url::Url, String, u64), String> {
+    let url = window.url().map_err(|e| e.to_string())?;
+    let active = state.active.lock().map_err(|e| e.to_string())?;
+    let active = active.as_ref().ok_or("还没有打开管理工作区")?;
+    if window.label() != "workspace" || url.origin() != active.origin {
+        return Err("此页面不能保存部署包".into());
+    }
+    Ok((active.workbench.url.clone(), active.workbench.token.clone(), state.generation.load(Ordering::SeqCst)))
+}
+
+#[tauri::command]
+async fn save_deployment_download(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    request: downloads::Request,
+    session_token: String,
+) -> Result<Option<downloads::Saved>, String> {
+    let state = app.state::<Desktop>();
+    let (base, desktop_token, generation) = download_workspace(&window, &state)?;
+    request.validate()?;
+    let _busy = state.downloads.begin()?;
+    let picker_app = app.clone();
+    let suggested_name = request.suggested_name();
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        picker_app.dialog().file().set_parent(&window)
+            .set_title("保存玩家部署包").add_filter("ZIP 部署包", &["zip"])
+            .set_file_name(suggested_name).blocking_save_file()
+    }).await.map_err(|e| e.to_string())?;
+    let Some(selected) = selected else { return Ok(None); };
+    let destination = selected.into_path().map_err(|e| e.to_string())?;
+    let worker_app = app.clone();
+    let saved = tauri::async_runtime::spawn_blocking(move || {
+        let state = worker_app.state::<Desktop>();
+        let current = || state.generation.load(Ordering::SeqCst) == generation
+            && !state.exiting.load(Ordering::SeqCst) && !state.disconnecting.load(Ordering::SeqCst);
+        let size = downloads::save(&base, &desktop_token, &session_token, &request, &destination, current)?;
+        state.downloads.remember(destination, size)
+    }).await.map_err(|e| e.to_string())??;
+    Ok(Some(saved))
+}
+
+#[tauri::command]
+fn reveal_deployment_download(window: WebviewWindow, app: tauri::AppHandle, receipt_id: String) -> Result<(), String> {
+    let state = app.state::<Desktop>();
+    download_workspace(&window, &state)?;
+    let folder = state.downloads.parent_for(&receipt_id)?;
+    open::that_detached(folder).map_err(|e| format!("无法打开部署包所在文件夹：{e}"))
 }
 
 #[tauri::command]
@@ -181,7 +232,7 @@ fn desktop_snapshot(state:&Desktop)->Result<Snapshot,String> {
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_default(),
         active,
-        version: "0.2.7",
+        version: "0.2.8",
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -896,7 +947,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.2.7", "buildId":option_env!("DFS_BUILD_ID").unwrap_or("development"),"success":true,
+            Ok::<_, String>(serde_json::json!({"version":"0.2.8", "buildId":option_env!("DFS_BUILD_ID").unwrap_or("development"),"success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,
@@ -976,6 +1027,8 @@ fn main() {
             open_logs,
             quit_application,
             desktop_window_action,
+            save_deployment_download,
+            reveal_deployment_download,
             open_data_dir,
             dismiss_notice,
             check_update,
@@ -1006,6 +1059,7 @@ fn main() {
                 background_started: AtomicBool::new(false),
                 disconnecting: AtomicBool::new(false),
                 rebuilds: Mutex::new(recovery::Budget::default()),
+                downloads: downloads::Downloads::default(),
             });
             let main = build_main(app.handle(), &main_root)?;
             let monitor = app.handle().clone();
@@ -1117,7 +1171,7 @@ mod tests {
         let state=Desktop {root:root.clone(),installed:false,beside_program:true,update:Mutex::new(None),updating:AtomicBool::new(false),
             config:Mutex::new(Config::load(&root).unwrap()),active:Mutex::new(None),connecting:Mutex::new(false),generation:AtomicU64::new(0),
             exiting:AtomicBool::new(false),notice:Mutex::new(None),background_check:true,frame_checks:Mutex::new((false,false)),
-            workbench_ready:AtomicBool::new(false),background_started:AtomicBool::new(false),disconnecting:AtomicBool::new(false),rebuilds:Mutex::new(recovery::Budget::default())};
+            workbench_ready:AtomicBool::new(false),background_started:AtomicBool::new(false),disconnecting:AtomicBool::new(false),rebuilds:Mutex::new(recovery::Budget::default()),downloads:downloads::Downloads::default()};
         let (sender,receiver)=std::sync::mpsc::channel();
         let worker=std::thread::spawn(move||{let snapshot=desktop_snapshot(&state);let released=state.active.try_lock().is_ok();sender.send((snapshot,released)).unwrap();});
         let (snapshot,released)=receiver.recv_timeout(Duration::from_secs(2)).expect("launcher snapshot must finish without waiting for its own active mutex");

@@ -2912,8 +2912,15 @@ function bindDeployment() {
         }
         throw new Error(message);
       }
+      if ((response.headers.get("Content-Type") || "").split(";")[0].trim() !== "application/zip") {
+        await response.body?.cancel();
+        throw new Error("管理端没有返回 ZIP 部署包，请检查连接后重试");
+      }
       const blob = await response.blob();
-      if (blob.size === 0) throw new Error("服务器返回了空的部署包");
+      const expectedSize = response.headers.get("Content-Length");
+      if (blob.size === 0 || (expectedSize !== null && Number(expectedSize) !== blob.size)) {
+        throw new Error("部署包没有完整下载，请重试");
+      }
       const disposition = response.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename="([^"]+)"/i);
       const fallback = `${app.project.id}-player-deployment-${selected?.displayVersion || "latest"}.zip`;
@@ -2927,7 +2934,7 @@ function bindDeployment() {
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      toast(`首次部署包已下载：${fileName}`);
+      toast(`部署包已交给浏览器下载：${fileName}。请在浏览器下载列表查看进度和保存结果。`);
     });
   });
 }

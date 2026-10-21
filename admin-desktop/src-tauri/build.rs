@@ -23,6 +23,8 @@ fn main() {
             "open_logs",
             "quit_application",
             "desktop_window_action",
+            "save_deployment_download",
+            "reveal_deployment_download",
             "open_data_dir",
             "dismiss_notice",
             "check_update",

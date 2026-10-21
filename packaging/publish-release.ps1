@@ -8,6 +8,7 @@ build-admin-desktop.ps1 is used; otherwise the previous release's latest.json is
   .\packaging\publish-release.ps1 -Tag v0.2.4 -NotesFile release-notes.md
   .\packaging\publish-release.ps1 -Tag v0.2.4 -NotesFile release-notes.md -DryRun
 
+Notes must follow docs/RELEASING.md and contain the full update tutorial on every release.
 Push the commit and the annotated tag first. Assets: desktop installer and portable zip, admin
 terminal zips, player zip, latest.json and SHA256SUMS.txt (those present in dist/).
 #>

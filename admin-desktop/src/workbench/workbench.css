@@ -525,6 +525,7 @@ button.status-item.active {color:var(--accent)}
 .notice-card.success p,.notice-card.warning p {color:inherit}
 .notice-card.compact {padding:10px 12px;font-size:12px}
 .notice-card>button {align-self:center}
+.download-destination {overflow-wrap:anywhere;user-select:text}
 .release-split {flex:1;min-height:0;display:grid;grid-template-columns:272px minmax(0,1fr)}
 .release-list {overflow:auto;padding:8px;background:var(--surface-2);box-shadow:inset -1px 0 var(--line)}
 .release-list>button {width:100%;height:auto;justify-content:flex-start;gap:10px;padding:10px 12px;margin-bottom:2px;border-radius:var(--r-sm);background:transparent;text-align:left;font-weight:400}

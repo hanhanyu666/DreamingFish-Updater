@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "deployment-downloads"
+description = "Save a deployment ZIP to a user-picked file and reveal only a recorded successful download; the invoking workspace origin is checked in Rust."
+commands.allow = ["save_deployment_download", "reveal_deployment_download"]

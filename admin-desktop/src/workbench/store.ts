@@ -3,6 +3,7 @@ import { computed, reactive, watch } from 'vue';
 import type { Data, Entry, SourceFile, Task, ImportPlan } from './model';
 import { nameOf, newestReleases, authRequiresForm, taskFinished, imported, parseImportPlan,buildFileIndex,directoryCounts } from './model';
 import { interfaceLanding } from './interface-state';
+import { deploymentFileName, saveDeployment, revealDeployment, type DeploymentDownload } from './deployment-download';
 const landing = interfaceLanding(location.search);
 declare global {
     interface Window {
@@ -19,6 +20,7 @@ export const desk = reactive({
     releaseVersion: '', releaseNotes: '', operations: [] as Data[], releaseFiles: [] as Data[], operationPlan: null as Data | null,
     browse: {} as Data, browsePath: '', browseKind: 'directory', browseSelected: '', browseAction: '',
     settingsDirty: false, browseValues: {} as Data, historyLoading: false, sourceError: '',
+    deploymentDownload: null as (DeploymentDownload & { projectId: string }) | null,
 });
 // Shared by the project sidebar, the command bar and the file view.
 export const fileIndex=computed(()=>buildFileIndex(desk.files,desk.directories));
@@ -272,7 +274,26 @@ export async function blob(path: string, method = 'GET', body?: Data) { const ow
     throw new Error(err.message);
 } const content = await response.blob(); if (owner !== desk.projectId || generation !== projectGeneration)
     throw new ProjectChangedError('已忽略旧项目的资源响应'); return { blob: content, name: response.headers.get('Content-Disposition')?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)/)?.[1] }; }
-export async function downloadDeployment(releaseId: string, platform: string) { await operation(async () => { const result = await blob(apiPath('/deployment/download'), 'POST', { releaseId, platform }); const url = URL.createObjectURL(result.blob); const a = document.createElement('a'); a.href = url; a.download = result.name ? decodeURIComponent(result.name) : `${desk.projectId}-deployment.zip`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000); notify('部署包已生成'); }, '正在生成部署包…'); }
+export async function downloadDeployment(releaseId: string, platform: string, programVersion = '') {
+    await operation(async () => {
+        const projectId = desk.projectId, generation = projectGeneration;
+        assertProject(projectId);
+        desk.deploymentDownload = null;
+        desk.notice = '';
+        const version = desk.project?.releases?.find((release: Data) => release.releaseId === releaseId)?.displayVersion || '';
+        const result = await saveDeployment({ projectId, releaseId, platform,
+            fileName: deploymentFileName(projectId, version, programVersion, platform), headers: desktopHeaders() });
+        if (!currentProject(projectId) || generation !== projectGeneration) throw new ProjectChangedError('部署包操作属于原项目，请返回原项目查看保存结果');
+        desk.deploymentDownload = { ...result, projectId };
+        notify(result.state === 'saved' ? '部署包已保存' : result.state === 'canceled' ? '已取消保存部署包' : '已交给浏览器下载，请在浏览器下载列表查看保存结果');
+    }, '正在准备并保存部署包…');
+}
+export async function openDeploymentFolder() {
+    const result = desk.deploymentDownload;
+    if (!result?.receiptId || result.state !== 'saved') throw new Error('还没有已保存的桌面部署包');
+    assertProject(result.projectId);
+    await revealDeployment(result.receiptId);
+}
 export function addUploads(files: File[], keepFolder = false) {
     assertProject(desk.projectId);
     desk.transferTarget = desk.directory;

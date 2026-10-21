@@ -130,7 +130,7 @@ try{
         & (Join-Path $PSScriptRoot 'build-admin-desktop.ps1') -JdkHome $JdkHome -MavenRepository $MavenRepository -SkipBuildCore -SkipTests -NoUpdaterSignature -OutputRoot $localDist
         Invoke-ValidationStep 'distribution-audit' 'python' @('packaging/audit-distributions.py','--dist',$localDist,'--include-desktop','--report',(Join-Path $validationRoot 'distribution-audit.json'))
         & (Join-Path $PSScriptRoot 'smoke-test-distributions.ps1') -JdkHome $JdkHome -DistDirectory $localDist -KeepWork
-        Invoke-ValidationStep 'windows-launchers' 'python' @('packaging/tests/windows-launcher-smoke.py','--archive',(Join-Path $localDist 'dfs-admin-windows-x64-0.2.7.zip'),'--output',(Join-Path $validationRoot 'windows-launchers'))
+        Invoke-ValidationStep 'windows-launchers' 'python' @('packaging/tests/windows-launcher-smoke.py','--archive',(Join-Path $localDist 'dfs-admin-windows-x64-0.2.8.zip'),'--output',(Join-Path $validationRoot 'windows-launchers'))
         if($WithDesktopSmoke){Invoke-ValidationStep 'desktop-probe-dependencies' 'python' @('-c','import psutil');Invoke-ValidationStep 'desktop-smoke' 'python' @('packaging/desktop-remediation-smoke.py','--exe',(Join-Path $localDist 'dfs-admin-desktop-windows-x64/DreamingFishAdminDesktop.exe'),'--core',(Join-Path $localDist 'dfs-admin-desktop-windows-x64/core'),'--output',(Join-Path $validationRoot 'desktop-smoke'))}
     }
     $validationSuccess=$true

@@ -35,7 +35,7 @@ class DesktopCommandTest {
             String[] lines = output.toString().strip().split("\\R");
             Map<?, ?> ready = new JsonCodec().read(lines[0].getBytes(java.nio.charset.StandardCharsets.UTF_8), Map.class);
             assertEquals("ready", ready.get("type"));
-            assertEquals("0.2.7", ready.get("version"));
+            assertEquals("0.2.8", ready.get("version"));
             int port = ((Number)ready.get("port")).intValue();
             assertNotEquals(occupied.getLocalPort(), port);
             assertEquals("http://127.0.0.1:" + port + "/", ready.get("url"));

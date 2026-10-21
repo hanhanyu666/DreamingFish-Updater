@@ -1,8 +1,8 @@
 {
   "identifier": "workspace-frame",
-  "description": "Remote management pages can operate their own frame, with an active-origin guard in Rust.",
+  "description": "The active workspace can operate its frame and save a deployment ZIP through a native file picker; Rust checks its active origin.",
   "windows": ["workspace"],
   "local": false,
   "remote": {"urls": ["http://*:*/*", "https://*:*/*"]},
-  "permissions": ["window-frame"]
+  "permissions": ["window-frame", "deployment-downloads"]
 }
