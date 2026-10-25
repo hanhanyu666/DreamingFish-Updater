@@ -12,9 +12,6 @@ function toggle(group: Pick<OptionalGroupView, "id">, event: Event): void {
 
 <template>
   <div class="optional-page">
-    <div class="mod-warning optional-intro">
-      服主把下面的内容设为可选，你可以按电脑配置决定是否安装。关闭后，相关模组会移出游戏并保留在本机，随时可以重新开启；更改从下次启动游戏时生效。
-    </div>
     <div v-if="store.state.groups.length === 0" class="drawer-empty">这个整合包没有可选内容</div>
     <div v-else class="optional-list">
       <article

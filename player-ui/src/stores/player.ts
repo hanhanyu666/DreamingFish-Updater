@@ -25,9 +25,14 @@ import {
   type SidecarMessage,
   type UpdateResultDto,
   type PlayerMusicTrack,
+  type PlayerImageSource,
+  type PlayerLinkTarget,
+  type ServerStatus,
 } from "../lib/types";
 import type { NewsArticle } from "../lib/news";
 import { loadBundledNews } from "../lib/news";
+import { pageLayout, safeHttpUrl } from "../lib/showcase";
+import { normalizeShowcase } from "../lib/showcaseRules";
 
 export type Page = "HOME" | "NEWS" | "CUSTOM" | "ABOUT" | `CONTENT:${string}`;
 export type DrawerMode = "UPDATE" | "HISTORY" | "LOGS" | "FILES" | "BACKUPS" | "PLAYER_MODS";
@@ -146,6 +151,10 @@ interface PlayerState {
   musicTracks: PlayerMusicTrack[];
   selectedMusicTrackId: string | null;
   musicLoop: boolean;
+  /** The latest Minecraft server list ping; null until the player app reports one. */
+  serverStatus: ServerStatus | null;
+  /** Uploaded presentation images that have been read, by file name. */
+  presentationImages: Record<string, string>;
 }
 
 const state = reactive<PlayerState>({
@@ -200,6 +209,8 @@ const state = reactive<PlayerState>({
   musicTracks: [],
   selectedMusicTrackId: null,
   musicLoop: readMusicLoopPreference(),
+  serverStatus: null,
+  presentationImages: {},
 });
 
 const bridge = getBridge();
@@ -222,6 +233,11 @@ export function handleSidecarMessage(message: SidecarMessage): void {
   switch (message.type) {
     case "branding":
       setBranding(message.branding);
+      break;
+    case "presentation-images-updated":
+      imageReadGeneration += 1;
+      requestedImages.clear();
+      state.presentationImages = {};
       break;
     case "background":
       state.background = message.path;
@@ -313,6 +329,9 @@ export function handleSidecarMessage(message: SidecarMessage): void {
       if (message.kind === "external" && message.value) bridge.openExternal(message.value);
       if (message.kind !== "external" && message.value) bridge.openPath(message.value);
       break;
+    case "server-status":
+      state.serverStatus = message.status;
+      break;
     case "ready":
       state.ready = true;
       break;
@@ -322,18 +341,33 @@ export function handleSidecarMessage(message: SidecarMessage): void {
   }
 }
 
+function playlistKey(tracks: PlayerMusicTrack[]): string {
+  return JSON.stringify(tracks.map((track) => [track.id, track.fileName]));
+}
+
 export function setBranding(branding: Branding | null): void {
   const display = displayBranding(branding);
+  if (display.serverAddress !== state.branding.serverAddress || display.serverCard?.showStatus === false) {
+    state.serverStatus = null;
+  }
   state.branding = display;
+  const previousPlaylist = playlistKey(state.musicTracks);
   state.musicTracks = (display.musicTracks ?? []).filter((track) =>
     track.id.trim().length > 0 && track.fileName.trim().length > 0,
   );
   if (!state.musicTracks.some((track) => track.id === state.selectedMusicTrackId)) {
     state.selectedMusicTrackId = state.musicTracks[0]?.id ?? null;
   }
-  if (state.musicTracks.length > 0 && !state.preview) {
-    stopStartupMusic();
-    void initializeStartupMusic();
+  // The sidecar sends branding several times per launch (cached, refreshed, after the update);
+  // only a changed playlist restarts the music, so the same track is not started over each time.
+  if (!state.preview) {
+    if (playlistKey(state.musicTracks) !== previousPlaylist) {
+      stopStartupMusic();
+      void initializeStartupMusic();
+    } else if (state.musicTracks.length > 0) {
+      // A track missing at first (downloaded by the update) can still start now; a playing one is kept.
+      void initializeStartupMusic();
+    }
   }
   state.contentPages = normalizeContentPages(display);
   refreshLatestArticle();
@@ -351,7 +385,7 @@ export function setBranding(branding: Branding | null): void {
   );
   document.documentElement.style.setProperty(
     "--dfs-title-color",
-    validColor(display.titleColor, "#fff8dc"),
+    validColor(display.titleColor, "#fff6e0"),
   );
   document.documentElement.style.setProperty(
     "--dfs-topbar-rgb",
@@ -365,19 +399,37 @@ export function setBranding(branding: Branding | null): void {
     "--dfs-card-rgb",
     surfaceRgb(display.cardColor, "#030708"),
   );
+  applyTheme(display.theme);
+}
+
+const CORNER_RADII = { ROUND: "18px", SOFT: "12px", SQUARE: "4px" } as const;
+const SURFACES = {
+  GLASS: { alpha: "0.6", blur: "18px" },
+  SOLID: { alpha: "0.9", blur: "6px" },
+  CLEAR: { alpha: "0.3", blur: "12px" },
+} as const;
+
+/** The owner's corner and surface choice, as variables the showcase styles read. */
+function applyTheme(theme: Branding["theme"]): void {
+  const corner = theme?.corner != null && theme.corner in CORNER_RADII ? theme.corner : "ROUND";
+  const surface = theme?.surface != null && theme.surface in SURFACES ? SURFACES[theme.surface] : SURFACES.GLASS;
+  const root = document.documentElement.style;
+  root.setProperty("--dfs-card-radius", CORNER_RADII[corner]);
+  root.setProperty("--dfs-card-alpha", surface.alpha);
+  root.setProperty("--dfs-card-blur", surface.blur);
 }
 
 export function displayBranding(branding: Branding | null | undefined): Branding {
   if (branding == null || unusableText(branding.productName)) return { ...DEFAULT_BRANDING };
   const subtitle = unusableText(branding.subtitle) ? DEFAULT_BRANDING.subtitle : branding.subtitle;
-  return {
+  return normalizeShowcase({
     productName: branding.productName,
     subtitle,
     serverAddress: branding.serverAddress,
     coverObject: branding.coverObject,
     accentColor: branding.accentColor,
     secondaryAccentColor: branding.secondaryAccentColor,
-    titleColor: validColor(branding.titleColor, "#fff8dc"),
+    titleColor: validColor(branding.titleColor, "#fff6e0"),
     welcomeText: unusableText(branding.welcomeText)
       ? DEFAULT_BRANDING.welcomeText : branding.welcomeText,
     topBarColor: validColor(branding.topBarColor, "#030708"),
@@ -391,7 +443,13 @@ export function displayBranding(branding: Branding | null | undefined): Branding
     customPage: branding.customPage ?? null,
     contentPages: branding.contentPages ?? null,
     musicTracks: branding.musicTracks ?? null,
-  };
+    spotlights: branding.spotlights ?? null,
+    serverCard: branding.serverCard ?? null,
+    events: branding.events ?? null,
+    theme: branding.theme ?? null,
+    addressPlacement: branding.addressPlacement ?? null,
+    brandLogoFile: branding.brandLogoFile ?? null,
+  });
 }
 
 function validOpacity(value: number | null | undefined, fallback: number): number {
@@ -425,7 +483,8 @@ function normalizeContentPages(branding: Branding): PlayerContentPage[] {
   if (branding.contentPages != null) {
     return branding.contentPages.map((page) => ({
       ...page,
-      articles: page.announcementPage ? [...(page.articles ?? [])] : [],
+      announcementPage: pageLayout(page) === "ANNOUNCEMENTS",
+      articles: pageLayout(page) === "ANNOUNCEMENTS" ? [...(page.articles ?? [])] : [],
     }));
   }
   const pages: PlayerContentPage[] = [{
@@ -530,7 +589,7 @@ function showResult(result: UpdateResultDto): void {
     state.stageTitle = "已是最新版本";
     state.currentPathText = "Minecraft 正在继续启动";
   } else {
-    state.stageTitle = "更新已经完成";
+    state.stageTitle = "已更新到 " + result.displayVersion;
     state.currentPathText = "Minecraft 正在继续启动";
   }
   state.percent = "100%";
@@ -866,7 +925,7 @@ export async function loadNews(): Promise<void> {
 }
 
 export function navigationPages(): Array<{ page: Page; label: string }> {
-  const pages: Array<{ page: Page; label: string }> = [{ page: "HOME", label: "主页" }];
+  const pages: Array<{ page: Page; label: string }> = [{ page: "HOME", label: "首页" }];
   state.contentPages.forEach((content) => {
     pages.push({ page: contentRoute(content.id), label: content.navigationLabel });
   });
@@ -899,6 +958,8 @@ export function applyAdminPreview(payload: AdminPreviewPayload): void {
   state.result = null;
   state.countdownRemaining = null;
   state.launchNotice = null;
+  state.serverStatus = null;
+  state.presentationImages = { ...state.presentationImages, ...(payload.images ?? {}) };
 }
 
 export function setFileTreeExpanded(expanded: Map<string, boolean>): void {
@@ -1041,7 +1102,11 @@ export function toggleMusicLoop(): void {
 
 export function toggleStartupMusic(): void {
   const audio = startupAudio;
-  if (audio == null) return;
+  if (audio == null) {
+    // The browser and admin previews have track names but no audio; show the state anyway.
+    if (state.preview && state.musicTracks.length > 0) state.musicPlaying = !state.musicPlaying;
+    return;
+  }
   if (audio.paused) {
     void audio.play().then(() => {
       state.musicMuted = false;
@@ -1069,6 +1134,57 @@ export function stopStartupMusic(): void {
       // Some embedded WebViews do not implement load() for an empty source.
     }
   }
+}
+
+const requestedImages = new Set<string>();
+let imageReadGeneration = 0;
+
+/**
+ * The address to show for an owner image. Uploaded files are read once through the player app;
+ * until then, or when reading fails, the public address is used.
+ */
+export function imageUrl(source: PlayerImageSource | null | undefined): string {
+  if (source == null) return "";
+  const file = source.imageFile?.trim();
+  if (file) {
+    const loaded = state.presentationImages[file];
+    if (loaded) return loaded;
+    if (!requestedImages.has(file)) {
+      requestedImages.add(file);
+      const generation = imageReadGeneration;
+      void bridge.presentationImageUrl(file)
+        .then((url) => {
+          if (url && generation === imageReadGeneration) state.presentationImages = { ...state.presentationImages, [file]: url };
+        })
+        .catch(() => undefined);
+    }
+  }
+  return safeHttpUrl(source.imageUrl);
+}
+
+/** Opens what a carousel or event button points at. Reading something keeps the window open. */
+export function followLink(target: PlayerLinkTarget): void {
+  if (target.kind === "URL") {
+    const url = safeHttpUrl(target.url);
+    if (url) bridge.openExternal(url);
+    return;
+  }
+  const page = state.contentPages.find((candidate) => candidate.id === target.pageId);
+  if (page == null) return;
+  keepWindowOpen();
+  showPage(contentRoute(page.id));
+  if (target.kind === "ARTICLE" && target.articleId) {
+    state.newsRequest = {
+      kind: "article",
+      pageId: page.id,
+      articleId: target.articleId,
+      seq: state.newsRequest.seq + 1,
+    };
+  }
+}
+
+export function refreshServerStatus(): void {
+  sendCommand({ command: "refresh-server-status" });
 }
 
 export function usePlayerStore() {
@@ -1116,5 +1232,8 @@ export function usePlayerStore() {
     playerAddedMods: () => playerAddedMods(state.mods, state.unmanaged?.mods),
     drawerLabels: DRAWER_LABELS,
     sendCommand,
+    imageUrl,
+    followLink,
+    refreshServerStatus,
   };
 }

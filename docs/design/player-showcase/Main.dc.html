@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>玩家端首页 · 启动舞台</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&amp;family=Noto+Serif+SC:wght@700;900&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+@keyframes dfs-kb{0%{transform:scale(1.02) translate3d(0,0,0)}100%{transform:scale(1.1) translate3d(-1.2%,-.8%,0)}}
+@keyframes dfs-eq{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+@keyframes dfs-pulse{0%{box-shadow:0 0 0 0 rgba(124,240,168,.55)}100%{box-shadow:0 0 0 9px rgba(124,240,168,0)}}
+@keyframes dfs-sheen{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
+.dfs-kb{animation:dfs-kb 18s ease-in-out infinite alternate}
+.dfs-eq{animation:dfs-eq 900ms ease-in-out infinite;transform-origin:bottom}
+.dfs-pulse{animation:dfs-pulse 1.8s ease-out infinite}
+.dfs-sheen{animation:dfs-sheen 1.5s ease-in-out infinite}
+.dfs-hv{transition:background-color .18s ease,border-color .18s ease,color .18s ease}
+.dfs-hv:hover{background-color:rgba(255,255,255,.12)!important;color:#fff!important}
+.dfs-close:hover{background-color:#C4302B!important;color:#fff!important}
+.dfs-cta{transition:filter .18s ease,transform .18s ease}
+.dfs-cta:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.dfs-nav:hover{color:#fff!important}
+:focus-visible{outline:2px solid #FFF6E0;outline-offset:2px}
+</style>
+</helmet>
+<div style="position: relative; width: 1180px; height: 680px; overflow: hidden; border-radius: 12px; background: #070A12; color: #F3EFE6; font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+  <sc-for list="{{slides}}" as="s" hint-placeholder-count="4">
+    <div aria-hidden="true" style="position: absolute; inset: 0; overflow: hidden; opacity: {{s.opacity}}; transition: opacity 1200ms ease">
+      <img class="dfs-kb" src="/_blob/8e4a628a4c3abcbe2cb023589ae04d86" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: {{s.pos}}; transform-origin: {{s.pos}}; scale: {{s.scale}}; filter: {{s.filter}}">
+      <div style="position: absolute; inset: 0; background: {{s.tint}}; mix-blend-mode: {{s.blend}}"></div>
+    </div>
+  </sc-for>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6,9,16,.9) 0%, rgba(6,9,16,.6) 34%, rgba(6,9,16,.1) 60%, rgba(6,9,16,0) 74%)"></div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(0deg, rgba(6,9,16,.9) 0%, rgba(6,9,16,.45) 24%, rgba(6,9,16,0) 50%)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 0; height: 130px; background: linear-gradient(180deg, rgba(6,9,16,.72), rgba(6,9,16,0))"></div>
+  <div aria-hidden="true" style="position: absolute; right: 0; top: 0; bottom: 0; width: 440px; background: linear-gradient(270deg, rgba(6,9,16,.5), rgba(6,9,16,0))"></div>
+  <svg aria-hidden="true" width="1180" height="680" style="position: absolute; inset: 0; pointer-events: none; opacity: .08; mix-blend-mode: overlay">
+    <filter id="dfs-grain"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"></feTurbulence></filter>
+    <rect width="100%" height="100%" filter="url(#dfs-grain)"></rect>
+  </svg>
+
+  <header style="position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 28px; padding-left: 20px; z-index: 5">
+    <a href="Main.dc.html" aria-label="鲸歌生存服 首页" style="display: flex; align-items: center; gap: 10px">
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #0E2533; border: 1px solid {{accentSoft}}; display: grid; place-items: center; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 16px; color: {{accent}}; flex: none">鲸</span>
+      <span style="display: flex; flex-direction: column; line-height: 1.15">
+        <span style="font-size: 14px; font-weight: 700; letter-spacing: .04em">鲸歌生存服</span>
+        <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 8.5px; letter-spacing: .18em; color: rgba(243,239,230,.62)">WHALESONG</span>
+      </span>
+    </a>
+    <nav aria-label="主导航" style="display: flex; align-items: stretch; gap: 2px; align-self: stretch">
+      <a href="Main.dc.html" aria-current="page" style="position: relative; display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 700; color: #FFFFFF">首页<span style="position: absolute; left: 12px; right: 12px; bottom: 10px; height: 2px; border-radius: 2px; background: {{accent}}"></span></a>
+      <a href="News.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">公告</a>
+      <a href="Guide.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">服务器介绍</a>
+      <a href="Gallery.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">画廊</a>
+    </nav>
+    <div style="flex: 1; align-self: stretch"></div>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <button type="button" class="dfs-hv" onClick="{{toggleMusic}}" aria-label="{{musicAria}}" style="display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 12px 0 11px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(10,14,24,.42); backdrop-filter: blur(12px); cursor: pointer; color: rgba(243,239,230,.86)">
+        <span aria-hidden="true" style="display: flex; align-items: flex-end; gap: 2px; height: 12px; width: 14px">
+          <span class="dfs-eq" style="width: 2px; height: 12px; border-radius: 1px; background: {{accent}}; animation-play-state: {{eqState}}; animation-delay: -150ms"></span>
+          <span class="dfs-eq" style="width: 2px; height: 12px; border-radius: 1px; background: {{accent}}; animation-play-state: {{eqState}}; animation-delay: -520ms"></span>
+          <span class="dfs-eq" style="width: 2px; height: 12px; border-radius: 1px; background: {{accent}}; animation-play-state: {{eqState}}; animation-delay: -340ms"></span>
+          <span class="dfs-eq" style="width: 2px; height: 12px; border-radius: 1px; background: {{accent}}; animation-play-state: {{eqState}}; animation-delay: -760ms"></span>
+        </span>
+        <span style="font-size: 12px">海边的灯塔</span>
+        <sc-if value="{{playing}}" hint-placeholder-val="{{true}}">
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round"><path d="M9 6v12"></path><path d="M15 6v12"></path></svg>
+        </sc-if>
+        <sc-if value="{{notPlaying}}" hint-placeholder-val="{{false}}">
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" style="fill: currentColor; stroke: none"><path d="M8 5.5v13l10.5-6.5z"></path></svg>
+        </sc-if>
+      </button>
+      <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 4px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(10,14,24,.42); backdrop-filter: blur(12px)">
+        <span style="width: 24px; height: 24px; border-radius: 999px; overflow: hidden; display: block; flex: none">
+          <svg viewBox="0 0 8 8" width="24" height="24" aria-hidden="true" style="display: block; shape-rendering: crispEdges">
+            <rect x="0" y="0" width="8" height="8" fill="#D39A6A"></rect>
+            <rect x="0" y="0" width="8" height="2" fill="#3B2A1F"></rect>
+            <rect x="0" y="2" width="1" height="2" fill="#3B2A1F"></rect>
+            <rect x="7" y="2" width="1" height="2" fill="#3B2A1F"></rect>
+            <rect x="1" y="4" width="2" height="1" fill="#FFFFFF"></rect>
+            <rect x="2" y="4" width="1" height="1" fill="#2F7A55"></rect>
+            <rect x="5" y="4" width="2" height="1" fill="#FFFFFF"></rect>
+            <rect x="5" y="4" width="1" height="1" fill="#2F7A55"></rect>
+            <rect x="3" y="5" width="2" height="1" fill="#B67A4E"></rect>
+            <rect x="2" y="6" width="4" height="1" fill="#7A4A30"></rect>
+          </svg>
+        </span>
+        <span style="font-size: 12.5px; font-weight: 500">Steve_Fish</span>
+      </div>
+    </div>
+    <div style="display: flex; align-self: stretch">
+      <button type="button" class="dfs-hv" aria-label="最小化" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8)"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><path d="M1.5 6h9"></path></svg></button>
+      <button type="button" class="dfs-hv" aria-label="最大化" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8)"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5"></rect></svg></button>
+      <button type="button" class="dfs-close" aria-label="关闭" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8); border-top-right-radius: 12px"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><path d="M2 2l8 8"></path><path d="M10 2l-8 8"></path></svg></button>
+    </div>
+  </header>
+
+  <div style="position: absolute; left: 56px; top: 302px; width: 560px; height: 268px">
+    <sc-for list="{{slides}}" as="s" hint-placeholder-count="1">
+      <div aria-hidden="{{s.hidden}}" style="position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 16px; opacity: {{s.opacity}}; transform: translateY({{s.shift}}px); transition: opacity 700ms ease, transform 800ms cubic-bezier(.2,.7,.2,1); pointer-events: {{s.pe}}">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="height: 22px; padding: 0 9px; border-radius: 6px; display: flex; align-items: center; font-size: 12px; font-weight: 700; color: #04161A; background: {{accent}}">{{s.tag}}</span>
+          <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 10px; letter-spacing: .18em; color: rgba(243,239,230,.72)">{{s.eyebrow}}</span>
+        </div>
+        <h1 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif; font-weight: 900; font-size: 64px; line-height: 1.08; letter-spacing: .02em; color: #FFF6E0; text-shadow: 0 2px 30px rgba(0,0,0,.35)">{{s.title}}</h1>
+        <p style="margin: 0; max-width: 470px; font-size: 15px; line-height: 1.75; color: rgba(243,239,230,.86); text-wrap: pretty">{{s.lead}}</p>
+        <div style="display: flex; gap: 10px; margin-top: 6px">
+          <a href="{{s.href}}" class="dfs-cta" style="height: 42px; padding: 0 18px 0 20px; border-radius: 10px; display: flex; align-items: center; gap: 8px; background: {{accent}}; color: #04161A; font-weight: 700; font-size: 14px">{{s.cta}}<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></a>
+          <button type="button" class="dfs-hv" onClick="{{copy}}" style="height: 42px; padding: 0 16px; border-radius: 10px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); font-size: 14px; font-weight: 500; cursor: pointer; backdrop-filter: blur(10px)">
+            <sc-if value="{{copied}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: {{accent}}; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></sc-if>
+            <sc-if value="{{notCopied}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V6a2 2 0 0 1 2-2h8"></path></svg></sc-if>
+            {{copyLabel}}
+          </button>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div role="group" aria-label="焦点内容" style="position: absolute; left: 56px; bottom: 30px; display: flex; gap: 14px">
+    <sc-for list="{{slides}}" as="s" hint-placeholder-count="4">
+      <button type="button" onClick="{{s.pick}}" aria-label="第 {{s.num}} 条：{{s.label}}" aria-pressed="{{s.pressed}}" style="width: 118px; padding: 0; border: 0; background: transparent; cursor: pointer; display: flex; flex-direction: column; gap: 8px; text-align: left; color: {{s.labelColor}}; transition: color .3s ease">
+        <span style="display: flex; align-items: baseline; gap: 8px">
+          <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 10px; letter-spacing: .1em">{{s.idx}}</span>
+          <span style="font-size: 12.5px; font-weight: 500">{{s.label}}</span>
+        </span>
+        <span style="position: relative; display: block; width: 100%; height: 2px; border-radius: 2px; background: rgba(255,255,255,.18); overflow: hidden">
+          <span style="position: absolute; left: 0; top: 0; bottom: 0; width: {{s.fill}}%; background: {{accent}}"></span>
+        </span>
+      </button>
+    </sc-for>
+  </div>
+
+  <aside aria-label="服务器信息" style="position: absolute; right: 28px; top: 70px; width: 312px; display: flex; flex-direction: column; gap: 10px; z-index: 2">
+    <section style="padding: 16px; border-radius: 18px; background: rgba(9,13,22,.6); backdrop-filter: blur(18px) saturate(140%); border: 1px solid rgba(255,255,255,.1); box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06); display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; gap: 12px; align-items: center">
+        <span style="width: 40px; height: 40px; border-radius: 10px; background: #0E2533; border: 1px solid {{accentSoft}}; display: grid; place-items: center; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 20px; color: {{accent}}; flex: none">鲸</span>
+        <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <h2 style="margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3">鲸歌生存服</h2>
+            <span style="height: 19px; padding: 0 6px; border-radius: 5px; display: flex; align-items: center; font-size: 11px; color: rgba(243,239,230,.8); background: rgba(255,255,255,.08)">1.20.1 · Fabric</span>
+          </div>
+          <p style="margin: 0; font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><span style="color: #55FFFF">鲸歌</span><span style="color: #AAAAAA"> · </span><span style="color: #FFAA00">第三赛季 永夜之境</span><span style="color: #C9C9C9"> 今晚开放</span></p>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span class="dfs-pulse" style="width: 8px; height: 8px; border-radius: 50%; background: #7CF0A8; flex: none"></span>
+        <span style="font-size: 12.5px; font-weight: 500; color: #7CF0A8">在线</span>
+        <span style="display: flex; align-items: baseline; gap: 4px"><span style="font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1">37</span><span style="font-size: 12.5px; color: rgba(243,239,230,.62)">/ 120 人</span></span>
+        <span style="flex: 1"></span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: rgba(243,239,230,.72); font-variant-numeric: tabular-nums"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="fill: none; stroke: #7CF0A8; stroke-width: 2.2; stroke-linecap: round"><path d="M5 19v-3"></path><path d="M10 19v-6"></path><path d="M15 19V10"></path><path d="M20 19V6"></path></svg>28 ms</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.06)">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+          <span style="font-size: 11px; color: rgba(243,239,230,.6)">{{addressCaption}}</span>
+          <span style="font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 14px; letter-spacing: .01em">play.example.com</span>
+        </div>
+        <button type="button" class="dfs-hv" onClick="{{copy}}" aria-label="复制服务器地址" style="width: 32px; height: 32px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); display: grid; place-items: center; cursor: pointer; flex: none">
+          <sc-if value="{{copied}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: {{accent}}; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></sc-if>
+          <sc-if value="{{notCopied}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V6a2 2 0 0 1 2-2h8"></path></svg></sc-if>
+        </button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <button type="button" class="dfs-hv" style="height: 32px; border-radius: 9px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; cursor: pointer; color: rgba(243,239,230,.86)"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><circle cx="9" cy="8.5" r="3.5"></circle><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"></path><path d="M16 5a3.5 3.5 0 0 1 0 6.6"></path><path d="M18.5 14.8c1.6.8 2.6 2.5 3 5.2"></path></svg>QQ 群</button>
+        <button type="button" class="dfs-hv" style="height: 32px; border-radius: 9px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; cursor: pointer; color: rgba(243,239,230,.86)"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M4 5.5h16v11H10l-4.5 3.5v-3.5H4z"></path></svg>Discord</button>
+        <button type="button" class="dfs-hv" style="height: 32px; border-radius: 9px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; cursor: pointer; color: rgba(243,239,230,.86)"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"></path></svg>官网</button>
+      </div>
+    </section>
+
+    <section style="padding: 13px 16px 14px; border-radius: 18px; background: rgba(9,13,22,.6); backdrop-filter: blur(18px) saturate(140%); border: 1px solid rgba(255,255,255,.1); box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06); display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: rgba(243,239,230,.66)">
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="fill: none; stroke: #FFD27A; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"></rect><path d="M3.5 10h17"></path><path d="M8 3v4"></path><path d="M16 3v4"></path></svg>
+        <span>下一场活动</span>
+        <span style="flex: 1"></span>
+        <span style="font-variant-numeric: tabular-nums">10 月 24 日 周六 20:00</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 10px">
+        <h3 style="margin: 0; flex: 1; min-width: 0; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">建筑大赛 · 开赛直播</h3>
+        <span style="font-size: 15px; font-weight: 700; color: #FFD27A; font-variant-numeric: tabular-nums; white-space: nowrap">{{eventLeft}}</span>
+      </div>
+    </section>
+  </aside>
+
+  <div style="position: absolute; right: 28px; bottom: 24px; z-index: 3">
+    <dc-import name="UpdateDock" variant="{{dock}}" phase="{{phase}}" accent="{{accent}}" flow="true" open="false" hint-size="312px,124px"></dc-import>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"phase":{"editor":"enum","options":["updating","ready","offline","error"],"default":"updating","section":"状态"},"dock":{"editor":"enum","options":["胶囊游水线","梦泡图标","小鱼游水线","鱼缸水位","灵动胶囊","像素经验条"],"default":"胶囊游水线","section":"更新区"},"startSlide":{"editor":"int","default":0,"min":0,"max":3,"section":"状态"},"accent":{"editor":"color","default":"#2EE8DF","options":["#2EE8DF","#FFB454","#9BE15D","#B79CFF"],"section":"主题"},"$preview":{"width":1180,"height":680}}'>
+var SLIDES = [
+  { tag: '新赛季', eyebrow: 'SEASON 03 · NOW OPEN', title: '永夜之境', label: '赛季开放', lead: '第三赛季今晚 20:00 开放。深海神殿、全新附魔台与跨服交易所同步上线，老玩家背包全部保留。', cta: '查看赛季详情', href: 'News.dc.html', pos: '50% 50%', scale: 1, filter: 'brightness(.5) saturate(.8) contrast(1.12)', tint: 'linear-gradient(180deg, rgba(24,44,120,.62), rgba(10,16,48,.5))', blend: 'multiply' },
+  { tag: '活动', eyebrow: 'BUILD CONTEST', title: '秋日建筑大赛', label: '建筑大赛', lead: '本期主题「湖畔小镇」。10 月 31 日前在主城报名处登记坐标，前三名作品会永久保留在新主城。', cta: '了解参赛规则', href: 'News.dc.html', pos: '80% 48%', scale: 1.9, filter: 'saturate(1.1) contrast(1.04) sepia(.12)', tint: 'linear-gradient(180deg, rgba(255,140,60,.10), rgba(40,10,0,.28))', blend: 'normal' },
+  { tag: '新手', eyebrow: 'FIRST STEPS', title: '第一次来鲸歌？', label: '新手指南', lead: '三分钟看懂领地、传送与经济。出生点的向导会带你走完第一天，记得先领新手工具包。', cta: '阅读新手指南', href: 'Guide.dc.html', pos: '60% 72%', scale: 2, filter: 'saturate(1.05)', tint: 'rgba(0,0,0,0)', blend: 'normal' },
+  { tag: '维护', eyebrow: 'MAINTENANCE', title: '周四凌晨维护', label: '例行维护', lead: '10 月 29 日 03:00–05:00 停服更新服务端，期间无法进入。背包与领地数据不受影响。', cta: '查看维护公告', href: 'News.dc.html', pos: '12% 42%', scale: 1.6, filter: 'saturate(.9) brightness(.9)', tint: 'linear-gradient(180deg, rgba(40,80,140,.22), rgba(0,0,0,.2))', blend: 'normal' }
+];
+var SLIDE_MS = 7000;
+var EVENT_OFFSET = ((2 * 24 + 6) * 3600 + 18 * 60 + 40) * 1000;
+var PHASES = ['updating', 'ready', 'offline', 'error'];
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+function clamp01(x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
+
+// The update area lives in UpdateDock.dc.html, which also runs the update simulation.
+class Component extends DCLogic {
+  componentDidMount() {
+    this._mount = Date.now();
+    this._last = Date.now();
+    var start = parseInt(this.props.startSlide, 10);
+    this.setState({ slide: isNaN(start) ? 0 : Math.max(0, Math.min(3, start)), slideT: 0, playing: true, copiedUntil: 0 });
+    var self = this;
+    this._timer = setInterval(function () { self.tick(); }, 100);
+  }
+  componentWillUnmount() { clearInterval(this._timer); }
+  tick() {
+    var s = this.state || {};
+    var now = Date.now();
+    var dt = Math.min(300, now - (this._last || now));
+    this._last = now;
+    var slideT = (s.slideT || 0) + dt;
+    var slide = s.slide || 0;
+    if (slideT >= SLIDE_MS) { slideT = 0; slide = (slide + 1) % SLIDES.length; }
+    this.setState({ slideT: slideT, slide: slide });
+  }
+  renderVals() {
+    var self = this;
+    var s = this.state || {};
+    var accent = this.props.accent || '#2EE8DF';
+    var now = Date.now();
+
+    var slide = s.slide || 0;
+    var slideFrac = clamp01((s.slideT || 0) / SLIDE_MS);
+    var slides = SLIDES.map(function (sl, i) {
+      var on = i === slide;
+      return Object.assign({}, sl, {
+        num: i + 1,
+        idx: pad2(i + 1),
+        opacity: on ? 1 : 0,
+        shift: on ? 0 : 14,
+        pe: on ? 'auto' : 'none',
+        hidden: on ? 'false' : 'true',
+        pressed: on ? 'true' : 'false',
+        fill: on ? Math.round(slideFrac * 1000) / 10 : 0,
+        labelColor: on ? '#FFF6E0' : 'rgba(243,239,230,.6)',
+        pick: function () { self.setState({ slide: i, slideT: 0 }); }
+      });
+    });
+
+    var left = Math.max(0, (this._mount || now) + EVENT_OFFSET - now);
+    var sec = Math.floor(left / 1000);
+    var eventLeft = Math.floor(sec / 86400) + ' 天 ' + pad2(Math.floor((sec % 86400) / 3600)) + ':' + pad2(Math.floor((sec % 3600) / 60)) + ':' + pad2(sec % 60);
+
+    var copied = (s.copiedUntil || 0) > now;
+    var playing = s.playing !== false;
+
+    return {
+      accent: accent,
+      accentSoft: 'color-mix(in oklab, ' + accent + ' 45%, transparent)',
+      accentTint: 'color-mix(in oklab, ' + accent + ' 16%, transparent)',
+      slides: slides,
+      phase: PHASES.indexOf(this.props.phase) >= 0 ? this.props.phase : 'updating',
+      dock: this.props.dock || '胶囊游水线',
+      eventLeft: eventLeft,
+      copied: copied,
+      notCopied: !copied,
+      copyLabel: copied ? '已复制地址' : '复制服务器地址',
+      addressCaption: copied ? '已复制到剪贴板' : '服务器地址',
+      copy: function () {
+        try {
+          var p = navigator.clipboard && navigator.clipboard.writeText('play.example.com');
+          if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+        self.setState({ copiedUntil: Date.now() + 1800 });
+      },
+      playing: playing,
+      notPlaying: !playing,
+      eqState: playing ? 'running' : 'paused',
+      musicAria: playing ? '暂停音乐：海边的灯塔' : '播放音乐：海边的灯塔',
+      toggleMusic: function () { self.setState({ playing: !playing }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

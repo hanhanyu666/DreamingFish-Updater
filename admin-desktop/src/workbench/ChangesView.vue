@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed,ref,watch } from 'vue';
-import { RefreshCw,Upload,Plus,Minus,ArrowRight,History,Undo2,ShieldAlert,Search,ListFilter,ChevronDown,Check,X,TriangleAlert,PackageCheck,Settings2,FileText,Rocket,Copy } from '@lucide/vue';
+import { RefreshCw,Upload,Plus,Minus,ArrowRight,History,Undo2,ShieldAlert,Search,ListFilter,ChevronDown,Check,X,TriangleAlert,PackageCheck,Settings2,FileText,Rocket,Copy,Palette } from '@lucide/vue';
 import { desk,safely,scan,publish,request,apiPath,loadProject,history,restorePreview,getHistoryFiles,notify,operation,openView } from './store';
 import { bytes,when,nameOf,newestReleases,changedFileSize,type Data } from './model';
 import { policyPresentation,operationKinds,viewSections,distinctWarnings,sectionLabel } from './presentation';
@@ -13,7 +13,9 @@ const changedBytes=computed(()=>preview.value?.changedFileBytes??(preview.value?
 const policies=computed(()=>(preview.value?.policyChanges||[]).map((c:Data)=>policyPresentation(c,desk.project?.maintenance)));
 const fileChanges=computed(()=>(preview.value?.changes||[]).filter((c:Data)=>c.kind!=='POLICY_CHANGED'||!policies.value.some((p:any)=>p.subject===c.path)));
 const changes=computed(()=>fileChanges.value.filter((c:Data)=>filter.value==='all'||c.kind===filter.value));
-const total=computed(()=>fileChanges.value.length+policies.value.length);
+// Player design differences from the latest release; live ones already reach players after saving.
+const designs=computed<Data[]>(()=>preview.value?.presentationChanges||[]);
+const total=computed(()=>fileChanges.value.length+policies.value.length+designs.value.length);
 const warnings=computed(()=>distinctWarnings(preview.value?.warnings));
 const operationSearch=ref(''),operationFilter=ref('all');
 const operations=computed(()=>desk.operations.filter(item=>(operationFilter.value==='all'||item.kind===operationFilter.value)&&`${item.title} ${JSON.stringify(item.changes)}`.toLowerCase().includes(operationSearch.value.toLowerCase())));
@@ -51,11 +53,12 @@ async function revoke(id:string,correction=false){if(!confirm('结束这个处�
    </header>
 
    <template v-if="desk.section==='changes'">
-    <div class="change-summary"><div class="chip-row"><button v-for="item in filters" :key="item.id" class="chip" :class="['tone-'+item.id.toLowerCase(),{active:filter===item.id}]" @click="filter=item.id"><Plus v-if="item.id==='ADDED'" :size="13"/><ArrowRight v-else-if="item.id==='MODIFIED'" :size="13"/><Minus v-else-if="item.id==='REMOVED'" :size="13"/>{{item.label}}<small>{{item.count}}</small></button><span v-if="policies.length" class="chip static"><Settings2 :size="13"/>维护设置<small>{{policies.length}}</small></span></div><span class="scope-summary">新增 / 更新文件 <strong>{{bytes(changedBytes)}}</strong></span></div>
+    <div class="change-summary"><div class="chip-row"><button v-for="item in filters" :key="item.id" class="chip" :class="['tone-'+item.id.toLowerCase(),{active:filter===item.id}]" @click="filter=item.id"><Plus v-if="item.id==='ADDED'" :size="13"/><ArrowRight v-else-if="item.id==='MODIFIED'" :size="13"/><Minus v-else-if="item.id==='REMOVED'" :size="13"/>{{item.label}}<small>{{item.count}}</small></button><span v-if="policies.length" class="chip static"><Settings2 :size="13"/>维护设置<small>{{policies.length}}</small></span><span v-if="designs.length" class="chip static"><Palette :size="13"/>玩家端设计<small>{{designs.length}}</small></span></div><span class="scope-summary">新增 / 更新文件 <strong>{{bytes(changedBytes)}}</strong></span></div>
     <div class="list-scroll"><div class="diff-list">
      <article v-for="change in changes" :key="change.path" class="diff-row"><span class="diff-badge" :class="change.kind.toLowerCase()"><Minus v-if="change.kind==='REMOVED'" :size="15"/><Plus v-else-if="change.kind==='ADDED'" :size="15"/><ArrowRight v-else :size="15"/></span><div class="diff-copy"><strong>{{change.displayName||nameOf(change.path)}}</strong><small>{{change.path}}</small><p v-if="change.previousVersion&&change.version" class="version-shift">{{change.previousVersion}}<ArrowRight :size="11"/>{{change.version}}</p></div><span class="kind-tag" :class="change.kind.toLowerCase()">{{kinds[change.kind]||'设置'}}</span><span class="diff-size tabular">{{fileSize(change)!==null?bytes(fileSize(change)!):'—'}}</span><div v-if="change.kind==='REMOVED'" class="select-capsule removal-select" :class="{unset:!change.removalAction}"><select :value="change.removalAction||''" aria-label="移除后如何处理" @change="safely(()=>removal(change.path,($event.target as HTMLSelectElement).value))"><option value="" disabled>选择处理方式</option><option value="DELETE">移除玩家副本</option><option value="RELEASE">留给玩家</option></select><ChevronDown :size="13"/></div></article>
      <article v-for="(rule,i) in policies" v-show="filter==='all'" :key="'policy-'+i" class="diff-row policy"><span class="diff-badge policy"><ShieldAlert :size="15"/></span><div class="diff-copy"><span class="policy-category">{{rule.label}}</span><strong>{{rule.subject}}</strong><small class="wrap">{{rule.detail}}</small></div></article>
-     <div v-if="!changes.length&&(filter!=='all'||!policies.length)" class="empty-list"><Fish variant="scene" class="empty-fish"/><strong>{{desk.busy?'正在检查…':filter!=='all'?'没有这类改动':'与当前发布一致'}}</strong><span>修改文件或维护设置后，变化会显示在这里。</span></div>
+     <article v-for="item in designs" v-show="filter==='all'" :key="'design-'+item.section+'-'+item.live" class="diff-row design"><span class="diff-badge design"><Palette :size="15"/></span><div class="diff-copy"><span class="policy-category">玩家端设计 · {{item.title}}</span><strong>{{item.items.join('、')}}</strong><small class="wrap">{{item.live?'保存后已对玩家生效，发布新版本时会一并写入':'发布新版本后玩家才会看到'}}</small></div><span class="kind-tag" :class="item.live?'live':'pending'">{{item.live?'已生效':'待发布'}}</span><button type="button" class="text-action" @click="safely(()=>openView('appearance',item.section))">查看<ArrowRight :size="13"/></button></article>
+     <div v-if="!changes.length&&(filter!=='all'||!policies.length&&!designs.length)" class="empty-list"><Fish variant="scene" class="empty-fish"/><strong>{{desk.busy?'正在检查…':filter!=='all'?'没有这类改动':'与当前发布一致'}}</strong><span>修改文件、维护设置或玩家端设计后，变化会显示在这里。</span></div>
     </div></div>
    </template>
 

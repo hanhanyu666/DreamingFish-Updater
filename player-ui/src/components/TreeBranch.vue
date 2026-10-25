@@ -10,6 +10,7 @@ import {
 } from "../lib/fileTree";
 import { canRestoreDefault } from "../lib/maintenance";
 import { usePlayerStore } from "../stores/player";
+import AppIcon from "./AppIcon.vue";
 
 const props = defineProps<{
   node: TreeNode;
@@ -41,17 +42,25 @@ function toggleEntry(checked: boolean): void {
 
 <template>
   <div class="local-file-branch">
-    <div class="local-file-row" :style="{ paddingLeft: depth * 18 + 'px' }">
+    <div
+      class="local-file-row"
+      :class="{ unmanaged: !entryManaged(node.entry) }"
+      role="treeitem"
+      :aria-expanded="node.children.length > 0 ? expanded() : undefined"
+      :style="{ paddingLeft: 14 + depth * 22 + 'px' }"
+    >
       <button
         v-if="node.children.length > 0"
         type="button"
         class="tree-disclosure"
         :class="{ open: expanded() }"
+        :aria-label="(expanded() ? '收起 ' : '展开 ') + node.entry.path"
         @click="toggle"
       >
-        <span class="tree-disclosure-arrow"></span>
+        <AppIcon name="chevron" />
       </button>
       <span v-else class="tree-disclosure-placeholder"></span>
+      <AppIcon :name="node.entry.directory ? 'files' : 'document'" class="local-file-icon" :class="{ folder: node.entry.directory }" />
       <div class="local-file-labels" :title="detailText(node.entry)">
         <div class="local-file-name">
           {{ node.entry.displayName }}{{ node.entry.directory ? "/" : "" }}
@@ -69,17 +78,20 @@ function toggleEntry(checked: boolean): void {
       </button>
       <span v-else-if="node.entry.resetPending" class="file-reset-pending">等待恢复默认</span>
       <label
-        class="mod-toggle"
-        :class="{ disabled: node.entry.forced || node.entry.inheritedExclusion != null }"
+        class="file-manage-toggle"
+        :class="{ disabled: node.entry.forced || node.entry.inheritedExclusion != null, forced: node.entry.forced }"
         :title="checkboxTooltip(node.entry)"
       >
         <input
           type="checkbox"
+          class="dfs-check"
           :checked="entryManaged(node.entry)"
           :indeterminate="node.entry.partiallyExcluded && !node.entry.forced"
           :disabled="node.entry.forced || node.entry.inheritedExclusion != null"
+          :aria-label="'管理 ' + node.entry.path"
           @change="toggleEntry(($event.target as HTMLInputElement).checked)"
         />
+        <AppIcon v-if="node.entry.forced" name="lock" class="file-manage-lock" />
         <span>{{ checkboxLabel(node.entry) }}</span>
       </label>
     </div>

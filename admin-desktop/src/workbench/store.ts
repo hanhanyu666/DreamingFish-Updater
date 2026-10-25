@@ -27,7 +27,7 @@ export const fileIndex=computed(()=>buildFileIndex(desk.files,desk.directories))
 export const pendingCounts=computed(()=>{const changes=new Set((desk.project?.preview?.changes||[]).map((change:Data)=>change.path));return directoryCounts(desk.files,file=>!file.published||changes.has(file.path));});
 export const places=computed(()=>[...fileIndex.value.folders.values()].filter(entry=>!entry.path.includes('/')).map(entry=>({path:entry.path,count:entry.count||0})).sort((a,b)=>a.path.localeCompare(b.path,'zh-CN',{numeric:true})));
 export const groups = computed(() => (desk.project?.maintenance?.optionalGroups || []).map((g: Data) => ({ ...g, count: desk.files.filter(f => f.optionalGroup === g.id).length })));
-export const publishState = computed(() => !desk.project?.releases?.length ? '未发布' : desk.project?.previewStale || !desk.project.preview ? '待检查' : desk.project.preview.changes?.length || desk.project.preview.policyChanges?.length ? '待发布' : desk.files.some(f => !f.published) ? '待检查' : '已发布');
+export const publishState = computed(() => !desk.project?.releases?.length ? '未发布' : desk.project?.previewStale || !desk.project.preview ? '待检查' : desk.project.preview.changes?.length || desk.project.preview.policyChanges?.length || desk.project.preview.presentationChanges?.length ? '待发布' : desk.files.some(f => !f.published) ? '待检查' : '已发布');
 export const latestVersion = computed(() => newestReleases(desk.project?.releases)[0]?.displayVersion || '');
 let projectGeneration = 0, loadGeneration = 0;
 export class ApiError extends Error {

@@ -1,4 +1,4 @@
-DreamingFish 管理端桌面版 0.2.8（Windows x64）
+DreamingFish 管理端桌面版 0.3.1（Windows x64）
 
 先把压缩包里的整个“梦鱼更新管理”文件夹解压到固定位置，再双击里面的 DreamingFishAdminDesktop.exe，选择本机管理或远程连接。
 不要直接在压缩包里运行，也不要只拿出 exe。

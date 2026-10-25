@@ -16,13 +16,16 @@ public record PublishPreview(
         ProjectRules rules,
         String projectDigest,
         List<PolicyChange> policyChanges,
-        List<PreviewWarning> warnings
+        List<PreviewWarning> warnings,
+        List<PresentationChange> presentationChanges
 ) {
     public PublishPreview {
         files = files == null ? List.of() : List.copyOf(files);
         changes = changes == null ? List.of() : List.copyOf(changes);
         policyChanges = policyChanges == null ? List.of() : List.copyOf(policyChanges);
         warnings = warnings == null ? List.of() : List.copyOf(warnings);
+        // Previews saved before design changes were compared have no such list.
+        presentationChanges = presentationChanges == null ? List.of() : List.copyOf(presentationChanges);
     }
 
     public String confirmationDigest() {
@@ -38,6 +41,6 @@ public record PublishPreview(
     PublishPreview withChanges(List<PreviewChange> replacement) {
         return new PublishPreview(schemaVersion, previewId, projectId, baseReleaseId, createdAt,
                 files, replacement, totalManagedBytes, estimatedDownloadBytes, rules,
-                projectDigest, policyChanges, warnings);
+                projectDigest, policyChanges, warnings, presentationChanges);
     }
 }

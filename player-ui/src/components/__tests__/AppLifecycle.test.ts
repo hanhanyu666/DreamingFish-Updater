@@ -3,7 +3,9 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const appSource = readFileSync(resolve("src/App.vue"), "utf8");
-const playerStyles = readFileSync(resolve("src/styles/player.css"), "utf8");
+const playerStyles = ["base", "shell", "home", "pages", "drawer"]
+  .map((name) => readFileSync(resolve(`src/styles/${name}.css`), "utf8"))
+  .join("\n");
 
 describe("player window lifecycle", () => {
   it("shows progress before startup is complete without enabling music early", () => {
@@ -26,7 +28,7 @@ describe("player window lifecycle", () => {
 
   it("keeps launch notices away from the local management drawer", () => {
     expect(playerStyles).toMatch(
-      /\.launch-notice-layer\.drawer-open\s*\{[\s\S]*?right:\s*620px/,
+      /\.launch-notice-layer\.drawer-open\s*\{[\s\S]*?right:\s*calc\(min\(900px, 100% - 240px\) \+ 26px\)/,
     );
     expect(playerStyles).toMatch(
       /\.launch-notice-layer\.drawer-expanded\s*\{[\s\S]*?visibility:\s*hidden;[\s\S]*?animation:\s*none/,

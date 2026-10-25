@@ -175,6 +175,41 @@ class PlayerControllerTest {
         assertEquals("#f0e1c2", merged.titleColor());
     }
 
+    @Test
+    void showcaseTextIsLiveAndImageIdentitiesComeOnlyFromTheRelease() {
+        var json = new cn.dreamingfish.updater.protocol.JsonCodec();
+        var releaseImage = new cn.dreamingfish.updater.protocol.PlayerPresentationImage("hero.png", "a".repeat(64), 42);
+        var unpublished = new cn.dreamingfish.updater.protocol.PlayerPresentationImage("hero.png", "b".repeat(64), 43);
+        Branding release = Branding.empty().withPresentationImages(List.of(releaseImage));
+        Branding presentation = json.read("""
+                {"productName":"新标题","addressPlacement":"HERO","brandLogoFile":"hero.png","spotlights":[{"id":"welcome","title":"新赛季","label":"赛季","imageFile":"hero.png"}],
+                "serverCard":{"showStatus":false},"theme":{"corner":"SQUARE"},
+                "events":[{"id":"event","title":"活动","startsAt":"2026-10-24T20:00:00+08:00"}],
+                "contentPages":[{"id":"gallery","title":"画廊","layout":"GALLERY","imageFile":"hero.png",
+                "imageUrl":"https://example.com/page.png","tags":["风景"],
+                "articles":[{"id":"news","category":"活动","author":"运营组"}],
+                "gallery":[{"id":"photo","featured":true}],"blocks":[{"id":"section","eyebrow":"FEATURES"}]}]}
+                """.getBytes(java.nio.charset.StandardCharsets.UTF_8), Branding.class).withPresentationImages(List.of(unpublished));
+        Branding merged = PlayerController.mergePresentation(release, presentation);
+        assertEquals(presentation.spotlights(), merged.spotlights());
+        assertEquals(presentation.serverCard(), merged.serverCard());
+        assertEquals(presentation.events(), merged.events());
+        assertEquals(presentation.theme(), merged.theme());
+        assertEquals("HERO", merged.addressPlacement());
+        assertEquals("hero.png", merged.brandLogoFile());
+        assertEquals(presentation.contentPages(), merged.contentPages());
+        assertEquals("赛季", merged.spotlights().getFirst().label());
+        var page = merged.contentPages().getFirst();
+        assertEquals("hero.png", page.imageFile());
+        assertEquals("https://example.com/page.png", page.imageUrl());
+        assertEquals(List.of("风景"), page.tags());
+        assertEquals("活动", page.articles().getFirst().category());
+        assertEquals("运营组", page.articles().getFirst().author());
+        assertEquals(Boolean.TRUE, page.gallery().getFirst().featured());
+        assertEquals("FEATURES", page.blocks().getFirst().eyebrow());
+        assertEquals(List.of(releaseImage), merged.presentationImages());
+    }
+
     private static final class RecordingViewPort implements PlayerViewPort {
         final List<String> errors = new CopyOnWriteArrayList<>();
         final List<String> logs = new CopyOnWriteArrayList<>();

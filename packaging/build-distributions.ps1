@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.2",
-    [string]$AdminVersion = "0.2.8",
+    [string]$Version = "0.3.2",
+    [string]$AdminVersion = "0.3.1",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
@@ -237,7 +237,7 @@ function Assert-PlayerVersionConsistency([string]$ExpectedVersion) {
         "player-app/PlayerRuntime.java" = @(
             "player-app\src\main\java\cn\dreamingfish\updater\player\PlayerRuntime.java",
             'VERSION\s*=\s*"([^"]+)"')
-        "player-ui/src/App.vue" = @("player-ui\src\App.vue", 'Updater \{\{ "([^"]+)" \}\}')
+        # The about page is the one place the window shows the player version.
         "player-ui/src/components/ContentPages.vue" = @(
             "player-ui\src\components\ContentPages.vue", 'VERSION\s*=\s*"([^"]+)"')
         "player-ui/src-tauri/Cargo.toml" = @("player-ui\src-tauri\Cargo.toml", '(?m)^version\s*=\s*"([^"]+)"')
@@ -390,7 +390,7 @@ if (-not $AdminOnly) {
     $playerRuntimeRoot = Join-Path $buildRoot "player-runtime"
     New-Item -ItemType Directory -Force -Path $playerRuntimeRoot | Out-Null
     Invoke-Checked $jlink @(
-        "--add-modules", "java.net.http,jdk.crypto.ec,jdk.unsupported,java.logging",
+        "--add-modules", "java.net.http,java.naming,jdk.naming.dns,jdk.crypto.ec,jdk.unsupported,java.logging",
         "--strip-debug", "--no-man-pages", "--no-header-files",
         "--output", (Join-Path $playerRuntimeRoot "runtime")
     )
@@ -451,7 +451,7 @@ Copy-DirectoryContents (Join-Path $adminImageRoot "DreamingFishAdmin") $adminWin
 New-Item -ItemType Directory -Force -Path (Join-Path $adminWindows "support") | Out-Null
 Copy-Item -LiteralPath $agentJar.FullName -Destination `
     (Join-Path $adminWindows "support\bootstrap-agent.jar")
-Copy-Item -LiteralPath (Join-Path $JdkHome "bin\java.exe") -Destination (Join-Path $adminWindows "runtime\bin\java.exe")
+Copy-Item -LiteralPath (Join-Path $resolvedJdk "bin\java.exe") -Destination (Join-Path $adminWindows "runtime\bin\java.exe")
 Copy-Item -LiteralPath (Join-Path $templates "dfs-admin.cmd") -Destination (Join-Path $adminWindows "dfs-admin.cmd")
 Copy-Item -LiteralPath (Join-Path $templates "dfs-admin.ps1") -Destination (Join-Path $adminWindows "dfs-admin.ps1")
 Copy-Item -LiteralPath (Join-Path $templates "README-management.txt") -Destination (Join-Path $adminWindows "README.txt")

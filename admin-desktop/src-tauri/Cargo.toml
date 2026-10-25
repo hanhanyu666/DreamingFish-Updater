@@ -1,6 +1,6 @@
 [package]
 name = "dreamingfish-admin-desktop"
-version = "0.2.8"
+version = "0.3.1"
 description = "DreamingFish management desktop"
 authors = ["DreamingFish"]
 edition = "2021"

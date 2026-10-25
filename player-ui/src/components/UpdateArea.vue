@@ -1,77 +1,42 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { ellipsize, formatUpdateFileDetails } from "../lib/format";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { changelogLines } from "../lib/changelog";
+import { formatHistoryTime, formatUpdateFileDetails } from "../lib/format";
 import { entryManaged } from "../lib/fileTree";
 import type { IconName } from "../lib/icons";
-import type { UpdateStage } from "../lib/types";
 import { usePlayerStore, type DrawerMode } from "../stores/player";
 import AppIcon from "./AppIcon.vue";
+import MoonFish, { type FishMood } from "./MoonFish.vue";
+import { updateStatusOf, type UpdateStatus } from "../lib/updateStatus";
 
-type UpdateStatus = "working" | "done" | "error" | "offline";
-type StepState = "done" | "active" | "error" | "pending";
-
-const STEPS: ReadonlyArray<{ key: string; label: string; stages: readonly UpdateStage[] }> = [
-  { key: "check", label: "检查", stages: ["RECOVERING", "CHECKING", "SCANNING", "OFFLINE"] },
-  { key: "download", label: "下载", stages: ["DOWNLOADING"] },
-  { key: "install", label: "安装", stages: ["PREPARING", "INSTALLING", "VERIFYING"] },
-  { key: "launch", label: "启动", stages: ["COMPLETE"] },
-];
-
+const MOODS: Record<UpdateStatus, FishMood> = {
+  working: "swim",
+  done: "happy",
+  error: "worried",
+  offline: "sleep",
+};
+const MARKS: Record<Exclude<UpdateStatus, "working">, IconName> = {
+  done: "check",
+  error: "alert",
+  offline: "offline",
+};
 const QUICK_LINKS: ReadonlyArray<{ mode: DrawerMode; label: string; icon: IconName }> = [
   { mode: "HISTORY", label: "更新记录", icon: "history" },
   { mode: "LOGS", label: "运行记录", icon: "logs" },
   { mode: "FILES", label: "本地文件", icon: "files" },
 ];
+/** The card lists this many changelog lines; the rest wait on the details page. */
+const INFO_LINES = 3;
+const PET_MS = 1300;
+/** Circumference of the keep-open ring, r = 8. */
+const RING = 2 * Math.PI * 8;
 
 const store = usePlayerStore();
-const tooltipVisible = ref(false);
-/** The last stage seen, so a failure can point at the step that stopped. */
-const lastStage = ref<UpdateStage | null>(null);
-
-watch(
-  () => store.state.progress?.stage,
-  (stage) => {
-    if (stage != null) lastStage.value = stage;
-  },
-  { immediate: true },
-);
 
 const result = computed(() => store.state.result);
 
-const status = computed<UpdateStatus>(() => {
-  if (store.state.error != null) return "error";
-  if (store.state.working || (!store.state.launchPermitted && result.value == null)) {
-    return "working";
-  }
-  if (store.state.unverifiedOffline || store.state.localContentOverride
-      || result.value?.outcome === "OFFLINE_ALLOWED") {
-    return "offline";
-  }
-  return "done";
-});
-
-const releaseLabel = computed(() => {
-  switch (result.value?.outcome) {
-    case "UPDATED":
-      return "本次更新";
-    case "OFFLINE_ALLOWED":
-      return "离线版本";
-    default:
-      return "当前版本";
-  }
-});
-const summaryVersion = computed(() =>
-  result.value == null ? "" : "版本 " + result.value.displayVersion,
-);
-const summaryChangelog = computed(() => {
-  if (result.value == null) return "";
-  const changelog =
-    result.value.changelog == null || result.value.changelog.trim().length === 0
-      ? "本次发布没有填写更新说明。"
-      : result.value.changelog.trim();
-  const firstLine = changelog.split("\n")[0] ?? "";
-  return ellipsize(firstLine, 74);
-});
+const status = computed<UpdateStatus>(() => updateStatusOf(store.state));
+const mark = computed(() => (status.value === "working" ? null : MARKS[status.value]));
 
 const locallyDisabledMods = computed(
   () => store.state.mods.filter((entry) => entry.disabled && !entry.forced).length,
@@ -88,23 +53,28 @@ const releaseStats = computed(() => {
   const value = result.value;
   if (value == null) return [];
   return [
-    { label: "安装 / 更新", count: value.installedPaths.length, tone: "install" },
-    { label: "删除", count: value.deletedPaths.length, tone: "delete" },
-    { label: "备份", count: value.archivedFiles.length, tone: "archive" },
-    { label: "恢复默认", count: (value.resetPaths ?? []).length, tone: "install" },
-    { label: "保留并放弃管理", count: value.releasedPaths.length, tone: "local" },
-    { label: "本地停用", count: locallyDisabledMods.value, tone: "local" },
-    { label: "本地不管理", count: locallyExcludedFiles.value, tone: "local" },
+    { label: "安装", count: value.installedPaths.length },
+    { label: "删除", count: value.deletedPaths.length },
+    { label: "备份", count: value.archivedFiles.length },
+    { label: "恢复默认", count: (value.resetPaths ?? []).length },
+    { label: "放弃管理", count: value.releasedPaths.length },
+    { label: "本地停用", count: locallyDisabledMods.value },
+    { label: "本地不管理", count: locallyExcludedFiles.value },
   ].filter((stat) => stat.count > 0);
 });
 
-const tooltipText = computed(() => {
+/** Every file the update touched, for the tooltip on the link to the full list. */
+const summaryTitle = computed(() => {
   if (result.value == null) return "";
+  const changelog = result.value.changelog?.trim() ?? "";
+  const counts = releaseStats.value.length === 0
+    ? "本次无需修改本地文件"
+    : releaseStats.value.map((stat) => stat.label + " " + stat.count).join(" · ");
   return (
-    "版本 " +
-    result.value.displayVersion +
-    " · 文件变更\n\n" +
-    formatUpdateFileDetails(
+    "版本 " + result.value.displayVersion + " · " + counts
+    + (changelog.length > 0 ? "\n" + changelog.split("\n")[0] : "")
+    + "\n\n"
+    + formatUpdateFileDetails(
       result.value.installedPaths,
       result.value.deletedPaths,
       result.value.archivedFiles,
@@ -113,65 +83,149 @@ const tooltipText = computed(() => {
   );
 });
 
-const percentParts = computed(() => {
-  const text = store.state.percent;
-  return text.endsWith("%")
-    ? { value: text.slice(0, -1), unit: "%" }
-    : { value: text, unit: "" };
+const percentText = computed(() =>
+  status.value === "working" && store.state.percent.endsWith("%") ? store.state.percent : "",
+);
+const bytesVisible = computed(() =>
+  status.value === "working" && (store.state.progress?.totalBytes ?? 0) > 0,
+);
+/** One line under the lane: the download size while downloading, otherwise what is happening. */
+const detailText = computed(() => {
+  if (status.value === "error") return store.state.currentPathText;
+  if (bytesVisible.value) return store.state.byteSummary;
+  const parts = [store.state.currentPathText];
+  if (store.state.launchNotice != null && store.state.countdownRemaining == null) parts.push("窗口保持打开");
+  return parts.filter((part) => part.trim().length > 0 && part !== "-- / --").join(" · ");
 });
-const percentVisible = computed(() =>
-  (status.value === "working" || status.value === "done") && percentParts.value.unit !== "",
+
+/** How far the fish has swum in this run; stages without byte counts keep it where downloading left it. */
+const swum = ref(0);
+watch(
+  () => [store.state.progress, store.state.working] as const,
+  ([event, working], previous) => {
+    if (working && previous?.[1] !== true) swum.value = 0;
+    if (event != null && event.totalBytes > 0) swum.value = Math.max(swum.value, event.fraction);
+  },
+  { immediate: true },
+);
+const laneProgress = computed(() =>
+  status.value === "done" || status.value === "offline" ? 1 : swum.value,
+);
+/** Checking has no size yet, so the fish looks around near the start instead of claiming progress. */
+const laneWaiting = computed(() =>
+  status.value === "working" && swum.value === 0 && (store.state.progress?.totalBytes ?? 0) <= 0,
+);
+const laneStyle = computed(() => ({ "--lane-progress": String(laneProgress.value) }));
+
+const petCount = ref(0);
+const petted = ref(false);
+let petTimer: number | null = null;
+const mood = computed<FishMood>(() => (petted.value ? "wow" : MOODS[status.value]));
+
+function pet(): void {
+  petCount.value += 1;
+  petted.value = true;
+  if (petTimer != null) window.clearTimeout(petTimer);
+  petTimer = window.setTimeout(() => {
+    petted.value = false;
+    petTimer = null;
+  }, PET_MS);
+}
+
+onBeforeUnmount(() => {
+  if (petTimer != null) window.clearTimeout(petTimer);
+});
+
+const countdown = computed(() => {
+  const remaining = store.state.countdownRemaining;
+  const total = store.state.countdownTotal;
+  if (remaining == null || remaining <= 0) return null;
+  const left = total != null && total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 1;
+  return { remaining, offset: RING * (1 - left) };
+});
+
+const noticeText = computed(() => (store.state.unmanaged?.text ?? "").replace(/\s*›\s*$/, ""));
+/**
+ * What the update kept safe for the player, in a few words; it opens where those files are.
+ * Each part keeps its words together, so a narrow card wraps only between parts.
+ */
+const keptLine = computed(() => {
+  if (status.value === "error" || status.value === "working" || result.value == null) return "";
+  const parts: string[] = [];
+  const archived = result.value.archivedFiles.length;
+  const kept = (result.value.keptModifiedPaths ?? []).length;
+  const playerMods = store.state.unmanaged?.mods.length ?? 0;
+  if (archived > 0) parts.push("备份\u00a0" + archived + "\u00a0个文件");
+  if (kept > 0) parts.push("保留\u00a0" + kept + "\u00a0个配置");
+  if (playerMods > 0) parts.push(playerMods + "\u00a0个自选模组");
+  if (parts.length > 0) return parts.join(" · ");
+  return noticeText.value;
+});
+const keptTitle = computed(() =>
+  [noticeText.value, ...(store.state.unmanaged?.contextLines ?? [])]
+    .filter((line) => line.length > 0)
+    .join("\n"),
 );
 
-const activeStep = computed(() => {
-  const stage = status.value === "working"
-    ? store.state.progress?.stage ?? null
-    : lastStage.value;
-  if (stage == null) return 0;
-  return Math.max(0, STEPS.findIndex((step) => step.stages.includes(stage)));
+/**
+ * What this release is, shown in the card under the progress: the owner's first changelog lines
+ * and what happened to local files, each count leading to where those files are listed.
+ */
+const info = computed(() => {
+  const value = result.value;
+  if (value == null || status.value === "error" || status.value === "working") return null;
+  const lines = changelogLines(value.changelog);
+  const time = formatHistoryTime(value.createdAt);
+  return {
+    heading: value.outcome === "UPDATED" ? "本次更新" : value.outcome === "OFFLINE_ALLOWED" ? "离线版本" : "当前版本",
+    meta: [value.displayVersion, time.length > 0 ? time.replace(/\s+/, " ") + " 发布" : ""].filter(Boolean).join(" · "),
+    lines: lines.slice(0, INFO_LINES),
+    tagged: lines.some((line) => line.tag.length > 0),
+    more: lines.length > INFO_LINES,
+  };
 });
-/** Steps explain where a running or stopped check is; a finished one says so in its title. */
-const stepsVisible = computed(() => status.value === "working" || status.value === "error");
-const steps = computed(() =>
-  STEPS.map((step, index) => {
-    let state: StepState = "pending";
-    if (index < activeStep.value) state = "done";
-    else if (index === activeStep.value) state = status.value === "error" ? "error" : "active";
-    return { ...step, state };
-  }),
+
+const infoStats = computed(() => {
+  const value = result.value;
+  if (value == null) return [];
+  const toUpdate = () => store.openDrawer("UPDATE");
+  return [
+    { label: "安装", count: value.installedPaths.length + (value.resetPaths ?? []).length, tone: "install", open: toUpdate },
+    { label: "删除", count: value.deletedPaths.length, tone: "delete", open: toUpdate },
+    { label: "备份", count: value.archivedFiles.length, tone: "archive", open: () => store.openDrawer("BACKUPS") },
+    { label: "保留", count: (value.keptModifiedPaths ?? []).length, tone: "kept", open: toUpdate },
+    { label: "放弃管理", count: value.releasedPaths.length, tone: "release", open: toUpdate },
+  ].filter((stat) => stat.count > 0);
+});
+
+/** The info opens by itself when there is something to read; a player's own choice wins until the state changes. */
+const chosenOpen = ref<boolean | null>(null);
+watch(status, () => {
+  chosenOpen.value = null;
+});
+const hasNews = computed(() =>
+  result.value != null
+    && (result.value.outcome === "UPDATED" || store.state.unmanaged != null
+      || result.value.archivedFiles.length > 0),
 );
+const open = computed(() => info.value != null && (chosenOpen.value ?? hasNews.value));
 
-/** A finished check fills the bar; a stopped one (error or offline start) leaves it still. */
-const progressFinished = computed(() =>
-  store.state.result != null && !store.state.working && store.state.error == null);
-const progressStopped = computed(() =>
-  !store.state.working && (store.state.error != null || store.state.launchPermitted));
-const progressIndeterminate = computed(() => {
-  if (progressFinished.value || progressStopped.value) return false;
-  const event = store.state.progress;
-  return event == null || event.totalBytes <= 0;
-});
-
-const progressStyle = computed(() => {
-  if (progressFinished.value) return { width: "100%" };
-  if (progressStopped.value) return { width: status.value === "done" ? "100%" : "0%" };
-  const event = store.state.progress;
-  if (event == null || event.totalBytes <= 0) return {};
-  return { width: Math.round(event.fraction * 100) + "%" };
-});
-
-const noticeText = computed(() =>
-  (store.state.unmanaged?.text ?? "").replace(/\s*›\s*$/, ""),
-);
-const noticeActionable = computed(() => (store.state.unmanaged?.mods.length ?? 0) > 0);
+function toggleOpen(): void {
+  chosenOpen.value = !open.value;
+}
 
 function linkActive(mode: DrawerMode): boolean {
   return store.state.drawerOpen && store.state.drawerMode === mode;
 }
 
-function openSummaryDrawer(): void {
-  tooltipVisible.value = false;
-  store.toggleDrawer("UPDATE");
+function openLogs(): void {
+  store.toggleDrawer("LOGS");
+}
+
+function openKept(): void {
+  if ((result.value?.archivedFiles.length ?? 0) > 0) store.openDrawer("BACKUPS");
+  else if ((store.state.unmanaged?.mods.length ?? 0) > 0) store.openPlayerModPage();
+  else store.openDrawer("UPDATE");
 }
 
 function retry(): void {
@@ -185,137 +239,163 @@ function continueLaunch(): void {
 function openDirectory(): void {
   store.sendCommand({ command: "open-directory" });
 }
-
-function openBackups(): void {
-  store.openDrawer("BACKUPS");
-}
 </script>
 
 <template>
-  <div class="update-area" :class="'update-' + status">
-    <div
-      v-if="result != null && status !== 'error'"
-      class="update-summary"
-      role="button"
-      tabindex="0"
-      :aria-label="summaryVersion + '，查看本次更新的文件变更'"
-      @mouseenter="tooltipVisible = true"
-      @mouseleave="tooltipVisible = false"
-      @click="openSummaryDrawer"
-      @keydown.enter="openSummaryDrawer"
-      @keydown.space.prevent="openSummaryDrawer"
-    >
-      <div class="update-summary-head">
-        <span class="update-summary-label">{{ releaseLabel }}</span>
-        <span class="update-summary-version">{{ summaryVersion }}</span>
-        <span class="update-summary-more">文件变更<AppIcon name="chevron" /></span>
-      </div>
-      <div class="update-summary-changelog">{{ summaryChangelog }}</div>
-      <div class="update-summary-counts">
-        <span
-          v-for="stat in releaseStats"
-          :key="stat.label"
-          class="update-stat"
-          :class="'update-stat-' + stat.tone"
-        >{{ stat.label }}<b>{{ stat.count }}</b></span>
-        <span v-if="releaseStats.length === 0" class="update-stat-empty">本次无需修改本地文件</span>
-      </div>
-      <div v-if="tooltipVisible" class="update-file-tooltip">{{ tooltipText }}</div>
-    </div>
-
-    <div class="progress-region">
-      <div class="progress-heading">
-        <span class="status-orb" :class="'status-orb-' + status" aria-hidden="true">
-          <AppIcon v-if="status === 'done'" name="check" />
-          <AppIcon v-else-if="status === 'error'" name="alert" />
-          <AppIcon v-else-if="status === 'offline'" name="offline" />
-        </span>
-        <div class="stage-label">{{ store.state.stageTitle }}</div>
-        <div v-if="percentVisible" class="percent-label">
-          {{ percentParts.value }}<small>{{ percentParts.unit }}</small>
-        </div>
-        <div class="current-path" :class="{ 'error-detail': store.state.error != null }">
-          {{ store.state.currentPathText }}
-        </div>
-        <div v-if="status !== 'error'" class="byte-summary">{{ store.state.byteSummary }}</div>
-        <div v-else class="error-status">{{ store.state.byteSummary }}</div>
-      </div>
-
-      <div class="update-progress-track">
-        <div
-          class="update-progress-bar"
-          :class="{ indeterminate: progressIndeterminate }"
-          :style="progressStyle"
-        ></div>
-      </div>
-
-      <ol v-if="stepsVisible" class="stage-steps" aria-label="更新阶段">
-        <li
-          v-for="step in steps"
-          :key="step.key"
-          class="stage-step"
-          :class="'stage-step-' + step.state"
-          :aria-current="step.state === 'active' ? 'step' : undefined"
-        >
-          <span class="stage-step-dot"></span>
-          <span class="stage-step-label">{{ step.label }}</span>
-        </li>
-      </ol>
-
-      <div
-        v-if="store.state.unmanaged != null && status !== 'error'"
-        class="unmanaged-notice"
-        :class="{ 'unmanaged-action': noticeActionable }"
-        :title="store.state.unmanaged.contextLines.join('\n')"
-        :role="noticeActionable ? 'button' : undefined"
-        :tabindex="noticeActionable ? 0 : undefined"
-        @click="store.openPlayerModPage()"
-        @keydown.enter="store.openPlayerModPage()"
-        @keydown.space.prevent="store.openPlayerModPage()"
-      >
-        <AppIcon name="info" class="notice-icon" />
-        <span class="unmanaged-text">{{ noticeText }}</span>
-        <AppIcon v-if="noticeActionable" name="chevron" class="notice-chevron" />
-      </div>
+  <section
+    class="update-area"
+    :class="'update-' + status"
+    aria-label="更新状态"
+    :title="status === 'working' ? store.state.currentPathText : undefined"
+  >
+    <div class="update-head">
+      <span class="update-mark" aria-hidden="true"><AppIcon v-if="mark" :name="mark" /></span>
+      <span class="update-title" role="status">{{ store.state.stageTitle }}</span>
+      <span v-if="percentText" class="update-percent">{{ percentText }}</span>
       <button
-        v-if="status !== 'error' && store.state.result != null
-          && store.state.result.archivedFiles.length > 0"
+        v-else-if="status === 'error'"
         type="button"
-        class="archive-button"
-        @click="openBackups"
-      ><AppIcon name="archive" />查看备份与恢复<AppIcon name="chevron" class="archive-chevron" /></button>
-
-      <div v-if="store.state.error != null" class="action-row">
-        <button type="button" class="secondary-button" @click="openDirectory">
-          <AppIcon name="folder" />打开目录
-        </button>
-        <button type="button" class="secondary-button" :disabled="store.state.working" @click="retry">
-          <AppIcon name="retry" />重试
-        </button>
-        <button
-          v-if="store.state.error.allowContinue"
-          type="button"
-          class="primary-button"
-          @click="continueLaunch"
-        >
-          <AppIcon name="play" />仍然启动
-        </button>
-      </div>
-
-      <nav class="quick-links" aria-label="更新详情">
-        <button
-          v-for="link in QUICK_LINKS"
-          :key="link.mode"
-          type="button"
-          class="link-button"
-          :class="{ active: linkActive(link.mode) }"
-          :aria-pressed="linkActive(link.mode)"
-          :title="linkActive(link.mode) ? '收起' + link.label : '查看' + link.label"
-          @click="store.toggleDrawer(link.mode)"
-        >
-          <AppIcon :name="link.icon" />{{ link.label }}
-        </button>
-      </nav>
+        class="update-more"
+        title="查看运行记录"
+        @click="openLogs"
+      >
+        运行记录<AppIcon name="chevron" />
+      </button>
+      <button
+        v-else-if="info != null"
+        type="button"
+        class="update-toggle"
+        :aria-expanded="open"
+        :aria-label="open ? '收起更新内容' : '展开更新内容'"
+        :title="open ? '收起更新内容' : '展开更新内容'"
+        @click="toggleOpen"
+      >
+        <AppIcon name="chevron" />
+      </button>
     </div>
-  </div>
+
+    <div class="swim-lane" :class="{ 'swim-lane-waiting': laneWaiting }" :style="laneStyle">
+      <span
+        class="swim-lane-track"
+        role="progressbar"
+        aria-label="更新进度"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="laneWaiting ? undefined : Math.round(laneProgress * 100)"
+      ></span>
+      <span class="swim-lane-water" aria-hidden="true"></span>
+      <svg class="swim-lane-goal" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+        <path d="M10 0c1 6 4 9 10 10-6 1-9 4-10 10-1-6-4-9-10-10 6-1 9-4 10-10Z" />
+      </svg>
+      <button type="button" class="swim-lane-fish" title="摸鱼" aria-label="摸摸小鱼" @click="pet">
+        <MoonFish :key="petCount" :mood="mood" :size="28" />
+      </button>
+    </div>
+
+    <div class="update-foot">
+      <p
+        v-if="detailText"
+        class="update-detail"
+        :class="{ 'update-detail-error': status === 'error' }"
+        :title="status === 'error' ? undefined : detailText"
+      >{{ detailText }}</p>
+      <button
+        v-if="countdown != null"
+        type="button"
+        class="update-keep"
+        :aria-label="'保持窗口打开，' + countdown.remaining + ' 秒后会自动关闭'"
+        @click="store.keepWindowOpen()"
+      >
+        保持打开
+        <span class="update-keep-ring" aria-hidden="true">
+          <svg viewBox="0 0 20 20">
+            <circle class="ring-track" cx="10" cy="10" r="8" />
+            <circle
+              class="ring-left"
+              cx="10"
+              cy="10"
+              r="8"
+              :stroke-dasharray="RING"
+              :stroke-dashoffset="countdown.offset"
+            />
+          </svg>
+          <span class="update-keep-seconds">{{ countdown.remaining }}</span>
+        </span>
+      </button>
+    </div>
+    <p v-if="status === 'error'" class="update-error-status">{{ store.state.byteSummary }}</p>
+
+    <div v-if="open && info != null" class="update-info">
+      <div class="update-info-head">
+        <span class="update-info-heading">{{ info.heading }}</span>
+        <span class="update-info-meta">{{ info.meta }}</span>
+      </div>
+      <ul class="update-info-lines" :class="{ plain: !info.tagged }">
+        <li v-for="(line, index) in info.lines" :key="index">
+          <span v-if="info.tagged" class="update-change-tag" :class="line.tone ? 'change-' + line.tone : 'change-plain'">{{ line.tag || "·" }}</span>
+          <span class="update-info-text" :title="line.text">{{ line.text }}</span>
+        </li>
+      </ul>
+      <div class="update-info-stats">
+        <button
+          v-for="stat in infoStats"
+          :key="stat.label"
+          type="button"
+          class="update-stat"
+          :class="'update-operation-' + stat.tone"
+          @click="stat.open()"
+        ><b>{{ stat.count }}</b>{{ stat.label }}</button>
+        <span v-if="infoStats.length === 0" class="update-stat-none">本地文件不需要改动</span>
+      </div>
+      <div class="update-info-foot">
+        <button type="button" class="update-info-all" :title="summaryTitle" @click="store.openDrawer('UPDATE')">
+          {{ info.more ? "查看完整说明与改动" : "查看全部改动" }}<AppIcon name="chevron" />
+        </button>
+        <nav class="quick-links" aria-label="更新详情">
+          <button
+            v-for="link in QUICK_LINKS"
+            :key="link.mode"
+            type="button"
+            class="link-button"
+            :class="{ active: linkActive(link.mode) }"
+            :aria-pressed="linkActive(link.mode)"
+            :aria-label="link.label"
+            :title="link.label"
+            @click="store.toggleDrawer(link.mode)"
+          >
+            <AppIcon :name="link.icon" />
+          </button>
+        </nav>
+      </div>
+    </div>
+
+    <button
+      v-else-if="keptLine"
+      type="button"
+      class="update-note"
+      :title="keptTitle || keptLine"
+      @click="openKept"
+    >
+      <AppIcon name="archive" />
+      <span class="update-note-text">{{ keptLine }}</span>
+      <AppIcon name="chevron" />
+    </button>
+
+    <div v-if="store.state.error != null" class="update-actions">
+      <button type="button" class="update-action" @click="openDirectory">
+        <AppIcon name="folder" />打开目录
+      </button>
+      <button
+        v-if="store.state.error.allowContinue"
+        type="button"
+        class="update-action"
+        @click="continueLaunch"
+      >
+        <AppIcon name="play" />仍然启动
+      </button>
+      <button type="button" class="update-action primary" :disabled="store.state.working" @click="retry">
+        <AppIcon name="retry" />重试
+      </button>
+    </div>
+  </section>
 </template>

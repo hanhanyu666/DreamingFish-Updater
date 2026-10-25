@@ -10,5 +10,6 @@ export default defineConfig({
     cpSync(resolve('../player-ui/dist'),resolve('dist/player-preview'),{recursive:true});
   }}],
   build:{rollupOptions:{input:{launcher:resolve('index.html'),workspace:resolve('workspace.html')}}},
-  server:{host:'127.0.0.1',port:1421,strictPort:true},
+  // The showcase rules and docs are shared with player-ui, one level up.
+  server:{host:'127.0.0.1',port:1421,strictPort:true,fs:{allow:['..']}},
 });

@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getBridge } from "../../lib/bridge";
 import {
   answerConfirm,
   handleSidecarMessage,
+  imageUrl,
   closeCommandForState,
   confirmDisableMod,
   displayBranding,
@@ -27,11 +29,56 @@ describe("player store", () => {
     expect(store.state.logs).toEqual(["hello"]);
   });
 
+  it("retries a missing image after the background download and ignores older reads", async () => {
+    const read = vi.spyOn(getBridge(), "presentationImageUrl");
+    try {
+      read.mockResolvedValueOnce(null).mockResolvedValueOnce("data:image/png;base64,new");
+      const source = { imageFile: "background-arrival.png" };
+      expect(imageUrl(source)).toBe("");
+      await Promise.resolve();
+      expect(imageUrl(source)).toBe("");
+      expect(read).toHaveBeenCalledTimes(1);
+      handleSidecarMessage({ type: "presentation-images-updated" });
+      expect(imageUrl(source)).toBe("");
+      await Promise.resolve();
+      expect(imageUrl(source)).toBe("data:image/png;base64,new");
+
+      let completeOld!: (url: string | null) => void;
+      read.mockImplementationOnce(() => new Promise((resolve) => { completeOld = resolve; }))
+        .mockResolvedValueOnce("data:image/png;base64,current");
+      const pending = { imageFile: "overlapping-read.png" };
+      imageUrl(pending);
+      handleSidecarMessage({ type: "presentation-images-updated" });
+      imageUrl(pending);
+      await Promise.resolve();
+      completeOld("data:image/png;base64,old");
+      await Promise.resolve();
+      expect(imageUrl(pending)).toBe("data:image/png;base64,current");
+    } finally { read.mockRestore(); }
+  });
+
   it("keeps startup music optional when the instance has no MP3", async () => {
     store.stopStartupMusic();
     await expect(store.initializeStartupMusic()).resolves.toBeUndefined();
     expect(store.state.startupMusicUrl).toBeNull();
     expect(store.state.musicPlaying).toBe(false);
+  });
+
+  it("uses the explicit layout when the legacy announcement flag is absent or differs", () => {
+    setBranding({
+      ...displayBranding(null),
+      contentPages: [{
+        id: "updates", navigationLabel: "公告", title: "公告", eyebrow: "", lead: "", markdown: "",
+        announcementPage: false, layout: "ANNOUNCEMENTS",
+        articles: [{ id: "welcome", title: "欢迎", summary: "", publishedOn: "2026-10-23", coverUrl: "", markdown: "内容" }],
+      }, {
+        id: "rules", navigationLabel: "规则", title: "规则", eyebrow: "", lead: "", markdown: "规则",
+        announcementPage: true, layout: "MARKDOWN", articles: [],
+      }],
+    });
+    expect(store.state.contentPages[0].announcementPage).toBe(true);
+    expect(store.state.contentPages[0].articles?.[0].id).toBe("welcome");
+    expect(store.state.contentPages[1].announcementPage).toBe(false);
   });
 
   it("keeps custom title-bar branding and defaults legacy messages", () => {
@@ -80,7 +127,7 @@ describe("player store", () => {
       brandName: "梦鱼更新器",
       brandEnglishName: "DreamingFish",
       welcomeText: "欢迎来到",
-      titleColor: "#fff8dc",
+      titleColor: "#fff6e0",
       topBarColor: "#030708",
       topBarOpacity: 0.22,
       cardColor: "#030708",
@@ -150,7 +197,7 @@ describe("player store", () => {
     });
 
     expect(store.navigationPages()).toEqual([
-      { page: "HOME", label: "主页" },
+      { page: "HOME", label: "首页" },
       { page: "CONTENT:notice", label: "公告" },
       { page: "CONTENT:rules", label: "规则" },
       { page: "ABOUT", label: "关于更新器" },

@@ -360,7 +360,9 @@ final class InteractiveConsole {
                 coverObject, accent, secondaryAccent,
                 brandName, brandEnglishName, List.of(), null, contentPages,
                 old.musicTracks(), welcomeText, topBarColor, cardColor,
-                topBarOpacity, titleColor);
+                topBarOpacity, titleColor,
+                old.spotlights(), old.serverCard(), old.events(), old.theme(), old.presentationImages(),
+                old.addressPlacement(), old.brandLogoFile());
         var services = root.services();
         ProjectRecord updated = services.projects().configure(
                 current.id(), current.displayName(), current.sourceDirectory(),
@@ -408,7 +410,10 @@ final class InteractiveConsole {
             for (int i = 0; i < pages.size(); i++) {
                 PlayerContentPage page = pages.get(i);
                 root.out().println("  [" + (i + 1) + "] " + page.navigationLabel()
-                        + (page.announcementPage() ? " · 公告页 · " + page.articles().size() + " 条" : " · 普通页面"));
+                        + ("GALLERY".equals(page.layout()) ? " · 画廊页"
+                        : "BLOCKS".equals(page.layout()) ? " · 内容块页"
+                        : page.announcementPage() || "ANNOUNCEMENTS".equals(page.layout())
+                            ? " · 公告页 · " + (page.articles() == null ? 0 : page.articles().size()) + " 条" : " · 普通页面"));
             }
             root.out().println("  [A] 添加  [E] 编辑  [D] 删除  [U] 上移  [N] 下移  [Q] 完成");
             String choice = readLine("请选择：").trim().toLowerCase(Locale.ROOT);
@@ -447,19 +452,37 @@ final class InteractiveConsole {
             id = promptRequired("页面 ID");
         }
         String label = prompt("顶部导航名称（最多 12 个字符）", current == null ? "新页面" : current.navigationLabel());
-        boolean announcement = confirm("是否设为公告页？公告页可以添加多条新闻", current != null && current.announcementPage());
+        if (current != null && ("GALLERY".equals(current.layout()) || "BLOCKS".equals(current.layout()))) {
+            root.out().println("此页面使用展示组件。这里可修改页头，图片和内容块请在 Web 管理界面编辑。");
+            String eyebrow = prompt("页面顶部小标题", current.eyebrow());
+            String title = prompt("页面主标题", current.title());
+            String lead = prompt("页面引导语", current.lead());
+            return new PlayerContentPage(id, label, false, eyebrow, title, lead, current.markdown(),
+                    current.articles(), current.layout(), current.gallery(), current.blocks(),
+                    current.imageFile(), current.imageUrl(), current.tags());
+        }
+        boolean announcement = confirm("是否设为公告页？公告页可以添加多条新闻", current != null
+                && (current.layout() == null ? current.announcementPage() : "ANNOUNCEMENTS".equals(current.layout())));
         String eyebrow = prompt("页面顶部小标题", current == null ? "" : current.eyebrow());
         String title = prompt("页面主标题", current == null ? label : current.title());
         String lead = prompt("页面引导语", current == null ? "" : current.lead());
         if (announcement) {
             List<PlayerNewsArticle> articles = editPlayerNews(current == null || current.articles() == null ? List.of() : current.articles());
-            return new PlayerContentPage(id, label, true, eyebrow, title, lead, "", articles);
+            return new PlayerContentPage(id, label, true, eyebrow, title, lead, "", articles,
+                    current == null || current.layout() == null ? null : "ANNOUNCEMENTS",
+                    current == null ? null : current.gallery(), current == null ? null : current.blocks(),
+                    current == null ? null : current.imageFile(), current == null ? null : current.imageUrl(),
+                    current == null ? null : current.tags());
         }
         String oldMarkdown = current == null ? "" : current.markdown();
         String markdownInput = readLine("页面正文 Markdown（输入 @文件路径读取；回车保留）：");
         String markdown = markdownInput.isBlank() ? oldMarkdown
                 : ChangelogInput.interactive(markdownInput, root.settingsFile().getParent());
-        return new PlayerContentPage(id, label, false, eyebrow, title, lead, markdown, List.of());
+        return new PlayerContentPage(id, label, false, eyebrow, title, lead, markdown, List.of(),
+                current == null || current.layout() == null ? null : "MARKDOWN",
+                current == null ? null : current.gallery(), current == null ? null : current.blocks(),
+                current == null ? null : current.imageFile(), current == null ? null : current.imageUrl(),
+                current == null ? null : current.tags());
     }
 
     private List<PlayerNewsArticle> editPlayerNews(List<PlayerNewsArticle> existing) {
@@ -522,7 +545,8 @@ final class InteractiveConsole {
                 ? existingMarkdown
                 : ChangelogInput.interactive(markdownInput,
                         root.settingsFile().getParent());
-        return new PlayerNewsArticle(id, title, summary, date, coverUrl, markdown);
+        return new PlayerNewsArticle(id, title, summary, date, coverUrl, markdown,
+                current == null ? null : current.category(), current == null ? null : current.author());
     }
 
     private String promptNewsDate(String defaultValue) {
@@ -615,6 +639,9 @@ final class InteractiveConsole {
         root.out().println("发布预览 " + preview.previewId());
         for (var policy : preview.policyChanges()) {
             root.out().println(PolicyText.describe(policy));
+        }
+        for (var design : preview.presentationChanges()) {
+            root.out().println(design.describe());
         }
         for (var warning : preview.warnings()) {
             root.out().println(PolicyText.describe(warning));

@@ -1,0 +1,1725 @@
+/* ==== Home: the spotlight on the left, one status panel on the right ======================== */
+
+/* ---- Spotlight ------------------------------------------------------------------------------- */
+
+/* The right column grows with the window but stops at 420px, so the cards never stretch thin. */
+.canvas {
+  --rail-width: clamp(320px, 34%, 420px);
+}
+
+.home-hero {
+  position: absolute;
+  left: 56px;
+  bottom: 44px;
+  z-index: 10;
+  width: min(580px, calc(100% - 56px - var(--rail-width) - 28px - 64px));
+  display: flex;
+  flex-direction: column;
+}
+
+/* Every slide shares one cell, so switching never moves the switcher below. */
+.home-hero-slides {
+  display: grid;
+  align-items: end;
+}
+
+.home-slide {
+  grid-area: 1 / 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 500ms ease, visibility 0s 500ms;
+}
+
+.home-slide.active {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 500ms ease;
+}
+
+/* The active slide's lines arrive one after another. */
+.home-slide.active > * {
+  animation: dfs-line-in 900ms var(--ease-out) both;
+}
+
+.home-slide.active > :nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.home-slide.active > :nth-child(3) {
+  animation-delay: 140ms;
+}
+
+.home-slide.active > :nth-child(4) {
+  animation-delay: 210ms;
+}
+
+@keyframes dfs-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+.home-slide-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.home-slide-tag {
+  color: var(--dfs-accent);
+  font-family: var(--font-strong);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.4);
+}
+
+.home-slide-tag + .home-slide-eyebrow::before {
+  content: "";
+  width: 28px;
+  height: 1px;
+  margin-right: 14px;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.home-slide-eyebrow {
+  display: flex;
+  align-items: center;
+  color: rgba(244, 239, 230, 0.78);
+  font-family: var(--font-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+
+.home-slide-title {
+  max-width: 100%;
+  color: var(--dfs-title-color);
+  font-family: var(--font-display);
+  font-size: clamp(46px, 5.8vw, 76px);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1.06;
+  text-shadow: 0 2px 40px rgba(0, 0, 0, 0.35);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.home-slide-lead {
+  max-width: 31em;
+  display: -webkit-box;
+  margin-top: 18px;
+  overflow: hidden;
+  color: rgba(244, 239, 230, 0.8);
+  font-size: 15px;
+  line-height: 1.8;
+  text-shadow: 0 1px 16px rgba(0, 0, 0, 0.5);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.home-slide-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.home-slide-action {
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px 0 24px;
+  border-radius: 13px;
+  background: var(--paper);
+  box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.7);
+  color: #0a0c11;
+  font-family: var(--font-strong);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 180ms ease, transform 220ms var(--ease);
+}
+
+.home-slide-action .app-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.1;
+  transition: transform 260ms var(--ease-out);
+}
+
+.home-slide-action:hover {
+  background: #fffaf1;
+}
+
+.home-slide-action:hover .app-icon {
+  transform: translateX(3px);
+}
+
+.home-slide-action:active {
+  transform: translateY(1px);
+}
+
+.home-slide-copy {
+  height: 46px;
+  min-width: 0;
+  max-width: 260px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 13px;
+  background: rgba(8, 10, 14, 0.3);
+  backdrop-filter: blur(14px);
+  color: var(--text-1);
+  font-size: 13.5px;
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.home-slide-copy:hover {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(8, 10, 14, 0.46);
+}
+
+.home-slide-copy .app-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-2);
+}
+
+.home-slide-copy.copied .app-icon {
+  color: var(--ok);
+}
+
+.home-slide-copy-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The switcher: a hairline per slide that fills while it shows. */
+.home-slide-dots {
+  display: flex;
+  gap: 22px;
+  margin-top: 48px;
+}
+
+.home-slide-dot {
+  min-width: 0;
+  max-width: 128px;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 0 0 2px;
+  color: var(--text-3);
+  text-align: left;
+  transition: color 220ms ease;
+}
+
+.home-slide-dot:hover {
+  color: var(--text-2);
+}
+
+.home-slide-dot.active {
+  color: var(--text-1);
+}
+
+.home-slide-dot-bar {
+  position: relative;
+  order: -1;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.home-slide-dot-bar span {
+  position: absolute;
+  inset: 0;
+  background: var(--paper);
+  transform-origin: left center;
+  transition: transform 120ms linear;
+}
+
+.home-slide-dot-text {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.home-slide-dot-index {
+  flex: none;
+  font-family: var(--font-strong);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  opacity: 0.8;
+}
+
+.home-slide-dot.active .home-slide-dot-index {
+  color: var(--dfs-accent);
+  opacity: 1;
+}
+
+.home-slide-dot-label {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The pager for many slides: arrows, the count, one filling bar and the current name. */
+.home-slide-pager {
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 48px;
+  color: var(--text-2);
+}
+
+.home-slide-step {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(8, 10, 14, 0.3);
+  backdrop-filter: blur(12px);
+  color: var(--text-1);
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.home-slide-step:hover {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(8, 10, 14, 0.5);
+}
+
+.home-slide-step .app-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.2;
+}
+
+.home-slide-step .app-icon.flipped {
+  transform: rotate(180deg);
+}
+
+.home-slide-count {
+  flex: none;
+  color: var(--text-3);
+  font-family: var(--font-strong);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.home-slide-count b {
+  color: var(--dfs-accent);
+  font-size: 13px;
+}
+
+.home-slide-pager-bar {
+  position: relative;
+  width: 120px;
+  height: 2px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.home-slide-pager-bar span {
+  position: absolute;
+  inset: 0;
+  background: var(--paper);
+  transform-origin: left center;
+  transition: transform 120ms linear;
+}
+
+.home-slide-pager-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-1);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Right column: the server at the top, the next event under it, the update at the bottom - */
+
+.home-rail {
+  position: absolute;
+  top: 68px;
+  right: 28px;
+  bottom: 44px;
+  z-index: 10;
+  width: var(--rail-width);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+/* Folded by railFit.ts one step at a time, and only when the cards really do not fit. */
+.home-rail[data-fold~="status"] .server-status,
+.home-rail[data-fold~="address"] .server-address,
+.home-rail[data-fold~="links"] .server-links,
+.home-rail[data-fold~="motd"] .server-motd,
+.home-rail[data-fold~="event"] .event-card,
+.home-rail[data-fold~="server"] .server-card {
+  display: none;
+}
+
+.home-rail > * {
+  pointer-events: auto;
+}
+
+/* Every card is the same frosted glass. */
+.server-card,
+.event-card,
+.update-area {
+  flex: none;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-l);
+  background: var(--glass);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Server */
+.server-card {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 16px 18px 14px;
+}
+
+.server-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+}
+
+.server-logo {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 11px;
+  background:
+    radial-gradient(120% 120% at 20% 0%, color-mix(in oklab, var(--dfs-accent) 40%, transparent), transparent 70%),
+    #121620;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.server-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.server-card-titles {
+  min-width: 0;
+  flex: 1;
+}
+
+.server-card-name-row {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.server-card-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-1);
+  font-family: var(--font-strong);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-version {
+  flex: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* Players and latency beside the name, used once the status row has folded away. */
+.server-inline-status {
+  display: none;
+  flex: none;
+  align-self: center;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.home-rail[data-fold~="status"] .server-inline-status {
+  display: inline-flex;
+}
+
+.server-inline-status .server-status-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.server-inline-players b {
+  color: var(--text-1);
+  font-size: 12.5px;
+}
+
+.server-inline-latency {
+  font-family: var(--font-strong);
+  font-weight: 700;
+}
+
+/* A long MOTD wraps instead of being cut; past three lines the full text is in the tooltip. */
+.server-motd {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-2);
+  opacity: 0.86;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.server-motd-line + .server-motd-line::before {
+  content: " · ";
+  color: var(--text-4);
+}
+
+/* The address reads as one quiet line; the whole line copies it. */
+.server-address {
+  width: 100%;
+  height: 34px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 12px;
+  border-radius: 10px;
+  background: var(--fill-1);
+  color: var(--text-1);
+  text-align: left;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.server-address:hover {
+  background: var(--fill-2);
+}
+
+.server-address-label {
+  flex: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.server-address-value {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-family: var(--font-strong);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-address .app-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--text-3);
+}
+
+.server-address.copied .server-address-label,
+.server-address.copied .app-icon {
+  color: var(--ok);
+}
+
+.server-status {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.server-status-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.server-status-online .server-status-dot {
+  background: var(--ok);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--ok) 70%, transparent);
+}
+
+.server-status-online .server-status-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1px solid var(--ok);
+  border-radius: 50%;
+  opacity: 0;
+  animation: dfs-ping 2.4s var(--ease-out) infinite;
+}
+
+@keyframes dfs-ping {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.5);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.server-status-checking .server-status-dot {
+  animation: dfs-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes dfs-blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.server-status-offline .server-status-dot {
+  background: var(--danger);
+}
+
+.server-status-label {
+  color: var(--text-2);
+}
+
+.server-players {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.server-players b {
+  color: var(--text-1);
+  font-size: 14px;
+}
+
+.server-status-spacer {
+  flex: 1;
+}
+
+.server-latency {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.server-latency .app-icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2;
+}
+
+.latency-good {
+  color: var(--ok);
+}
+
+.latency-fair {
+  color: var(--gold);
+}
+
+.latency-slow {
+  color: var(--danger);
+}
+
+.server-refresh {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  margin-right: -4px;
+  border-radius: 7px;
+  color: var(--text-3);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.server-refresh:hover {
+  background: var(--fill-2);
+  color: var(--text-1);
+}
+
+.server-refresh .app-icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2;
+}
+
+.server-status-hint {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* Community links: quiet words in a row, not a wall of buttons. */
+.server-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin: -4px 0 -6px -8px;
+}
+
+.server-link {
+  height: 28px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.server-link:hover {
+  background: var(--fill-2);
+  color: var(--text-1);
+}
+
+.server-link .app-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.server-link.copied {
+  color: var(--ok);
+}
+
+/* Next event */
+.event-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px 12px 14px;
+  color: inherit;
+  text-align: left;
+}
+
+.event-card-action {
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.event-card-action:hover {
+  border-color: var(--line-2);
+  background: rgba(var(--dfs-card-rgb), calc(var(--dfs-card-alpha) + 0.1));
+}
+
+.event-card-icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(242, 195, 107, 0.13);
+  color: var(--gold);
+}
+
+.event-card-icon .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.event-card-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.event-card-label {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-card-title {
+  overflow: hidden;
+  color: var(--text-1);
+  font-family: var(--font-strong);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-countdown {
+  flex: none;
+  color: var(--gold);
+  font-family: var(--font-strong);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.event-card.ongoing .event-countdown {
+  color: var(--ok);
+}
+
+/* ---- Update: a title, the fish swimming the progress, one line of what is happening -------- */
+
+.update-area {
+  --tone: var(--dfs-accent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+  padding: 16px 18px 16px;
+  border-radius: calc(var(--radius-l) + 2px);
+  background: var(--glass-strong);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.update-error {
+  --tone: var(--danger);
+  border-color: rgba(255, 123, 110, 0.24);
+  background:
+    linear-gradient(180deg, rgba(255, 123, 110, 0.09), transparent 70%),
+    var(--glass-strong);
+}
+
+.update-offline {
+  --tone: var(--gold);
+}
+
+.update-head {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.update-mark {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--tone) 20%, transparent);
+  color: var(--tone);
+}
+
+.update-mark .app-icon {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2.6;
+}
+
+/* While working the mark is a small turning arc. */
+.update-working .update-mark {
+  background: none;
+  border: 2px solid color-mix(in oklab, var(--tone) 22%, transparent);
+  border-top-color: var(--tone);
+  animation: dfs-spin 900ms linear infinite;
+}
+
+.update-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-1);
+  font-family: var(--font-strong);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-percent {
+  flex: none;
+  color: var(--tone);
+  font-family: var(--font-strong);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-more {
+  height: 26px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: -6px;
+  padding: 0 4px 0 9px;
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.update-more:hover {
+  background: var(--fill-2);
+  color: var(--text-1);
+}
+
+.update-more .app-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.update-toggle {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  margin-right: -4px;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: var(--fill-1);
+  color: var(--text-2);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.update-toggle:hover {
+  background: var(--fill-3);
+  color: var(--text-1);
+}
+
+.update-toggle .app-icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.2;
+  transform: rotate(90deg);
+  transition: transform 260ms var(--ease-out);
+}
+
+.update-toggle[aria-expanded="true"] .app-icon {
+  transform: rotate(-90deg);
+}
+
+/* ---- Update info: what this release is, inside the card ------------------------------------ */
+
+.update-info {
+  display: flex;
+  flex-direction: column;
+  margin: 14px -4px 0;
+  padding: 14px 14px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02));
+  animation: dfs-rise-in 320ms var(--ease-out) both;
+}
+
+.update-info-head {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.update-info-heading {
+  flex: none;
+  color: var(--text-1);
+  font-family: var(--font-strong);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.update-info-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-info-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  list-style: none;
+}
+
+.update-info-lines li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.update-info-lines .update-change-tag {
+  height: 19px;
+  font-size: 10.5px;
+}
+
+/* Untagged notes read as a short list with square bullets. */
+.update-info-lines.plain li {
+  grid-template-columns: 5px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.update-info-lines.plain li::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 1.5px;
+  background: var(--dfs-accent);
+}
+
+.update-info-text {
+  overflow: hidden;
+  color: var(--text-1);
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-info-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.update-stat {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px 0 8px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--op, var(--text-2)) 11%, transparent);
+  color: var(--text-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.update-stat b {
+  color: var(--op, var(--text-1));
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-stat:hover {
+  background: color-mix(in oklab, var(--op, var(--text-2)) 20%, transparent);
+  color: var(--text-1);
+}
+
+.update-stat-none {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.update-info-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.update-info-all {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  color: var(--text-1);
+  font-family: var(--font-strong);
+  font-size: 12px;
+  font-weight: 700;
+  transition: background-color 160ms ease;
+}
+
+.update-info-all:hover {
+  background: var(--fill-2);
+}
+
+.update-info-all .app-icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.2;
+  transition: transform 220ms var(--ease-out);
+}
+
+.update-info-all:hover .app-icon {
+  transform: translateX(2px);
+}
+
+.quick-links {
+  display: flex;
+  gap: 2px;
+  margin: 0 -6px 0 auto;
+}
+
+.link-button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--text-3);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.link-button:hover,
+.link-button.active {
+  background: var(--fill-2);
+  color: var(--text-1);
+}
+
+.link-button .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.update-foot {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.update-detail {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.update-detail-error {
+  max-height: 4.8em;
+  overflow-y: auto;
+  color: rgba(255, 214, 205, 0.9);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.update-error-status {
+  margin-top: 2px;
+  color: var(--danger);
+  font-family: var(--font-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Keep open: a ring drains with the seconds left. */
+.update-keep {
+  height: 28px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: -4px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  background: var(--paper);
+  color: #0a0c11;
+  font-family: var(--font-strong);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 160ms ease;
+}
+
+.update-keep:hover {
+  background: #fffaf1;
+}
+
+.update-keep-ring {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+}
+
+.update-keep-ring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.update-keep-ring circle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.update-keep-ring .ring-track {
+  stroke: rgba(10, 12, 17, 0.14);
+}
+
+.update-keep-ring .ring-left {
+  stroke: #0a0c11;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.update-keep-seconds {
+  position: relative;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-note {
+  width: calc(100% + 16px);
+  min-width: 0;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px -8px -4px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: left;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.update-note:hover {
+  background: var(--fill-1);
+  color: var(--text-1);
+}
+
+.update-note .app-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-3);
+}
+
+.update-note-text {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.update-action {
+  height: 34px;
+  min-width: 0;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--fill-1);
+  color: var(--text-1);
+  font-family: var(--font-strong);
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.update-action:hover {
+  background: var(--fill-2);
+}
+
+.update-action.primary {
+  border-color: transparent;
+  background: var(--paper);
+  color: #0a0c11;
+}
+
+.update-action.primary:hover {
+  background: #fffaf1;
+}
+
+.update-action:disabled {
+  opacity: 0.5;
+}
+
+.update-action .app-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+/* The lane is one ripple tile repeated; masks let it take the tone and flow at any width. */
+.swim-lane {
+  --fish-size: 28px;
+  --goal-size: 12px;
+  --lane-run: calc(100% - var(--fish-size) - var(--goal-size));
+  --lane-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='8'%3E%3Cpath d='M0 4q6 -3.2 12 0t12 0' fill='none' stroke='%23000' stroke-width='1.7'/%3E%3C/svg%3E");
+  position: relative;
+  height: 30px;
+  margin: 6px 0 4px;
+}
+
+.swim-lane-track,
+.swim-lane-water {
+  position: absolute;
+  left: 0;
+  bottom: 9px;
+  height: 8px;
+}
+
+.swim-lane-track {
+  right: 2px;
+}
+
+.swim-lane-water {
+  width: min(100%, calc(var(--lane-run) * var(--lane-progress) + 14px));
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--tone) 70%, transparent));
+  transition: width 260ms var(--ease-out);
+}
+
+.swim-lane-waiting .swim-lane-water {
+  width: 0;
+}
+
+.swim-lane-track::before,
+.swim-lane-water::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  -webkit-mask: var(--lane-wave) repeat-x 0 0 / 24px 8px;
+  mask: var(--lane-wave) repeat-x 0 0 / 24px 8px;
+  animation: dfs-lane-flow 1.6s linear infinite;
+}
+
+.swim-lane-track::before {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.swim-lane-water::before {
+  background: var(--tone);
+}
+
+.swim-lane-goal {
+  position: absolute;
+  right: 0;
+  bottom: 7px;
+  width: var(--goal-size);
+  height: var(--goal-size);
+  fill: rgba(255, 230, 173, 0.38);
+  transition: fill 200ms ease;
+}
+
+.swim-lane-fish {
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--lane-run) * var(--lane-progress));
+  width: var(--fish-size);
+  height: var(--fish-size);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+  transition: left 260ms var(--ease-out), transform 180ms ease;
+}
+
+.swim-lane-fish:hover {
+  transform: scale(1.1);
+}
+
+.swim-lane-fish:active {
+  transform: scale(0.94);
+}
+
+.swim-lane-waiting .swim-lane-fish {
+  animation: dfs-fish-wander 3.6s ease-in-out infinite;
+}
+
+.update-done .swim-lane-goal {
+  fill: #ffe6ad;
+  animation: dfs-goal-twinkle 1.8s ease-in-out infinite;
+}
+
+.update-done .swim-lane-track::before,
+.update-done .swim-lane-water::before {
+  animation-duration: 3.6s;
+}
+
+.update-offline .swim-lane-water {
+  filter: none;
+}
+
+.update-error .swim-lane-track::before,
+.update-error .swim-lane-water::before,
+.update-offline .swim-lane-track::before,
+.update-offline .swim-lane-water::before {
+  animation: none;
+}
+
+@keyframes dfs-lane-flow {
+  to {
+    -webkit-mask-position: -24px 0;
+    mask-position: -24px 0;
+  }
+}
+
+@keyframes dfs-fish-wander {
+  0%,
+  100% {
+    left: 0;
+  }
+  50% {
+    left: 14%;
+  }
+}
+
+@keyframes dfs-goal-twinkle {
+  0%,
+  100% {
+    transform: scale(0.85) rotate(0deg);
+    filter: drop-shadow(0 0 0 rgba(255, 230, 173, 0));
+  }
+  50% {
+    transform: scale(1.3) rotate(45deg);
+    filter: drop-shadow(0 0 6px rgba(255, 230, 173, 0.9));
+  }
+}
+
+/* ---- Moon fish moods; translations are percentages of the fish so they read at any size ----- */
+
+.moon-fish {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+.moon-fish-motion,
+.moon-fish-fin,
+.moon-fish-rise,
+.moon-fish-z,
+.moon-fish-drip,
+.moon-fish-heart,
+.moon-fish-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.moon-fish-fin {
+  transform-origin: 100% 30%;
+}
+
+.moon-fish-swim .moon-fish-motion {
+  animation: dfs-fish-swim 1.2s ease-in-out infinite;
+}
+
+.moon-fish-swim .moon-fish-fin,
+.moon-fish-wow .moon-fish-fin {
+  animation: dfs-fish-fin 0.5s ease-in-out infinite;
+}
+
+.moon-fish-happy .moon-fish-motion {
+  animation: dfs-fish-happy 1.5s ease-in-out infinite;
+}
+
+.moon-fish-worried .moon-fish-motion {
+  animation: dfs-fish-shiver 2.6s linear infinite;
+}
+
+.moon-fish-sleep .moon-fish-motion {
+  animation: dfs-fish-doze 4.4s ease-in-out infinite;
+}
+
+.moon-fish-wow .moon-fish-motion {
+  animation: dfs-fish-hop 1.1s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+
+.moon-fish-rise {
+  animation: dfs-fish-rise 2.4s ease-in infinite;
+}
+
+.moon-fish-z {
+  animation: dfs-fish-z 3s ease-out infinite;
+}
+
+.moon-fish-drip {
+  animation: dfs-fish-drip 1.5s ease-in-out infinite;
+}
+
+.moon-fish-heart {
+  animation: dfs-fish-heart 1.3s ease-out both;
+}
+
+.moon-fish-twinkle {
+  animation: dfs-fish-twinkle 1.6s ease-in-out infinite;
+}
+
+.moon-fish-late {
+  animation-delay: -0.8s;
+}
+
+.moon-fish-later {
+  animation-delay: -1.6s;
+}
+
+@keyframes dfs-fish-swim {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-5%) rotate(5deg);
+  }
+}
+
+@keyframes dfs-fish-fin {
+  0%,
+  100% {
+    transform: rotate(-16deg);
+  }
+  50% {
+    transform: rotate(14deg);
+  }
+}
+
+@keyframes dfs-fish-happy {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  35%,
+  55% {
+    transform: translateY(-8%);
+  }
+}
+
+@keyframes dfs-fish-shiver {
+  0%,
+  58%,
+  78%,
+  100% {
+    transform: translateX(0);
+  }
+  62% {
+    transform: translateX(-2.4%);
+  }
+  66% {
+    transform: translateX(2.4%);
+  }
+  70% {
+    transform: translateX(-2%);
+  }
+  74% {
+    transform: translateX(1.6%);
+  }
+}
+
+@keyframes dfs-fish-doze {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(3%) rotate(3deg);
+  }
+}
+
+@keyframes dfs-fish-hop {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+  35% {
+    transform: translateY(-26%) rotate(-16deg);
+  }
+  70% {
+    transform: translateY(0) rotate(8deg);
+  }
+  85% {
+    transform: translateY(-5%) rotate(-3deg);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes dfs-fish-rise {
+  0% {
+    transform: translateY(80%) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translateY(-320%) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dfs-fish-z {
+  0% {
+    transform: translate(0, 40%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(40%, -160%);
+    opacity: 0;
+  }
+}
+
+@keyframes dfs-fish-drip {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(22%);
+  }
+}
+
+@keyframes dfs-fish-heart {
+  0% {
+    transform: translateY(30%) scale(0.3);
+    opacity: 0;
+  }
+  25% {
+    transform: translateY(0) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-120%) scale(0.9);
+    opacity: 0;
+  }
+}
+
+@keyframes dfs-fish-twinkle {
+  0%,
+  100% {
+    transform: scale(0.5);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ---- Smaller windows ------------------------------------------------------------------------- */
+
+@media (max-width: 1080px) {
+  .home-hero {
+    left: 44px;
+    width: min(560px, calc(100% - 44px - var(--rail-width) - 24px - 48px));
+  }
+
+  .home-rail {
+    right: 24px;
+  }
+}
+
+/* Short windows tighten the spacing; what still does not fit is folded by railFit.ts. */
+@media (max-height: 640px) {
+  .home-hero,
+  .home-rail {
+    bottom: 32px;
+  }
+
+  .home-rail {
+    top: 62px;
+  }
+
+  .home-slide-lead {
+    -webkit-line-clamp: 2;
+  }
+
+  .home-slide-actions {
+    margin-top: 24px;
+  }
+
+  .home-slide-dots,
+  .home-slide-pager {
+    margin-top: 32px;
+  }
+
+  .server-card {
+    gap: 11px;
+    padding: 14px 16px 12px;
+  }
+
+  .update-area {
+    padding: 14px 16px;
+  }
+}

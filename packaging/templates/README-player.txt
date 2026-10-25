@@ -1,4 +1,4 @@
-DreamingFish 玩家端 0.2.2 · 通用发行包
+DreamingFish 玩家端 0.3.2 · 通用发行包
 
 这个包不绑定任何 Minecraft 服务器，不含服务器新闻、账号或签名私钥。
 project-binding.example.json 只是格式示例，不能直接拿来连接你的项目。

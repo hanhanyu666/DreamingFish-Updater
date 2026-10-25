@@ -34,6 +34,6 @@ export function sectionLabel(view:string,section:string){return viewSections[vie
 export const viewSections:Record<string,{id:string;label:string}[]>={
  changes:[{id:'changes',label:'待发布改动'},{id:'releases',label:'发布版本'},{id:'operations',label:'操作记录'},{id:'problems',label:'历史问题文件'}],
  delivery:[{id:'deployment',label:'发放整合包'},{id:'programs',label:'玩家端程序'},{id:'hosting',label:'外部托管'}],
- appearance:[{id:'branding',label:'标题与品牌'},{id:'colors',label:'外观与背景'},{id:'pages',label:'公告与页面'},{id:'music',label:'启动音乐'}],
+ appearance:[{id:'branding',label:'标题与品牌'},{id:'home',label:'首页焦点与活动'},{id:'server',label:'服务器卡片'},{id:'colors',label:'外观与背景'},{id:'pages',label:'公告与页面'},{id:'images',label:'展示图片'},{id:'music',label:'启动音乐'},{id:'showcase',label:'导入与导出'}],
  settings:[{id:'project',label:'项目设置'},{id:'service',label:'服务设置'},{id:'account',label:'账户与安全'}],
 };

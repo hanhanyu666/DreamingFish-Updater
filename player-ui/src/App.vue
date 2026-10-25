@@ -5,11 +5,11 @@ import AppIcon from "./components/AppIcon.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import ContentPages from "./components/ContentPages.vue";
 import DetailsDrawer from "./components/DetailsDrawer.vue";
-import MusicPlayer from "./components/MusicPlayer.vue";
+import HomeBackdrop from "./components/HomeBackdrop.vue";
+import HomeHero from "./components/HomeHero.vue";
+import HomeRail from "./components/HomeRail.vue";
 import TitleBar from "./components/TitleBar.vue";
-import UpdateArea from "./components/UpdateArea.vue";
 import { getBridge } from "./lib/bridge";
-import { newsDateLabel } from "./lib/news";
 import {
   handleSidecarMessage,
   applyAdminPreview,
@@ -24,26 +24,14 @@ const root = ref<HTMLElement | null>(null);
 const startupCompleted = ref(false);
 const entranceStarted = ref(false);
 const windowShown = ref(false);
-const windowHeight = ref(window.innerHeight);
 const adminPreview = new URLSearchParams(window.location.search).get("adminPreview") === "1";
 let countdownTimer: number | null = null;
 let windowShowPromise: Promise<boolean> | null = null;
 
-const latestNews = computed(() => store.state.latestArticle);
 const homeVisible = computed(() => store.state.page === "HOME");
-const latestNewsVisible = computed(
-  () => homeVisible.value && latestNews.value != null && windowHeight.value >= 640,
-);
 const backgroundUrl = computed(
   () => store.state.backgroundUrl ?? `${import.meta.env.BASE_URL}images/hero-default.webp`,
 );
-const playerInitial = computed(() => {
-  const first = Array.from(store.state.playerName.trim())[0] ?? "";
-  return /^[A-Za-z0-9_]$/.test(first) ? first.toUpperCase() : first || "?";
-});
-const serverAddress = computed(() => store.state.branding.serverAddress?.trim() ?? "");
-const serverAddressCopied = ref(false);
-let serverAddressCopiedTimer: number | null = null;
 const countdownProgress = computed(() => {
   const remaining = store.state.countdownRemaining;
   const total = store.state.countdownTotal;
@@ -60,7 +48,6 @@ onMounted(() => {
   bridge.onMessage(handleSidecarMessage);
   bridge.window.onMaximizedChange((maximized) => setMaximized(maximized));
   void bridge.window.isMaximized().then((maximized) => setMaximized(maximized));
-  window.addEventListener("resize", updateLatestNewsVisibility);
   void store.loadNews();
 
   if (!bridge.isTauri) startPreview();
@@ -71,45 +58,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("resize", updateLatestNewsVisibility);
   window.removeEventListener("message", onPreviewMessage);
   if (countdownTimer != null) window.clearInterval(countdownTimer);
-  if (serverAddressCopiedTimer != null) window.clearTimeout(serverAddressCopiedTimer);
   store.disableStartupMusic();
 });
-
-async function copyServerAddress(): Promise<void> {
-  const address = serverAddress.value;
-  if (!address) return;
-  try {
-    await navigator.clipboard.writeText(address);
-  } catch {
-    // Older WebView builds may refuse the async clipboard; fall back to a selection copy.
-    const field = document.createElement("textarea");
-    field.value = address;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.opacity = "0";
-    document.body.append(field);
-    field.select();
-    document.execCommand("copy");
-    field.remove();
-  }
-  serverAddressCopied.value = true;
-  if (serverAddressCopiedTimer != null) window.clearTimeout(serverAddressCopiedTimer);
-  serverAddressCopiedTimer = window.setTimeout(() => {
-    serverAddressCopied.value = false;
-  }, 1800);
-}
-
-function updateLatestNewsVisibility(): void {
-  windowHeight.value = window.innerHeight;
-}
-
-function openLatestNews(): void {
-  store.openLatestNews();
-  store.keepWindowOpen();
-}
 
 function showUpdaterWindow(): Promise<boolean> {
   if (windowShown.value) return Promise.resolve(true);
@@ -189,9 +141,6 @@ watch(
   },
 );
 
-function formatNewsDate(value: string): string {
-  return newsDateLabel(value);
-}
 </script>
 
 <template>
@@ -201,84 +150,29 @@ function formatNewsDate(value: string): string {
     :class="{ maximized: store.state.maximized, entrance: entranceStarted }"
   >
     <img class="background-image" :src="backgroundUrl" alt="" draggable="false" />
-    <img
-      class="refracted-background"
-      :src="backgroundUrl"
-      alt=""
-      draggable="false"
-    />
+    <HomeBackdrop />
     <div class="image-shade"></div>
-    <div class="liquid-glass-wash"></div>
+    <!-- Content pages sit on a blurred, darkened copy of the background, as in the design. -->
+    <div class="content-backdrop" :class="{ visible: !homeVisible }" aria-hidden="true">
+      <img :src="backgroundUrl" alt="" draggable="false" />
+    </div>
     <div class="canvas">
-      <div
-        class="identity-pane reveal"
-        style="--reveal-delay: 130ms; --from-x: -22px; --from-y: 6px"
-      >
-        <div class="welcome-title">{{ store.state.branding.welcomeText }}</div>
-        <div class="product-name">{{ store.state.branding.productName }}</div>
-        <div class="subtitle">{{ store.state.branding.subtitle }}</div>
-      </div>
-
-      <div
-        class="player-identity reveal"
-        style="--reveal-delay: 230ms; --from-x: -14px; --from-y: 10px"
-      >
-        <div class="player-avatar" aria-hidden="true">{{ playerInitial }}</div>
-        <div class="player-labels">
-          <div class="player-caption">当前玩家</div>
-          <div class="player-name">{{ store.state.playerName }}</div>
-        </div>
-        <template v-if="serverAddress">
-          <div class="player-identity-divider" aria-hidden="true"></div>
-          <button
-            type="button"
-            class="server-address"
-            :class="{ copied: serverAddressCopied }"
-            :title="'复制服务器地址 ' + serverAddress"
-            @click="copyServerAddress"
-          >
-            <span class="player-caption">{{ serverAddressCopied ? "已复制到剪贴板" : "服务器地址" }}</span>
-            <span class="server-address-value">
-              <span class="server-address-text">{{ serverAddress }}</span>
-              <AppIcon :name="serverAddressCopied ? 'check' : 'copy'" />
-            </span>
-          </button>
-        </template>
-      </div>
-
-      <div
-        v-if="latestNewsVisible && latestNews != null"
-        class="home-latest-news reveal"
-        style="--reveal-delay: 165ms; --from-x: 18px; --from-y: 6px"
-        tabindex="0"
-        @click="openLatestNews"
-        @keydown.enter="openLatestNews"
-        @keydown.space.prevent="openLatestNews"
-      >
-        <div class="home-latest-news-meta">
-          最新新闻 · {{ formatNewsDate(latestNews.publishedOn) }}
-        </div>
-        <div class="home-latest-news-title">{{ latestNews.title }}</div>
-        <div class="home-latest-news-summary">{{ latestNews.summary }}</div>
-        <div class="home-latest-news-action">查看全文  ›</div>
-      </div>
-
-      <UpdateArea
+      <HomeHero
         v-if="homeVisible"
         class="reveal"
-        style="--reveal-delay: 190ms; --from-x: 18px; --from-y: 14px"
+        style="--reveal-delay: 130ms; --from-x: -22px; --from-y: 6px"
       />
-      <div
-        class="updater-info reveal"
-        style="--reveal-delay: 310ms; --from-y: 8px"
-      >
-        DreamingFish Updater {{ "0.2.2" }}
-      </div>
+      <HomeRail
+        v-if="homeVisible"
+        class="reveal"
+        style="--reveal-delay: 200ms; --from-x: 18px; --from-y: 10px"
+      />
 
       <ContentPages />
 
+      <!-- The capsule carries the countdown at home and the title-bar pill elsewhere; only the drawer hides both. -->
       <div
-        v-if="store.state.launchNotice != null"
+        v-if="store.state.launchNotice != null && homeVisible && store.state.drawerOpen"
         class="launch-notice-layer"
         :class="{
           'drawer-open': store.state.drawerOpen,
@@ -305,8 +199,7 @@ function formatNewsDate(value: string): string {
         </div>
       </div>
 
-      <MusicPlayer />
-
+      <div v-if="store.state.drawerOpen" class="drawer-scrim" aria-hidden="true" @click="store.hideDrawer()"></div>
       <DetailsDrawer v-if="store.state.drawerOpen" />
       <TitleBar />
       <div

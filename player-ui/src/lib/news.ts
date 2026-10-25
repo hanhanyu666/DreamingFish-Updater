@@ -9,10 +9,10 @@ export interface NewsArticle {
   markdown: string;
 }
 
-export function selectRequestedArticle(
-  articles: readonly NewsArticle[],
+export function selectRequestedArticle<T extends NewsArticle>(
+  articles: readonly T[],
   articleId: string | null,
-): NewsArticle | null {
+): T | null {
   return articles.find((candidate) => candidate.id === articleId) ?? articles[0] ?? null;
 }
 

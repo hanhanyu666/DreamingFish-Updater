@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>玩家端 · 服务器介绍</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&amp;family=Noto+Serif+SC:wght@700;900&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+.dfs-hv{transition:background-color .18s ease,border-color .18s ease,color .18s ease}
+.dfs-hv:hover{background-color:rgba(255,255,255,.1)!important;color:#fff!important}
+.dfs-close:hover{background-color:#C4302B!important;color:#fff!important}
+.dfs-nav:hover{color:#fff!important}
+.dfs-lift{transition:transform .25s ease,border-color .25s ease,background-color .25s ease}
+.dfs-lift:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.16)!important;background-color:rgba(255,255,255,.06)!important}
+.dfs-scroll::-webkit-scrollbar{width:8px}
+.dfs-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px}
+.dfs-scroll::-webkit-scrollbar-track{background:transparent}
+:focus-visible{outline:2px solid #FFF6E0;outline-offset:2px}
+</style>
+</helmet>
+<div style="position: relative; width: 1180px; height: 680px; overflow: hidden; border-radius: 12px; background: #070A12; color: #F3EFE6; font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+  <div id="dfs-guide" class="dfs-scroll" onScroll="{{onScroll}}" style="position: absolute; inset: 0; overflow-y: auto; scroll-behavior: smooth">
+    <section aria-label="服务器简介" style="position: relative; height: 312px; overflow: hidden">
+      <img src="/_blob/8e4a628a4c3abcbe2cb023589ae04d86" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; transform-origin: 50% 40%; scale: 1.35; filter: saturate(1.05) brightness(.82)">
+      <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(0deg, #070A12 0%, rgba(7,10,18,.6) 38%, rgba(7,10,18,.15) 70%, rgba(7,10,18,.55) 100%)"></div>
+      <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,10,18,.78) 0%, rgba(7,10,18,.2) 55%, rgba(7,10,18,0) 80%)"></div>
+      <div style="position: absolute; left: 56px; bottom: 34px; width: 640px; display: flex; flex-direction: column; gap: 12px">
+        <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 10px; letter-spacing: .2em; color: {{accent}}">SERVER GUIDE</span>
+        <h1 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 44px; line-height: 1.15; color: #FFF6E0">欢迎来到鲸歌</h1>
+        <p style="margin: 0; max-width: 540px; font-size: 15px; line-height: 1.75; color: rgba(243,239,230,.86)">一个慢节奏的纯净生存服：不卖装备、不刷屏，周末一起搞点大工程。第一次来的话，花三分钟看完这一页。</p>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px">
+          <span style="height: 26px; padding: 0 10px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: rgba(243,239,230,.88); background: rgba(255,255,255,.09); backdrop-filter: blur(8px)">Java 1.20.1 · Fabric</span>
+          <span style="height: 26px; padding: 0 10px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: rgba(243,239,230,.88); background: rgba(255,255,255,.09); backdrop-filter: blur(8px)">正版验证</span>
+          <span style="height: 26px; padding: 0 10px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: rgba(243,239,230,.88); background: rgba(255,255,255,.09); backdrop-filter: blur(8px)">每周六活动夜</span>
+          <span style="height: 26px; padding: 0 10px; border-radius: 7px; display: flex; align-items: center; font-size: 12px; color: rgba(243,239,230,.88); background: rgba(255,255,255,.09); backdrop-filter: blur(8px)">第三赛季进行中</span>
+        </div>
+      </div>
+      <div style="position: absolute; right: 40px; bottom: 34px; width: 280px; padding: 14px 14px 14px 16px; border-radius: 16px; background: rgba(9,13,22,.62); backdrop-filter: blur(18px) saturate(140%); border: 1px solid rgba(255,255,255,.1); display: flex; align-items: center; gap: 12px">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 11.5px; color: rgba(243,239,230,.64)">{{addressCaption}}</span>
+          <span style="font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 15px">play.example.com</span>
+        </div>
+        <button type="button" onClick="{{copy}}" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 0; background: {{accent}}; color: #04161A; font-size: 13px; font-weight: 700; cursor: pointer; flex: none">{{copyLabel}}</button>
+      </div>
+    </section>
+
+    <div style="display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 44px; padding: 30px 56px 48px">
+      <nav aria-label="页面目录" style="position: sticky; top: 76px; align-self: start; display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{sections}}" as="n" hint-placeholder-count="5">
+          <a href="#{{n.id}}" onClick="{{n.pick}}" aria-current="{{n.current}}" style="position: relative; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-radius: 10px; font-size: 13.5px; font-weight: {{n.weight}}; color: {{n.color}}; background: {{n.bg}}; transition: background-color .2s ease, color .2s ease">
+            <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 9.5px; color: {{n.numColor}}">{{n.num}}</span>{{n.label}}
+          </a>
+        </sc-for>
+      </nav>
+
+      <div style="display: flex; flex-direction: column; gap: 48px; min-width: 0; max-width: 860px">
+        <section id="features" style="display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 72px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 9.5px; letter-spacing: .2em; color: {{accent}}">01 · FEATURES</span>
+            <h2 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 24px; color: #FFF6E0">玩法特色</h2>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+            <article class="dfs-lift" style="display: flex; gap: 16px; padding: 18px 20px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08)">
+              <span style="width: 40px; height: 40px; border-radius: 11px; background: {{accentTint}}; display: grid; place-items: center; flex: none"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: {{accent}}; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M5 21V4"></path><path d="M5 4h11l-2 4 2 4H5"></path></svg></span>
+              <div style="display: flex; flex-direction: column; gap: 4px"><h3 style="margin: 0; font-size: 15.5px; font-weight: 700">领地保护</h3><p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(243,239,230,.74)">用金锄头圈地，添加好友就能一起建。领地里的方块、箱子和动物都受保护。</p></div>
+            </article>
+            <article class="dfs-lift" style="display: flex; gap: 16px; padding: 18px 20px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08)">
+              <span style="width: 40px; height: 40px; border-radius: 11px; background: {{accentTint}}; display: grid; place-items: center; flex: none"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: {{accent}}; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><ellipse cx="12" cy="6" rx="7" ry="3"></ellipse><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"></path><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg></span>
+              <div style="display: flex; flex-direction: column; gap: 4px"><h3 style="margin: 0; font-size: 15.5px; font-weight: 700">玩家经济</h3><p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(243,239,230,.74)">没有官方商店，物价全由玩家在交易所里决定。下线以后挂单照样成交。</p></div>
+            </article>
+            <article class="dfs-lift" style="display: flex; gap: 16px; padding: 18px 20px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08)">
+              <span style="width: 40px; height: 40px; border-radius: 11px; background: {{accentTint}}; display: grid; place-items: center; flex: none"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: {{accent}}; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M4 21V9h3V6h3v3h4V6h3v3h3v12z"></path><path d="M10 21v-4a2 2 0 0 1 4 0v4"></path></svg></span>
+              <div style="display: flex; flex-direction: column; gap: 4px"><h3 style="margin: 0; font-size: 15.5px; font-weight: 700">赛季副本</h3><p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(243,239,230,.74)">每个赛季开放一个新维度和合作副本，奖励只有外观，不影响平衡。</p></div>
+            </article>
+            <article class="dfs-lift" style="display: flex; gap: 16px; padding: 18px 20px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08)">
+              <span style="width: 40px; height: 40px; border-radius: 11px; background: rgba(255,210,122,.14); display: grid; place-items: center; flex: none"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: #FFD27A; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"></rect><path d="M3.5 10h17"></path><path d="M8 3v4"></path><path d="M16 3v4"></path></svg></span>
+              <div style="display: flex; flex-direction: column; gap: 4px"><h3 style="margin: 0; font-size: 15.5px; font-weight: 700">周六活动夜</h3><p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(243,239,230,.74)">建筑赛、跑酷、烟花大会轮流来，每周六 20:00 在主城广场集合。</p></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="join" style="display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 72px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 9.5px; letter-spacing: .2em; color: {{accent}}">02 · HOW TO JOIN</span>
+            <h2 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 24px; color: #FFF6E0">三步进服</h2>
+          </div>
+          <ol style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+            <li style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 20px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08)">
+              <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 22px; color: {{accent}}; line-height: 1">01</span>
+              <h3 style="margin: 0; font-size: 15px; font-weight: 700">等更新器跑完</h3>
+              <p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(243,239,230,.74)">用你常用的启动器打开游戏，这个窗口会自己检查并补齐整合包。</p>
+            </li>
+            <li style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 20px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08)">
+              <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 22px; color: {{accent}}; line-height: 1">02</span>
+              <h3 style="margin: 0; font-size: 15px; font-weight: 700">添加服务器</h3>
+              <p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(243,239,230,.74)">在「多人游戏」里添加下面这个地址。</p>
+              <button type="button" class="dfs-hv" onClick="{{copy}}" style="height: 34px; padding: 0 10px 0 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 13px">play.example.com<span style="font-family: 'Noto Sans SC', sans-serif; font-size: 12px; color: {{accent}}">{{copyShort}}</span></button>
+            </li>
+            <li style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 20px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08)">
+              <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 22px; color: {{accent}}; line-height: 1">03</span>
+              <h3 style="margin: 0; font-size: 15px; font-weight: 700">找向导领礼包</h3>
+              <p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(243,239,230,.74)">出生点右手边的向导会带你走一遍主城，并送一套新手工具。</p>
+            </li>
+          </ol>
+        </section>
+
+        <section id="rules" style="display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 72px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 9.5px; letter-spacing: .2em; color: {{accent}}">03 · RULES</span>
+            <h2 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 24px; color: #FFF6E0">服务器规则</h2>
+            <p style="margin: 0; font-size: 13.5px; color: rgba(243,239,230,.7)">只有五条，进服即视为同意。</p>
+          </div>
+          <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border-radius: 16px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); overflow: hidden">
+            <sc-for list="{{rules}}" as="r" hint-placeholder-count="5">
+              <li style="display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px 20px; border-top: {{r.sep}}">
+                <span style="width: 30px; height: 30px; border-radius: 50%; border: 1px solid {{accentSoft}}; color: {{accent}}; display: grid; place-items: center; font-family: Silkscreen, ui-monospace, monospace; font-size: 11px">{{r.num}}</span>
+                <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                  <strong style="font-size: 14.5px; font-weight: 700">{{r.title}}</strong>
+                  <span style="font-size: 13px; line-height: 1.65; color: rgba(243,239,230,.72)">{{r.text}}</span>
+                </span>
+                <sc-if value="{{r.severe}}" hint-placeholder-val="{{false}}"><span style="height: 22px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; font-size: 11.5px; font-weight: 500; color: #FF9A62; background: rgba(255,154,98,.14); white-space: nowrap">违反即封禁</span></sc-if>
+              </li>
+            </sc-for>
+          </ol>
+        </section>
+
+        <section id="team" style="display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 72px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 9.5px; letter-spacing: .2em; color: {{accent}}">04 · TEAM</span>
+            <h2 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 24px; color: #FFF6E0">管理团队</h2>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+            <sc-for list="{{team}}" as="m" hint-placeholder-count="4">
+              <article class="dfs-lift" style="display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08)">
+                <span style="width: 48px; height: 48px; border-radius: 12px; overflow: hidden; display: block; box-shadow: 0 0 0 1px rgba(255,255,255,.12)">
+                  <svg viewBox="0 0 8 8" width="48" height="48" aria-hidden="true" style="display: block; shape-rendering: crispEdges">
+                    <sc-for list="{{m.pixels}}" as="p" hint-placeholder-count="10"><rect x="{{p.x}}" y="{{p.y}}" width="{{p.w}}" height="{{p.h}}" fill="{{p.fill}}"></rect></sc-for>
+                  </svg>
+                </span>
+                <div style="display: flex; flex-direction: column; gap: 2px">
+                  <h3 style="margin: 0; font-size: 14.5px; font-weight: 700">{{m.name}}</h3>
+                  <span style="font-size: 12px; font-weight: 500; color: {{m.roleColor}}">{{m.role}}</span>
+                </div>
+                <p style="margin: 0; font-size: 12.5px; line-height: 1.65; color: rgba(243,239,230,.7)">{{m.duty}}</p>
+              </article>
+            </sc-for>
+          </div>
+        </section>
+
+        <section id="faq" style="display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 72px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 9.5px; letter-spacing: .2em; color: {{accent}}">05 · FAQ</span>
+            <h2 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 24px; color: #FFF6E0">常见问题</h2>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <sc-for list="{{faq}}" as="q" hint-placeholder-count="4">
+              <div style="border-radius: 14px; border: 1px solid {{q.border}}; background: {{q.bg}}; overflow: hidden; transition: background-color .2s ease, border-color .2s ease">
+                <button type="button" onClick="{{q.toggle}}" aria-expanded="{{q.expanded}}" style="width: 100%; height: 54px; padding: 0 18px 0 20px; border: 0; background: transparent; display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer; font-size: 14.5px; font-weight: 700">
+                  <span style="flex: 1">{{q.q}}</span>
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="fill: none; stroke: {{q.iconColor}}; stroke-width: 2; stroke-linecap: round; transform: rotate({{q.rotate}}deg); transition: transform .25s ease"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+                </button>
+                <sc-if value="{{q.open}}" hint-placeholder-val="{{false}}">
+                  <p style="margin: 0; padding: 0 56px 18px 20px; font-size: 13.5px; line-height: 1.8; color: rgba(243,239,230,.8)">{{q.a}}</p>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <p style="margin: 0; font-size: 12.5px; color: rgba(243,239,230,.56)">最后更新于 10 月 20 日 · 还有问题的话，到 QQ 群里找管理组</p>
+      </div>
+    </div>
+  </div>
+
+  <header style="position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 28px; padding-left: 20px; z-index: 5; background: {{barBg}}; backdrop-filter: {{barBlur}}; border-bottom: 1px solid {{barLine}}; transition: background-color .25s ease, border-color .25s ease">
+    <a href="Main.dc.html" aria-label="鲸歌生存服 首页" style="display: flex; align-items: center; gap: 10px">
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #0E2533; border: 1px solid {{accentSoft}}; display: grid; place-items: center; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 16px; color: {{accent}}; flex: none">鲸</span>
+      <span style="display: flex; flex-direction: column; line-height: 1.15">
+        <span style="font-size: 14px; font-weight: 700; letter-spacing: .04em">鲸歌生存服</span>
+        <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 8.5px; letter-spacing: .18em; color: rgba(243,239,230,.62)">WHALESONG</span>
+      </span>
+    </a>
+    <nav aria-label="主导航" style="display: flex; align-items: stretch; gap: 2px; align-self: stretch">
+      <a href="Main.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">首页</a>
+      <a href="News.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">公告</a>
+      <a href="Guide.dc.html" aria-current="page" style="position: relative; display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 700; color: #FFFFFF">服务器介绍<span style="position: absolute; left: 12px; right: 12px; bottom: 10px; height: 2px; border-radius: 2px; background: {{accent}}"></span></a>
+      <a href="Gallery.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">画廊</a>
+    </nav>
+    <div style="flex: 1; align-self: stretch"></div>
+    <a href="Main.dc.html" class="dfs-hv" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 8px; border-radius: 999px; border: 1px solid {{accentSoft}}; background: {{accentTint}}; font-size: 12px; color: #F3EFE6">
+      <span style="width: 18px; height: 18px; border-radius: 50%; background: {{accent}}; color: #04161A; display: grid; place-items: center"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+      r13 已就绪 · 窗口保持打开
+    </a>
+    <div style="display: flex; align-self: stretch">
+      <button type="button" class="dfs-hv" aria-label="最小化" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8)"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><path d="M1.5 6h9"></path></svg></button>
+      <button type="button" class="dfs-hv" aria-label="最大化" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8)"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5"></rect></svg></button>
+      <button type="button" class="dfs-close" aria-label="关闭" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8); border-top-right-radius: 12px"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><path d="M2 2l8 8"></path><path d="M10 2l-8 8"></path></svg></button>
+    </div>
+  </header>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2EE8DF","options":["#2EE8DF","#FFB454","#9BE15D","#B79CFF"],"section":"主题"},"$preview":{"width":1180,"height":680}}'>
+var SECTIONS = [
+  { id: 'features', label: '玩法特色' },
+  { id: 'join', label: '三步进服' },
+  { id: 'rules', label: '服务器规则' },
+  { id: 'team', label: '管理团队' },
+  { id: 'faq', label: '常见问题' }
+];
+var RULES = [
+  { title: '不使用外挂与透视材质', text: '包括 X 光材质、自动钓鱼、飞行等任何客户端作弊。', severe: true },
+  { title: '不破坏别人的建筑', text: '没被添加为领地成员时，任何拆改都算破坏，记得先打招呼。', severe: false },
+  { title: '红石机器建在野外', text: '主城每个区块最多 64 个漏斗，刷怪塔与大型农场请建在野外区域。', severe: false },
+  { title: '交易讲诚信', text: '交易所之外的私下交易请截图留证，出现纠纷以截图为准。', severe: false },
+  { title: '友善聊天', text: '不刷屏、不人身攻击，不在公屏发广告。', severe: false }
+];
+function face(hair, skin, eye, nose, mouth) {
+  return [
+    { x: 0, y: 0, w: 8, h: 8, fill: skin },
+    { x: 0, y: 0, w: 8, h: 2, fill: hair },
+    { x: 0, y: 2, w: 1, h: 2, fill: hair },
+    { x: 7, y: 2, w: 1, h: 2, fill: hair },
+    { x: 1, y: 4, w: 2, h: 1, fill: '#FFFFFF' },
+    { x: 2, y: 4, w: 1, h: 1, fill: eye },
+    { x: 5, y: 4, w: 2, h: 1, fill: '#FFFFFF' },
+    { x: 5, y: 4, w: 1, h: 1, fill: eye },
+    { x: 3, y: 5, w: 2, h: 1, fill: nose },
+    { x: 2, y: 6, w: 4, h: 1, fill: mouth }
+  ];
+}
+var TEAM = [
+  { name: '阿鲸', role: '服主', roleColor: '#FFD27A', duty: '服务器运营与赛季规划，规则的最终解释人。', pixels: face('#1E3A5F', '#E2AE84', '#1E6FB8', '#C48B62', '#8A5236') },
+  { name: 'Kirin_Ra', role: '建筑组', roleColor: '#8AB4FF', duty: '新主城建设，建筑大赛的评审。', pixels: face('#C9C2B8', '#D9A47C', '#7A3FA8', '#B9835A', '#7A4A30') },
+  { name: '小满', role: '活动策划', roleColor: '#8AB4FF', duty: '每周六活动夜和节日活动。', pixels: face('#6B2E1F', '#F0C29E', '#2F7A55', '#D19C74', '#A4553C') },
+  { name: 'MossyStone', role: '技术维护', roleColor: '#8AB4FF', duty: '服务端、插件与整合包的更新。', pixels: face('#2F4A2A', '#C78E62', '#3A5FB0', '#A9734C', '#6B3E27') }
+];
+var FAQ = [
+  { q: '更新一直卡在下载怎么办？', a: '先点「重试」，更新器会从断点继续下载。还是不行的话，点「运行记录」截个图发到 QQ 群，管理组会帮你看。' },
+  { q: '我自己加的模组会被删掉吗？', a: '不会。你自己放进 mods 文件夹的模组会被保留，并标记为「自选模组」。只有在服务器禁用名单里的模组，进服时才会被拦下。' },
+  { q: '电脑配置低，能玩吗？', a: '能。在更新器的「本地内容 › 可选内容」里关掉光影包和高清材质，下次启动时就不会再下载它们。' },
+  { q: '一定要换启动器吗？', a: '不用。继续用你常用的启动器打开游戏就行，更新器会在游戏启动前自动运行，更新完会自己关掉。' }
+];
+
+class Component extends DCLogic {
+  componentDidMount() {
+    this.setState({ active: 'features', openFaq: 1, scrolled: false, copiedUntil: 0 });
+  }
+  renderVals() {
+    var self = this;
+    var s = this.state || {};
+    var accent = this.props.accent || '#2EE8DF';
+    var active = s.active || 'features';
+    var now = Date.now();
+    var copied = (s.copiedUntil || 0) > now;
+    if (copied && !this._copyTimer) {
+      this._copyTimer = setTimeout(function () { self._copyTimer = null; self.forceUpdate(); }, (s.copiedUntil || 0) - now + 30);
+    }
+    var sections = SECTIONS.map(function (sec, i) {
+      var on = sec.id === active;
+      return {
+        id: sec.id, label: sec.label, num: '0' + (i + 1),
+        current: on ? 'true' : 'false',
+        color: on ? '#FFFFFF' : 'rgba(243,239,230,.66)',
+        numColor: on ? accent : 'rgba(243,239,230,.45)',
+        weight: on ? 700 : 500,
+        bg: on ? 'rgba(255,255,255,.07)' : 'transparent',
+        pick: function () { self.setState({ active: sec.id }); }
+      };
+    });
+    var rules = RULES.map(function (r, i) {
+      return Object.assign({}, r, { num: '0' + (i + 1), sep: i === 0 ? '0 solid transparent' : '1px solid rgba(255,255,255,.06)' });
+    });
+    var faq = FAQ.map(function (f, i) {
+      var open = s.openFaq === i;
+      return Object.assign({}, f, {
+        open: open, expanded: open ? 'true' : 'false', rotate: open ? 45 : 0,
+        iconColor: open ? accent : 'rgba(243,239,230,.6)',
+        bg: open ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.03)',
+        border: open ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.08)',
+        toggle: function () { self.setState({ openFaq: open ? -1 : i }); }
+      });
+    });
+    var scrolled = !!s.scrolled;
+    return {
+      accent: accent,
+      accentSoft: 'color-mix(in oklab, ' + accent + ' 45%, transparent)',
+      accentTint: 'color-mix(in oklab, ' + accent + ' 15%, transparent)',
+      sections: sections,
+      rules: rules,
+      team: TEAM,
+      faq: faq,
+      barBg: scrolled ? 'rgba(8,11,19,.82)' : 'rgba(8,11,19,0)',
+      barBlur: scrolled ? 'blur(18px) saturate(140%)' : 'none',
+      barLine: scrolled ? 'rgba(255,255,255,.08)' : 'rgba(255,255,255,0)',
+      copyLabel: copied ? '已复制' : '复制地址',
+      copyShort: copied ? '已复制' : '复制',
+      addressCaption: copied ? '已复制到剪贴板' : '服务器地址',
+      copy: function () {
+        try {
+          var p = navigator.clipboard && navigator.clipboard.writeText('play.example.com');
+          if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+        self.setState({ copiedUntil: Date.now() + 1800 });
+      },
+      onScroll: function (e) {
+        var el = e && e.currentTarget;
+        if (!el) return;
+        var top = el.scrollTop;
+        var current = 'features';
+        for (var i = 0; i < SECTIONS.length; i++) {
+          var node = document.getElementById(SECTIONS[i].id);
+          if (node && node.offsetTop - 140 <= top) current = SECTIONS[i].id;
+        }
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 4) current = SECTIONS[SECTIONS.length - 1].id;
+        var nextScrolled = top > 180;
+        var st = self.state || {};
+        if (st.active !== current || !!st.scrolled !== nextScrolled) self.setState({ active: current, scrolled: nextScrolled });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

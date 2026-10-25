@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -247,7 +247,7 @@ fn safe_command(line:&str)->Result<(),String> {
     if line.len()>128*1024||line.contains(['\n','\r']){return Err("原生命令长度或行格式无效".into());}
     let value:serde_json::Value=serde_json::from_str(line).map_err(|_|"原生命令必须是 JSON 对象")?;
     let command=value.get("command").and_then(|v|v.as_str()).ok_or("缺少命令类型")?;
-    if !["retry","continue-launch","toggle-mod","restore-mods","toggle-file","restore-files","toggle-group","reset-default","archives","restore-archive","delete-archive","open-directory","open-archive","keep-open","confirm","close","quit"].contains(&command){return Err("不支持的玩家原生命令".into());}
+    if !["retry","continue-launch","toggle-mod","restore-mods","toggle-file","restore-files","toggle-group","reset-default","archives","restore-archive","delete-archive","open-directory","open-archive","keep-open","refresh-server-status","confirm","close","quit"].contains(&command){return Err("不支持的玩家原生命令".into());}
     Ok(())
 }
 
@@ -363,6 +363,48 @@ fn read_music_track_from_root(
 fn read_music_track(file_name: String, window: tauri::WebviewWindow) -> Result<Option<String>, String> {
     require_player(&window)?;
     read_music_track_from_root(&instance_root_from_args()?, &file_name)
+}
+
+fn read_presentation_image_from_root(instance_root: &Path, file_name: &str) -> Result<Option<String>, String> {
+    const LIMIT: u64 = 8 * 1024 * 1024;
+    if file_name.len() > 120
+        || !file_name.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+        || !file_name.bytes().all(|value| value.is_ascii_alphanumeric() || b"._-".contains(&value))
+    {
+        return Err("展示图片必须使用安全的单个文件名".into());
+    }
+    let extension = Path::new(file_name).extension().and_then(|value| value.to_str()).unwrap_or("");
+    let mime = match extension {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => return Err("展示图片只支持 PNG、JPEG、WebP 或 GIF".into()),
+    };
+    let base_name = file_name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    if ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"].contains(&base_name.as_str()) {
+        return Err("图片文件名不能使用系统保留名称".into());
+    }
+    let root = instance_root.canonicalize().map_err(|error| format!("无法读取实例目录: {error}"))?;
+    for directory in [root.join("DreamingFishUpdater/presentation-images"), root.join(".dreamingfish-bootstrap/presentation-images")] {
+        let candidate = directory.join(file_name);
+        if !candidate.is_file() { continue; }
+        let canonical = candidate.canonicalize().map_err(|error| format!("无法读取展示图片: {error}"))?;
+        if !canonical.starts_with(&directory) { return Err("展示图片路径超出允许的图片目录".into()); }
+        let file = std::fs::File::open(canonical).map_err(|error| format!("无法打开展示图片: {error}"))?;
+        if file.metadata().map_err(|error| error.to_string())?.len() > LIMIT { return Err("展示图片不能超过 8 MiB".into()); }
+        let mut bytes = Vec::new();
+        file.take(LIMIT + 1).read_to_end(&mut bytes).map_err(|error| format!("无法读取展示图片: {error}"))?;
+        if bytes.len() as u64 > LIMIT { return Err("展示图片不能超过 8 MiB".into()); }
+        return Ok(Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))));
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+fn read_presentation_image(file_name: String, window: tauri::WebviewWindow) -> Result<Option<String>, String> {
+    require_player(&window)?;
+    read_presentation_image_from_root(&instance_root_from_args()?, &file_name)
 }
 
 #[tauri::command]
@@ -692,6 +734,7 @@ pub fn run() {
             read_local_image,
             read_startup_music,
             read_music_track,
+            read_presentation_image,
             quit_application
         ])
         .build(tauri::generate_context!())
@@ -739,7 +782,7 @@ pub fn run() {
 mod tests {
     use super::{
         format_sidecar_crash, format_utc_timestamp, is_explicit_exit_message,
-        read_local_image_from_root, read_startup_music_from_root, redacted_argument_names,
+        read_local_image_from_root, read_startup_music_from_root, read_presentation_image_from_root, redacted_argument_names,
         resolve_java_executable, resolve_sidecar_jar, should_force_native_close,
         write_close_command, MAX_STARTUP_MUSIC_BYTES,player_origin,safe_external,safe_command,permitted_directory,
     };
@@ -791,6 +834,7 @@ mod tests {
         for value in ["javascript:alert(1)","file:///C:/secret.exe","https://user:pass@example.test/","cmd:run"]{assert!(safe_external(value).is_err());}
         assert!(safe_external("https://example.test/a").is_ok());
         assert!(safe_command(r#"{"command":"retry"}"#).is_ok());
+        assert!(safe_command(r#"{"command":"refresh-server-status"}"#).is_ok());
         assert!(safe_command("{\"command\":\"retry\"}\n{\"command\":\"quit\"}").is_err());
         assert!(safe_command(r#"{"command":"execute-shell"}"#).is_err());
     }
@@ -873,6 +917,28 @@ mod tests {
         let mut output = Cursor::new(Vec::new());
         write_close_command(&mut output).unwrap();
         assert_eq!(output.into_inner(), b"{\"command\":\"close\"}\n");
+    }
+
+    #[test]
+    fn presentation_images_accept_supported_mime_types_and_reject_unsafe_paths_and_size() {
+        let (base, _) = fixture();
+        assert!(read_presentation_image_from_root(&base, "missing.png").unwrap().is_none());
+        let directory = base.join("DreamingFishUpdater/presentation-images");
+        std::fs::create_dir_all(&directory).unwrap();
+        for (name, mime) in [("image.png", "image/png"), ("image.jpg", "image/jpeg"), ("image.jpeg", "image/jpeg"), ("image.webp", "image/webp"), ("image.gif", "image/gif")] {
+            std::fs::write(directory.join(name), b"image").unwrap();
+            assert!(read_presentation_image_from_root(&base, name).unwrap().unwrap().starts_with(&format!("data:{mime};base64,")));
+        }
+        for name in ["../image.png", "folder/image.png", "C:\\image.png", "file.svg", "file.png.exe", "CON.png", "file:secret.png", ""] {
+            assert!(read_presentation_image_from_root(&base, name).is_err(), "{name}");
+        }
+        std::fs::File::create(directory.join("large.png")).unwrap().set_len(8 * 1024 * 1024 + 1).unwrap();
+        assert!(read_presentation_image_from_root(&base, "large.png").is_err());
+        let legacy = base.join(".dreamingfish-bootstrap/presentation-images");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("legacy.png"), b"image").unwrap();
+        assert!(read_presentation_image_from_root(&base, "legacy.png").unwrap().is_some());
+        let _ = std::fs::remove_dir_all(base.parent().unwrap());
     }
 
     #[test]

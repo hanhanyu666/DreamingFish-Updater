@@ -26,7 +26,7 @@ class ManagementCliTest {
     void exposesHelpAndCompletesThePublishWorkflow() throws Exception {
         Invocation version = invoke("--version");
         assertEquals(0, version.exitCode());
-        assertTrue(version.out().contains("0.2.8"));
+        assertTrue(version.out().contains("0.3.1"));
 
         Invocation help = invoke("--help");
         assertEquals(0, help.exitCode());
@@ -564,6 +564,74 @@ class ManagementCliTest {
         assertEquals(0, invoke("--data", data, "project", "scan", "later").exitCode());
         Invocation published = invoke(publish);
         assertEquals(0, published.exitCode(), published.err());
+    }
+
+    @Test
+    void terminalTitleEditsPreserveShowcaseAndImageMetadata() throws Exception {
+        Path data = temporary.resolve("showcase-data");
+        Path source = Files.createDirectories(temporary.resolve("showcase-source"));
+        assertEquals(0, invoke("--data", data.toString(), "project", "create", "demo", "--name", "Demo", "--source", source.toString()).exitCode());
+        var paths = ManagementPaths.at(data);
+        var json = new JsonCodec();
+        var database = new ManagementDatabase(paths, json);
+        var project = database.requireProject("demo");
+        var brand = json.read("""
+                {"productName":"展示","accentColor":"#112233","secondaryAccentColor":"#445566",
+                "spotlights":[{"id":"home","title":"欢迎","imageFile":"hero.png"}],"theme":{"corner":"SQUARE"},
+                "presentationImages":[{"fileName":"hero.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":42}]}
+                """.getBytes(java.nio.charset.StandardCharsets.UTF_8), cn.dreamingfish.updater.protocol.Branding.class);
+        new cn.dreamingfish.updater.management.ProjectService(paths, database).configure("demo", null, null, brand, null);
+        var result = invoke("--data", data.toString(), "project", "configure", "demo", "--product-name", "新标题");
+        assertEquals(0, result.exitCode(), result.err());
+        var saved = database.requireProject("demo").branding();
+        assertEquals("新标题", saved.productName());
+        assertEquals(brand.spotlights(), saved.spotlights());
+        assertEquals(brand.theme(), saved.theme());
+        assertEquals(brand.presentationImages(), saved.presentationImages());
+    }
+
+    @Test
+    @org.junit.jupiter.api.Timeout(30)
+    void interactivePageAndArticleEditsKeepAllNewDisplayMetadata() throws Exception {
+        Path settings = temporary.resolve("showcase-console/settings.json");
+        Path data = temporary.resolve("showcase-console/data");
+        Path source = Files.createDirectories(temporary.resolve("showcase-console-source"));
+        assertEquals(0, invokeWithInput(settings, "", "--data", data.toString(), "init").exitCode());
+        assertEquals(0, invokeWithInput(settings, "", "--data", data.toString(), "project", "create", "demo", "--name", "Demo", "--source", source.toString()).exitCode());
+        var settingsStore = new ManagementSettingsStore(settings);
+        settingsStore.save(settingsStore.load().withDataDirectory(data.toAbsolutePath().normalize().toString()).withDefaultProject("demo"));
+        var json = new JsonCodec();
+        var database = new ManagementDatabase(ManagementPaths.at(data), json);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var document = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(Files.readAllBytes(Path.of("..", "docs", "showcase", "example-whalesong.json")));
+        // The explicit announcement layout is authoritative even without the legacy flag.
+        ((com.fasterxml.jackson.databind.node.ObjectNode) document.at("/contentPages/0")).put("announcementPage", false);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) document.at("/contentPages/1")).put("imageUrl", "https://example.com/guide-fallback.webp");
+        var branding = json.read(mapper.writeValueAsBytes(document), cn.dreamingfish.updater.protocol.Branding.class);
+        new cn.dreamingfish.updater.management.ProjectService(ManagementPaths.at(data), database).configure("demo", null, null, branding, null);
+        var input = new java.util.ArrayList<String>();
+        input.add("12");
+        for (int i = 0; i < 13; i++) input.add(""); // Keep the existing brand, colours and background.
+        input.addAll(List.of("y", "e", "2", "", "", "", "新的介绍标题", "",
+                "e", "3", "", "", "", "新的画廊标题", "",
+                "e", "1", "", "", "", "", "新的公告页标题", "",
+                "e", "1", "", "新的文章标题", "", "", "", "", "q", "q", "0", ""));
+        Invocation result = invokeWithInput(settings, String.join(System.lineSeparator(), input));
+        assertEquals(0, result.exitCode(), result.err());
+        var saved = database.requireProject("demo").branding();
+        assertEquals(branding.spotlights(), saved.spotlights());
+        var guide = saved.contentPages().get(1);
+        assertEquals("新的介绍标题", guide.title(), result.out());
+        assertEquals(branding.contentPages().get(1).imageFile(), guide.imageFile());
+        assertEquals(branding.contentPages().get(1).imageUrl(), guide.imageUrl());
+        assertEquals(branding.contentPages().get(1).tags(), guide.tags());
+        assertEquals(branding.contentPages().get(1).blocks(), guide.blocks());
+        assertEquals("新的画廊标题", saved.contentPages().get(2).title());
+        assertEquals(branding.contentPages().get(2).gallery(), saved.contentPages().get(2).gallery());
+        var article = saved.contentPages().getFirst().articles().getFirst();
+        assertEquals("新的文章标题", article.title());
+        assertEquals(branding.contentPages().getFirst().articles().getFirst().category(), article.category());
+        assertEquals(branding.contentPages().getFirst().articles().getFirst().author(), article.author());
     }
 
     private Invocation invoke(String... args) {

@@ -3,7 +3,9 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const titleBarSource = readFileSync(resolve("src/components/TitleBar.vue"), "utf8");
-const playerStyles = readFileSync(resolve("src/styles/player.css"), "utf8");
+const playerStyles = ["base", "shell", "home", "pages", "drawer"]
+  .map((name) => readFileSync(resolve(`src/styles/${name}.css`), "utf8"))
+  .join("\n");
 const capabilities = JSON.parse(
   readFileSync(
     resolve("src-tauri/capabilities/default.json"),
@@ -48,13 +50,11 @@ describe("custom title bar dragging", () => {
     expect(playerStyles).toMatch(/\.music-player\s*\{/);
   });
 
-  it("places the content-page music card beside the window controls", () => {
-    expect(playerStyles).toMatch(
-      /\.music-player\.on-content-page\s*\{[\s\S]*?top:\s*5px;[\s\S]*?right:\s*120px;[\s\S]*?left:\s*auto;[\s\S]*?bottom:\s*auto;/,
-    );
-    expect(playerStyles).toMatch(
-      /\.music-player\.on-content-page\.expanded\s*\{[\s\S]*?top:\s*58px;/,
-    );
-    expect(playerStyles).not.toContain("padding-bottom: 188px");
+  it("keeps music on every page, before the player at home and the update pill elsewhere", () => {
+    expect(titleBarSource).toMatch(/<MusicPlayer \/>\s*<template v-if="onHome">\s*<div class="title-player"/);
+    expect(titleBarSource).toMatch(/v-else[\s\S]*?class="title-status"/);
+    expect(playerStyles).toMatch(/\.title-player,\s*\.music-player-pill,\s*\.title-status\s*\{[\s\S]*?backdrop-filter:/);
+    expect(playerStyles).toMatch(/\.music-player-expanded\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*calc\(100% \+ 10px\);/);
+    expect(playerStyles).not.toContain("title-music-slot");
   });
 });

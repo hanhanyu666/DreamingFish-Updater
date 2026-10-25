@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>玩家端 · 更新与本地管理</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&amp;family=Noto+Serif+SC:wght@700;900&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+input{font:inherit}
+input::placeholder{color:rgba(243,239,230,.45)}
+.dfs-hv{transition:background-color .18s ease,border-color .18s ease,color .18s ease}
+.dfs-hv:hover{background-color:rgba(255,255,255,.1)!important;color:#fff!important}
+.dfs-close:hover{background-color:#C4302B!important;color:#fff!important}
+.dfs-nav:hover{color:#fff!important}
+.dfs-rail:hover{background-color:rgba(255,255,255,.06)}
+.dfs-row{transition:background-color .18s ease}
+.dfs-row:hover{background-color:rgba(255,255,255,.035)!important}
+.dfs-link:hover{text-decoration:underline}
+.dfs-scroll::-webkit-scrollbar{width:8px}
+.dfs-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px}
+.dfs-scroll::-webkit-scrollbar-track{background:transparent}
+@keyframes dfs-slide{0%{opacity:0;transform:translateX(24px)}100%{opacity:1;transform:translateX(0)}}
+.dfs-slide{animation:dfs-slide .45s cubic-bezier(.2,.7,.2,1) both}
+@keyframes dfs-pop{0%{opacity:0;transform:scale(.96)}100%{opacity:1;transform:scale(1)}}
+.dfs-pop{animation:dfs-pop .25s cubic-bezier(.2,.7,.2,1) both}
+:focus-visible{outline:2px solid #FFF6E0;outline-offset:2px}
+</style>
+</helmet>
+<div style="position: relative; width: 1180px; height: 680px; overflow: hidden; border-radius: 12px; background: #070A12; color: #F3EFE6; font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+  <img src="/_blob/8e4a628a4c3abcbe2cb023589ae04d86" alt="" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: brightness(.5) saturate(.8) contrast(1.12)">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(24,44,120,.62), rgba(10,16,48,.5)); mix-blend-mode: multiply"></div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6,9,16,.92) 0%, rgba(6,9,16,.55) 40%, rgba(6,9,16,.2) 70%)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 56px; top: 340px; display: flex; flex-direction: column; gap: 14px; opacity: .45; filter: blur(1.5px)">
+    <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 10px; letter-spacing: .18em; color: rgba(243,239,230,.72)">SEASON 03 · NOW OPEN</span>
+    <span style="font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 64px; line-height: 1.08; color: #FFF6E0">永夜之境</span>
+  </div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(4,6,12,.42)"></div>
+
+  <header style="position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 28px; padding-left: 20px; z-index: 5">
+    <a href="Main.dc.html" aria-label="鲸歌生存服 首页" style="display: flex; align-items: center; gap: 10px">
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #0E2533; border: 1px solid {{accentSoft}}; display: grid; place-items: center; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 16px; color: {{accent}}; flex: none">鲸</span>
+      <span style="display: flex; flex-direction: column; line-height: 1.15">
+        <span style="font-size: 14px; font-weight: 700; letter-spacing: .04em">鲸歌生存服</span>
+        <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 8.5px; letter-spacing: .18em; color: rgba(243,239,230,.62)">WHALESONG</span>
+      </span>
+    </a>
+    <nav aria-label="主导航" style="display: flex; align-items: stretch; gap: 2px; align-self: stretch">
+      <a href="Main.dc.html" aria-current="page" style="position: relative; display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 700; color: #FFFFFF">首页<span style="position: absolute; left: 12px; right: 12px; bottom: 10px; height: 2px; border-radius: 2px; background: {{accent}}"></span></a>
+      <a href="News.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">公告</a>
+      <a href="Guide.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">服务器介绍</a>
+      <a href="Gallery.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">画廊</a>
+    </nav>
+    <div style="flex: 1; align-self: stretch"></div>
+    <div style="display: flex; align-self: stretch">
+      <button type="button" class="dfs-hv" aria-label="最小化" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8)"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><path d="M1.5 6h9"></path></svg></button>
+      <button type="button" class="dfs-hv" aria-label="最大化" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8)"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5"></rect></svg></button>
+      <button type="button" class="dfs-close" aria-label="关闭" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8); border-top-right-radius: 12px"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><path d="M2 2l8 8"></path><path d="M10 2l-8 8"></path></svg></button>
+    </div>
+  </header>
+
+  <aside class="dfs-slide" aria-label="更新与本地管理" style="position: absolute; left: {{panelLeft}}px; right: 14px; top: 60px; bottom: 14px; border-radius: 18px; background: rgba(10,14,22,.92); backdrop-filter: blur(24px) saturate(150%); border: 1px solid rgba(255,255,255,.1); box-shadow: -30px 0 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); display: grid; grid-template-columns: 196px minmax(0, 1fr); overflow: hidden; z-index: 6; transition: left .35s cubic-bezier(.2,.7,.2,1)">
+    <nav aria-label="更新与本地管理分类" style="display: flex; flex-direction: column; gap: 16px; padding: 18px 10px 12px; border-right: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.02); min-height: 0">
+      <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 10px">
+        <strong style="font-size: 15px; font-weight: 700">更新与本地管理</strong>
+        <span style="font-size: 11.5px; color: rgba(243,239,230,.62)">鲸歌生存服 · 1.20.1-r13</span>
+      </div>
+      <sc-for list="{{nav}}" as="grp" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="padding: 0 10px 4px; font-size: 11px; color: rgba(243,239,230,.5)">{{grp.label}}</span>
+          <sc-for list="{{grp.items}}" as="it" hint-placeholder-count="4">
+            <button type="button" class="dfs-rail" onClick="{{it.pick}}" aria-current="{{it.current}}" style="height: 36px; padding: 0 8px 0 10px; border-radius: 9px; border: 0; background: {{it.bg}}; color: {{it.color}}; display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: {{it.weight}}; cursor: pointer; text-align: left; transition: background-color .18s ease">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: {{it.iconColor}}; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none"><sc-for list="{{it.paths}}" as="p" hint-placeholder-count="2"><path d="{{p.d}}"></path></sc-for></svg>
+              <span style="flex: 1; white-space: nowrap">{{it.label}}</span>
+              <sc-if value="{{it.hasBadge}}" hint-placeholder-val="{{false}}"><span style="height: 18px; padding: 0 6px; border-radius: 9px; display: flex; align-items: center; font-size: 10.5px; font-weight: 500; color: {{it.badgeColor}}; background: {{it.badgeBg}}; font-variant-numeric: tabular-nums; white-space: nowrap">{{it.badge}}</span></sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+      <span style="flex: 1"></span>
+      <button type="button" class="dfs-hv" style="height: 34px; margin: 0 4px; border-radius: 9px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.03); display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12.5px; cursor: pointer; color: rgba(243,239,230,.82)"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path></svg>打开游戏目录</button>
+    </nav>
+
+    <div style="display: flex; flex-direction: column; min-width: 0; min-height: 0">
+      <div style="display: flex; align-items: flex-start; gap: 10px; padding: 18px 14px 12px 24px">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+          <h1 style="margin: 0; font-size: 18px; font-weight: 700; line-height: 1.35">{{page.title}}</h1>
+          <p style="margin: 0; max-width: 620px; font-size: 12.5px; line-height: 1.65; color: rgba(243,239,230,.68); text-wrap: pretty">{{page.desc}}</p>
+        </div>
+        <sc-if value="{{page.hasAction}}" hint-placeholder-val="{{false}}">
+          <button type="button" class="dfs-hv" onClick="{{page.action}}" style="height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12.5px; cursor: pointer; white-space: nowrap; flex: none">{{page.actionLabel}}</button>
+        </sc-if>
+        <button type="button" class="dfs-hv" onClick="{{toggleExpand}}" aria-label="{{expandLabel}}" title="{{expandLabel}}" style="width: 32px; height: 32px; border-radius: 9px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.78); flex: none">
+          <sc-if value="{{notExpanded}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round"><path d="M14 4h6v6"></path><path d="M10 20H4v-6"></path><path d="M20 4l-6.5 6.5"></path><path d="M4 20l6.5-6.5"></path></svg></sc-if>
+          <sc-if value="{{expanded}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round"><path d="M20 10h-6V4"></path><path d="M4 14h6v6"></path><path d="M14 10l6.5-6.5"></path><path d="M10 14l-6.5 6.5"></path></svg></sc-if>
+        </button>
+        <a href="Main.dc.html" class="dfs-hv" aria-label="收起" title="收起" style="width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: rgba(243,239,230,.78); flex: none"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></a>
+      </div>
+
+      <div class="dfs-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 4px 24px 22px">
+
+        <sc-if value="{{tUpdate}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 16px">
+            <div style="display: flex; align-items: flex-end; gap: 16px">
+              <div style="display: flex; flex-direction: column; gap: 2px; flex: none">
+                <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 9.5px; letter-spacing: .2em; color: {{accent}}">THIS UPDATE</span>
+                <span style="font-size: 26px; font-weight: 700; line-height: 1.2; letter-spacing: -.01em">1.20.1-r13</span>
+              </div>
+              <div style="flex: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px">
+                <sc-for list="{{opCounts}}" as="c" hint-placeholder-count="5">
+                  <span style="height: 24px; padding: 0 9px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: {{c.color}}; background: {{c.bg}}; white-space: nowrap">{{c.label}}<b style="font-variant-numeric: tabular-nums">{{c.n}}</b></span>
+                </sc-for>
+              </div>
+            </div>
+            <section style="display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07)">
+              <h2 style="margin: 0; font-size: 12.5px; font-weight: 500; color: rgba(243,239,230,.64)">服主写的更新说明</h2>
+              <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+                <sc-for list="{{changelog}}" as="c" hint-placeholder-count="4">
+                  <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 13.5px; line-height: 1.7">
+                    <span style="height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 11px; font-weight: 500; color: {{c.color}}; background: {{c.bg}}">{{c.tag}}</span>
+                    <span style="color: rgba(243,239,230,.88)">{{c.text}}</span>
+                  </li>
+                </sc-for>
+              </ul>
+            </section>
+            <section style="display: flex; flex-direction: column; gap: 8px">
+              <h2 style="margin: 0; font-size: 12.5px; font-weight: 500; color: rgba(243,239,230,.64)">本地文件的变化</h2>
+              <div style="display: flex; flex-direction: column; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); overflow: hidden">
+                <sc-for list="{{updateRows}}" as="r" hint-placeholder-count="6">
+                  <div class="dfs-row" style="display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: center; padding: 9px 14px; border-top: {{r.sep}}; background: rgba(255,255,255,.015)">
+                    <span style="height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 500; color: {{r.color}}; background: {{r.bg}}; white-space: nowrap">{{r.label}}</span>
+                    <span style="display: flex; flex-direction: column; min-width: 0">
+                      <span style="font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12.5px; color: rgba(243,239,230,.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.path}}</span>
+                      <sc-if value="{{r.hasNote}}" hint-placeholder-val="{{false}}"><span style="font-size: 11.5px; color: rgba(243,239,230,.62)">{{r.note}}</span></sc-if>
+                    </span>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{tHistory}}" hint-placeholder-val="{{false}}">
+          <ol style="margin: 0; padding: 0; list-style: none; position: relative; display: flex; flex-direction: column">
+            <span aria-hidden="true" style="position: absolute; left: 7px; top: 14px; bottom: 14px; width: 2px; background: rgba(255,255,255,.08)"></span>
+            <sc-for list="{{history}}" as="h" hint-placeholder-count="4">
+              <li style="position: relative; display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 18px; padding: 8px 0 14px">
+                <span style="position: relative; width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; background: {{h.dot}}; box-shadow: 0 0 0 4px #0B0F18"></span>
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; align-items: center; gap: 10px">
+                    <strong style="font-size: 15px; font-weight: 700">版本 {{h.version}}</strong>
+                    <sc-if value="{{h.current}}" hint-placeholder-val="{{false}}"><span style="height: 20px; padding: 0 7px; border-radius: 5px; display: flex; align-items: center; font-size: 11px; font-weight: 500; color: {{accent}}; background: {{accentTint}}">当前</span></sc-if>
+                    <span style="flex: 1"></span>
+                    <span style="font-size: 12px; color: rgba(243,239,230,.62); font-variant-numeric: tabular-nums">{{h.date}}</span>
+                  </div>
+                  <span style="font-size: 13.5px; line-height: 1.75; color: rgba(243,239,230,.8); white-space: pre-line">{{h.text}}</span>
+                </div>
+              </li>
+            </sc-for>
+          </ol>
+        </sc-if>
+
+        <sc-if value="{{tLogs}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; font-size: 12.5px; color: rgba(243,239,230,.72)">
+              <span style="display: flex; align-items: center; gap: 6px"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round"><rect x="5" y="4" width="14" height="16" rx="2"></rect><path d="M9 9h6"></path><path d="M9 13h6"></path></svg>今天 · 10 月 22 日</span>
+              <span style="flex: 1; height: 1px; background: rgba(255,255,255,.07)"></span>
+              <span style="font-variant-numeric: tabular-nums">共 {{logStats.total}} 条</span>
+              <span style="color: #FFD27A">提醒 {{logStats.warn}}</span>
+              <span style="color: #FF8E7A">错误 {{logStats.error}}</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px; font-size: 12.5px">
+              <sc-for list="{{logs}}" as="l" hint-placeholder-count="10">
+                <sc-if value="{{l.isStart}}" hint-placeholder-val="{{false}}">
+                  <div style="display: flex; align-items: center; gap: 10px; padding: 10px 0 6px; font-size: 12px; color: rgba(243,239,230,.6)">
+                    <span style="font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace">{{l.time}}</span>
+                    <span style="height: 1px; width: 20px; background: rgba(255,255,255,.12)"></span>
+                    <strong style="font-weight: 500; color: rgba(243,239,230,.82)">{{l.text}}</strong>
+                    <span style="flex: 1; height: 1px; background: rgba(255,255,255,.12)"></span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{l.isEntry}}" hint-placeholder-val="{{true}}">
+                  <article style="display: grid; grid-template-columns: 62px 36px minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 10px; border-radius: 9px; background: {{l.bg}}">
+                    <time style="font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: rgba(243,239,230,.52); line-height: 1.9">{{l.time}}</time>
+                    <span style="height: 20px; margin-top: 2px; border-radius: 5px; display: grid; place-items: center; font-size: 11px; font-weight: 500; color: {{l.color}}; background: {{l.levelBg}}">{{l.levelLabel}}</span>
+                    <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                      <div style="display: flex; align-items: baseline; gap: 8px; min-width: 0; line-height: 1.9">
+                        <span style="font-size: 11.5px; color: rgba(243,239,230,.56); white-space: nowrap">{{l.cat}}</span>
+                        <span style="color: rgba(243,239,230,.9); min-width: 0">{{l.text}}</span>
+                      </div>
+                      <sc-if value="{{l.hasDetails}}" hint-placeholder-val="{{false}}">
+                        <button type="button" class="dfs-link" onClick="{{l.toggle}}" aria-expanded="{{l.expandedAria}}" style="align-self: flex-start; padding: 0; border: 0; background: transparent; font-size: 12px; color: {{l.color}}; cursor: pointer">{{l.toggleLabel}}</button>
+                        <sc-if value="{{l.open}}" hint-placeholder-val="{{false}}">
+                          <pre style="margin: 0; padding: 10px 12px; border-radius: 8px; background: #05070D; border: 1px solid rgba(255,255,255,.07); font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 11.5px; line-height: 1.7; color: rgba(243,239,230,.78); white-space: pre-wrap">{{l.details}}</pre>
+                        </sc-if>
+                      </sc-if>
+                    </div>
+                  </article>
+                </sc-if>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{tOptions}}" hint-placeholder-val="{{false}}">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+            <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+              <article style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border-radius: 14px; border: 1px solid {{g.border}}; background: {{g.bg}}; transition: background-color .2s ease, border-color .2s ease">
+                <div style="display: flex; align-items: flex-start; gap: 12px">
+                  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+                      <strong style="font-size: 14.5px; font-weight: 700">{{g.title}}</strong>
+                      <span style="font-size: 11.5px; color: rgba(243,239,230,.58)">{{g.size}}</span>
+                      <sc-if value="{{g.changed}}" hint-placeholder-val="{{false}}"><span style="height: 19px; padding: 0 6px; border-radius: 5px; display: flex; align-items: center; font-size: 11px; color: #FFD27A; background: rgba(255,210,122,.14)">下次启动生效</span></sc-if>
+                    </div>
+                    <span style="font-size: 12px; color: {{g.stateColor}}">{{g.stateText}}</span>
+                  </div>
+                  <button type="button" role="switch" aria-checked="{{g.checked}}" aria-label="开启 {{g.title}}" onClick="{{g.toggle}}" style="width: 40px; height: 22px; padding: 0; border-radius: 11px; border: 0; background: {{g.track}}; position: relative; cursor: pointer; flex: none; margin-top: 2px; transition: background-color .2s ease">
+                    <span style="position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: {{g.knob}}; transform: translateX({{g.x}}px); transition: transform .2s ease"></span>
+                  </button>
+                </div>
+                <p style="margin: 0; font-size: 12.5px; line-height: 1.65; color: rgba(243,239,230,.7)">{{g.desc}}</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 5px">
+                  <sc-for list="{{g.members}}" as="mb" hint-placeholder-count="2">
+                    <span style="height: 22px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; font-size: 11.5px; color: rgba(243,239,230,.78); background: rgba(255,255,255,.06)">{{mb.name}}</span>
+                  </sc-for>
+                </div>
+                <sc-if value="{{g.explicit}}" hint-placeholder-val="{{false}}">
+                  <button type="button" class="dfs-link" onClick="{{g.reset}}" style="align-self: flex-start; padding: 0; border: 0; background: transparent; font-size: 12px; color: {{accent}}; cursor: pointer">{{g.resetLabel}}</button>
+                </sc-if>
+              </article>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{tFiles}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <label style="position: relative; display: flex; align-items: center; flex: 1; max-width: 380px">
+                <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" style="position: absolute; left: 11px; fill: none; stroke: rgba(243,239,230,.55); stroke-width: 2; stroke-linecap: round"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+                <input type="search" value="{{fileQuery}}" onChange="{{onFileQuery}}" placeholder="搜索目录、文件名或路径" aria-label="搜索本地文件" style="width: 100%; height: 34px; padding: 0 12px 0 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); color: #F3EFE6; font-size: 13px; outline: none">
+              </label>
+              <span style="flex: 1"></span>
+              <span style="display: flex; align-items: center; gap: 12px; font-size: 11.5px; color: rgba(243,239,230,.62)">
+                <span style="display: flex; align-items: center; gap: 5px"><span style="width: 12px; height: 12px; border-radius: 3px; background: {{accent}}"></span>随整合包更新</span>
+                <span style="display: flex; align-items: center; gap: 5px"><span style="width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid rgba(255,255,255,.45); box-sizing: border-box"></span>你自行管理</span>
+                <span style="display: flex; align-items: center; gap: 5px"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>服主锁定</span>
+              </span>
+            </div>
+            <div role="tree" aria-label="本地文件" style="display: flex; flex-direction: column; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); overflow: hidden">
+              <sc-for list="{{fileRows}}" as="f" hint-placeholder-count="10">
+                <sc-if value="{{f.isMore}}" hint-placeholder-val="{{false}}">
+                  <div style="padding: 8px 16px 9px {{f.pad}}px; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: rgba(243,239,230,.52); background: rgba(255,255,255,.01)">{{f.text}}</div>
+                </sc-if>
+                <sc-if value="{{f.isEntry}}" hint-placeholder-val="{{true}}">
+                  <div role="treeitem" aria-expanded="{{f.ariaExpanded}}" class="dfs-row" title="{{f.tip}}" style="display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px {{f.pad}}px; border-top: {{f.sep}}; background: {{f.bg}}">
+                    <sc-if value="{{f.hasChildren}}" hint-placeholder-val="{{false}}">
+                      <button type="button" onClick="{{f.disclose}}" aria-label="{{f.discloseLabel}}" style="width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.7); flex: none"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transform: rotate({{f.rot}}deg); transition: transform .2s ease"><path d="M9.5 6l6 6-6 6"></path></svg></button>
+                    </sc-if>
+                    <sc-if value="{{f.noChildren}}" hint-placeholder-val="{{true}}"><span style="width: 22px; flex: none"></span></sc-if>
+                    <sc-if value="{{f.dir}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" style="fill: none; stroke: {{f.iconColor}}; stroke-width: 1.8; stroke-linejoin: round; flex: none"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path></svg></sc-if>
+                    <sc-if value="{{f.file}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" style="fill: none; stroke: {{f.iconColor}}; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none"><path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"></path><path d="M14 3.5v5h5"></path></svg></sc-if>
+                    <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+                      <span style="font-size: 13.5px; font-weight: 500; color: {{f.nameColor}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.name}}</span>
+                      <span style="font-size: 11.5px; color: rgba(243,239,230,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.detail}}</span>
+                    </span>
+                    <sc-if value="{{f.canReset}}" hint-placeholder-val="{{false}}">
+                      <button type="button" class="dfs-hv" onClick="{{f.reset}}" title="下次更新时换回服主提供的默认配置，你现在的这份会先移入备份" style="height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); font-size: 12px; cursor: pointer; white-space: nowrap; flex: none">恢复默认</button>
+                    </sc-if>
+                    <sc-if value="{{f.resetPending}}" hint-placeholder-val="{{false}}">
+                      <span style="height: 24px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; font-size: 11.5px; color: #FFD27A; background: rgba(255,210,122,.12); white-space: nowrap; flex: none">等待恢复默认</span>
+                    </sc-if>
+                    <button type="button" role="checkbox" aria-checked="{{f.aria}}" aria-label="{{f.checkAria}}" title="{{f.tip}}" disabled="{{f.locked}}" onClick="{{f.toggle}}" style="height: 28px; min-width: 104px; padding: 0 10px 0 8px; border-radius: 8px; border: 1px solid {{f.ctlBorder}}; background: {{f.ctlBg}}; display: flex; align-items: center; gap: 8px; font-size: 12px; color: {{f.labelColor}}; cursor: {{f.cursor}}; flex: none; transition: background-color .18s ease, border-color .18s ease">
+                      <span style="width: 16px; height: 16px; box-sizing: border-box; border-radius: 4px; border: 1.5px solid {{f.boxBorder}}; background: {{f.boxBg}}; display: grid; place-items: center; flex: none">
+                        <sc-if value="{{f.showCheck}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" style="fill: none; stroke: #04161A; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></sc-if>
+                        <sc-if value="{{f.showDash}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" style="fill: none; stroke: #04161A; stroke-width: 3.4; stroke-linecap: round"><path d="M6 12h12"></path></svg></sc-if>
+                        <sc-if value="{{f.showLock}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" style="fill: none; stroke: rgba(243,239,230,.8); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></sc-if>
+                      </span>
+                      {{f.label}}
+                    </button>
+                  </div>
+                </sc-if>
+              </sc-for>
+              <sc-if value="{{filesEmpty}}" hint-placeholder-val="{{false}}">
+                <div style="padding: 36px 16px; text-align: center; font-size: 13px; color: rgba(243,239,230,.6)">没有匹配的文件或目录</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{tMods}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <label style="position: relative; display: flex; align-items: center; flex: 1; max-width: 380px">
+                <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" style="position: absolute; left: 11px; fill: none; stroke: rgba(243,239,230,.55); stroke-width: 2; stroke-linecap: round"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+                <input type="search" value="{{modQuery}}" onChange="{{onModQuery}}" placeholder="搜索模组名称或文件名" aria-label="搜索模组" style="width: 100%; height: 34px; padding: 0 12px 0 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); color: #F3EFE6; font-size: 13px; outline: none">
+              </label>
+              <span style="flex: 1"></span>
+              <span style="font-size: 12px; color: rgba(243,239,230,.66); font-variant-numeric: tabular-nums">{{modSummary}}</span>
+            </div>
+            <div style="display: flex; flex-direction: column; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); overflow: hidden">
+              <sc-for list="{{mods}}" as="m" hint-placeholder-count="8">
+                <div class="dfs-row" style="display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-top: {{m.sep}}; background: {{m.bg}}">
+                  <span aria-hidden="true" style="width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: {{m.tileColor}}; background: {{m.tileBg}}; flex: none">{{m.initial}}</span>
+                  <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+                    <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><strong style="font-size: 14px; font-weight: 700; color: {{m.nameColor}}; white-space: nowrap">{{m.name}}</strong><span style="font-size: 11.5px; color: rgba(243,239,230,.55); white-space: nowrap">{{m.version}}</span></span>
+                    <span style="font-size: 11.5px; color: rgba(243,239,230,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{m.detail}}</span>
+                    <sc-if value="{{m.hasWithdrawn}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: #FF9A62">服主撤回了这个版本：{{m.withdrawn}}</span></sc-if>
+                    <sc-if value="{{m.showLock}}" hint-placeholder-val="{{false}}"><span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: rgba(243,239,230,.62)"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>{{m.lock}}</span></sc-if>
+                  </span>
+                  <span style="font-size: 12px; color: rgba(243,239,230,.62); white-space: nowrap">{{m.toggleLabel}}</span>
+                  <button type="button" role="switch" aria-checked="{{m.checked}}" aria-label="启用 {{m.name}}" title="{{m.lockTip}}" disabled="{{m.forced}}" onClick="{{m.toggle}}" style="width: 40px; height: 22px; padding: 0; border-radius: 11px; border: 0; background: {{m.track}}; opacity: {{m.switchOpacity}}; position: relative; cursor: {{m.cursor}}; flex: none; transition: background-color .2s ease">
+                    <span style="position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: {{m.knob}}; transform: translateX({{m.x}}px); transition: transform .2s ease"></span>
+                  </button>
+                </div>
+              </sc-for>
+              <sc-if value="{{modMore}}" hint-placeholder-val="{{true}}">
+                <div style="padding: 10px 16px; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: rgba(243,239,230,.52)">其余 78 个整合包模组都已启用，搜索可以直接找到</div>
+              </sc-if>
+              <sc-if value="{{modsEmpty}}" hint-placeholder-val="{{false}}">
+                <div style="padding: 36px 16px; text-align: center; font-size: 13px; color: rgba(243,239,230,.6)">没有匹配的模组</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{tPlayerMods}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <label style="position: relative; display: flex; align-items: center; flex: 1; max-width: 380px">
+                <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" style="position: absolute; left: 11px; fill: none; stroke: rgba(243,239,230,.55); stroke-width: 2; stroke-linecap: round"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+                <input type="search" value="{{pmQuery}}" onChange="{{onPmQuery}}" placeholder="搜索自选模组" aria-label="搜索自选模组" style="width: 100%; height: 34px; padding: 0 12px 0 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); color: #F3EFE6; font-size: 13px; outline: none">
+              </label>
+              <span style="flex: 1"></span>
+              <span style="font-size: 12px; color: rgba(243,239,230,.66); font-variant-numeric: tabular-nums">{{pmSummary}}</span>
+            </div>
+            <div style="display: flex; flex-direction: column; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); overflow: hidden">
+              <sc-for list="{{playerMods}}" as="m" hint-placeholder-count="2">
+                <div class="dfs-row" style="display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-top: {{m.sep}}; background: {{m.bg}}">
+                  <span aria-hidden="true" style="width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #D7CFFF; background: rgba(215,207,255,.12); flex: none">{{m.initial}}</span>
+                  <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+                    <span style="display: flex; align-items: baseline; gap: 8px"><strong style="font-size: 14px; font-weight: 700; color: {{m.nameColor}}">{{m.name}}</strong><span style="font-size: 11.5px; color: rgba(243,239,230,.55)">{{m.version}}</span></span>
+                    <span style="font-size: 11.5px; color: rgba(243,239,230,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{m.detail}}</span>
+                  </span>
+                  <span style="font-size: 12px; color: rgba(243,239,230,.62)">启用</span>
+                  <button type="button" role="switch" aria-checked="{{m.checked}}" aria-label="启用 {{m.name}}" onClick="{{m.toggle}}" style="width: 40px; height: 22px; padding: 0; border-radius: 11px; border: 0; background: {{m.track}}; position: relative; cursor: pointer; flex: none; transition: background-color .2s ease">
+                    <span style="position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: {{m.knob}}; transform: translateX({{m.x}}px); transition: transform .2s ease"></span>
+                  </button>
+                </div>
+              </sc-for>
+              <sc-if value="{{pmEmpty}}" hint-placeholder-val="{{false}}">
+                <div style="padding: 36px 16px; text-align: center; font-size: 13px; color: rgba(243,239,230,.6)">没有匹配的自选模组</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{tBackups}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <sc-for list="{{archives}}" as="a" hint-placeholder-count="2">
+              <section style="border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.025); overflow: hidden">
+                <div style="display: flex; align-items: center; gap: 12px; padding: 13px 14px 13px 16px">
+                  <span aria-hidden="true" style="width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: rgba(255,210,122,.12); flex: none"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" style="fill: none; stroke: #FFD27A; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M3 4h18v4H3z"></path><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"></path><path d="M10 12h4"></path></svg></span>
+                  <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+                    <strong style="font-size: 14px; font-weight: 700">{{a.title}}</strong>
+                    <span style="font-size: 12px; color: rgba(243,239,230,.62); font-variant-numeric: tabular-nums">{{a.meta}}</span>
+                  </span>
+                  <button type="button" class="dfs-hv" style="height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); font-size: 12.5px; cursor: pointer">打开</button>
+                  <button type="button" class="dfs-hv" onClick="{{a.remove}}" style="height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid rgba(255,138,115,.28); background: rgba(255,138,115,.06); color: #FF9E8C; font-size: 12.5px; cursor: pointer">删除</button>
+                </div>
+                <sc-for list="{{a.files}}" as="bf" hint-placeholder-count="2">
+                  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 62px; border-top: 1px solid rgba(255,255,255,.05)">
+                    <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+                      <span style="font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12.5px; color: rgba(243,239,230,.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{bf.path}}</span>
+                      <span style="font-size: 11.5px; color: rgba(243,239,230,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{bf.reason}}</span>
+                    </span>
+                    <sc-if value="{{bf.restored}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: {{accent}}; white-space: nowrap">已放回 · {{bf.restoredAt}}</span></sc-if>
+                    <sc-if value="{{bf.notRestored}}" hint-placeholder-val="{{true}}"><button type="button" class="dfs-hv" onClick="{{bf.restore}}" style="height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid {{accentSoft}}; background: {{accentTint}}; font-size: 12px; cursor: pointer; white-space: nowrap">放回游戏</button></sc-if>
+                  </div>
+                </sc-for>
+              </section>
+            </sc-for>
+            <sc-if value="{{archivesEmpty}}" hint-placeholder-val="{{false}}">
+              <div style="padding: 40px 16px; border-radius: 14px; border: 1px dashed rgba(255,255,255,.12); text-align: center; font-size: 13px; line-height: 1.7; color: rgba(243,239,230,.62)">还没有备份。更新需要移走你的文件时，会先在这里保存一份。</div>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </aside>
+
+  <sc-if value="{{hasConfirm}}" hint-placeholder-val="{{false}}">
+    <div style="position: absolute; inset: 0; z-index: 30; background: rgba(3,5,10,.58); backdrop-filter: blur(3px); display: grid; place-items: center">
+      <div class="dfs-pop" role="alertdialog" aria-modal="true" aria-label="{{confirm.title}}" style="width: 420px; padding: 22px 22px 18px; border-radius: 18px; background: #0E131E; border: 1px solid rgba(255,255,255,.12); box-shadow: 0 30px 80px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 18px">
+        <div style="display: flex; gap: 14px">
+          <span style="width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: {{confirm.toneBg}}; flex: none">
+            <sc-if value="{{confirm.isInfo}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: {{confirm.tone}}; stroke-width: 2; stroke-linecap: round"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5.5"></path><path d="M12 7.6v.01"></path></svg></sc-if>
+            <sc-if value="{{confirm.isAlert}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: {{confirm.tone}}; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M12 4.5l8.5 15h-17z"></path><path d="M12 10v4.2"></path><path d="M12 17.2v.01"></path></svg></sc-if>
+          </span>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <h2 style="margin: 0; font-size: 16px; font-weight: 700">{{confirm.title}}</h2>
+            <p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: rgba(243,239,230,.78)">{{confirm.message}}</p>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <button type="button" class="dfs-hv" onClick="{{cancelConfirm}}" style="height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); font-size: 13px; cursor: pointer">取消</button>
+          <button type="button" onClick="{{acceptConfirm}}" style="height: 36px; padding: 0 16px; border-radius: 10px; border: 0; background: {{confirm.tone}}; color: #0A0D14; font-size: 13px; font-weight: 700; cursor: pointer">{{confirm.action}}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"tab":{"editor":"enum","options":["update","history","logs","options","files","mods","playermods","backups"],"default":"update","section":"状态"},"expanded":{"editor":"boolean","default":false,"section":"状态"},"accent":{"editor":"color","default":"#2EE8DF","options":["#2EE8DF","#FFB454","#9BE15D","#B79CFF"],"section":"主题"},"$preview":{"width":1180,"height":680}}'>
+var ICONS = {
+  update: ['M7 3.5h10a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z', 'M9 8.5h6', 'M9 12h6', 'M9 15.5h3.5'],
+  history: ['M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0z', 'M12 7v5l3 2'],
+  logs: ['M5 4.5h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2z', 'M7.5 9.5l3 2.5-3 2.5', 'M13 15h3.5'],
+  options: ['M4 7h10', 'M18 7h2', 'M16 5v4', 'M4 17h4', 'M12 17h8', 'M10 15v4'],
+  files: ['M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z'],
+  mods: ['M12 3.2l8 4.4v8.8l-8 4.4-8-4.4V7.6z', 'M4 7.6l8 4.4 8-4.4', 'M12 12v8.8'],
+  playermods: ['M9.5 11a3.5 3.5 0 1 0 0-7a3.5 3.5 0 0 0 0 7z', 'M3 20c.7-3.4 3.3-5.5 6.5-5.5c1.6 0 3 .5 4.2 1.4', 'M18 14v6', 'M15 17h6'],
+  backups: ['M3 4h18v4H3z', 'M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8', 'M10 12h4']
+};
+var PAGES = {
+  update: { title: '本次更新', desc: '10 月 22 日 19:40 发布 · 从 r12 升级 · 下载 284.0 MB。下面是这次对你电脑上文件做的每一处改动。' },
+  history: { title: '更新记录', desc: '服主发布过的每个版本，以及当时写的更新说明。' },
+  logs: { title: '运行记录', desc: '更新器每一步做了什么。遇到问题时，把这里截图发给服主最快。' },
+  options: { title: '可选内容', desc: '服主把这些内容设为可选，你可以按电脑配置决定装不装。关闭后，相关模组会移出游戏并保留在本机，随时可以再开；更改从下次启动游戏时生效。' },
+  files: { title: '文件管理范围', desc: '决定哪些文件随整合包更新。取消「管理」后改为你自行管理：更新器不再安装、覆盖或删除它。服主锁定的文件不能取消；首次提供的文件之后由你维护，也可以主动恢复默认。' },
+  mods: { title: '模组启停', desc: '启用或停用整合包里的模组。停用必要模组可能导致游戏崩溃或无法连接服务器；服主设为必需的、由可选内容统一开关的模组不能在这里单独切换。' },
+  playermods: { title: '自选模组', desc: '这些模组不属于服务器整合包，是你自己放进 mods 的，更新器会保留你的选择。停用可能导致依赖缺失，在服务器禁用名单里的模组进服时会被拦下。' },
+  backups: { title: '备份与恢复', desc: '更新器不会直接删除你的文件：被替换、清理、撤回或恢复默认的本地文件都会先移到这里，需要时可以放回游戏。' }
+};
+var NAV = [
+  { label: '更新', items: ['update', 'history', 'logs'] },
+  { label: '本地管理', items: ['options', 'files', 'mods', 'playermods', 'backups'] }
+];
+var NAV_LABELS = { update: '本次更新', history: '更新记录', logs: '运行记录', options: '可选内容', files: '文件管理', mods: '模组启停', playermods: '自选模组', backups: '备份与恢复' };
+
+var OP_META = {
+  install: { label: '安装 / 更新', tone: 'accent' },
+  delete: { label: '删除', tone: 'orange' },
+  archive: { label: '移入备份', tone: 'gold' },
+  reset: { label: '恢复默认', tone: 'accent' },
+  kept: { label: '保留你的修改', tone: 'violet' },
+  self: { label: '自行管理', tone: 'violet' },
+  release: { label: '放弃管理', tone: 'muted' }
+};
+var OP_ORDER = ['install', 'delete', 'archive', 'reset', 'kept', 'self', 'release'];
+var UPDATE_ROWS = [
+  { op: 'install', path: 'mods/create-1.20.1-0.5.1.f.jar' },
+  { op: 'install', path: 'mods/deeper-dark-2.3.0.jar' },
+  { op: 'install', path: 'resourcepacks/whalesong-ui-s3.zip' },
+  { op: 'delete', path: 'mods/journeymap-1.20.1-5.9.jar' },
+  { op: 'archive', path: 'config/journeymap/', note: '删除前先备份：你改过里面的设置' },
+  { op: 'reset', path: 'config/xaerominimap.txt', note: '按你的要求换回服主默认，原来那份在备份里' },
+  { op: 'kept', path: 'config/sodium-options.json', note: '服主更新了默认配置，你改过的版本没有被覆盖' },
+  { op: 'self', path: 'shaderpacks/complementary-r5.2.zip', note: '服主提供了新版本，你自行管理的文件没有更新' },
+  { op: 'release', path: 'resourcepacks/whalesong-ui-s2.zip', note: '服主不再管理，本地文件已保留' }
+];
+var CHANGELOG = [
+  { tag: '新增', tone: 'accent', text: '永夜维度与深海神殿（Deeper Dark），从主城中央传送门进入。' },
+  { tag: '更新', tone: 'blue', text: 'Create 升级到 0.5.1f，修复长传送带在区块边界卡住的问题。' },
+  { tag: '新增', tone: 'accent', text: '第三赛季界面资源包，聊天栏和背包换上新的配色。' },
+  { tag: '移除', tone: 'orange', text: '旧版 JourneyMap 小地图，路径点已自动迁移到 Xaero 小地图。' }
+];
+var HISTORY = [
+  { version: '1.20.1-r13', date: '10 月 22 日 19:40', text: '第三赛季「永夜之境」：新增永夜维度与深海神殿，Create 升级到 0.5.1f，换用 Xaero 小地图。', current: true },
+  { version: '1.20.1-r12', date: '10 月 16 日 21:00', text: '性能优化与可选光影：光影包改为可选内容；Sodium 升级到 0.5.11，红石区域帧数更稳。' },
+  { version: '1.20.1-r11', date: '10 月 2 日 18:30', text: '国庆活动：加入烟花大会资源包，补全了一批模组的中文翻译。' },
+  { version: '1.20.1-r10', date: '9 月 18 日 22:10', text: '修复部分玩家进服时崩溃的问题，清理了三个不再使用的模组。' }
+];
+var LOGS = [
+  { time: '19:31:10', start: true, text: '更新器启动 · 本次第 1 次' },
+  { time: '19:31:12', level: 'INFO', cat: '检查更新', text: '发现新版本 1.20.1-r13，本地为 r12' },
+  { time: '19:31:40', level: 'ERROR', cat: '下载文件', text: '下载 mods/deeper-dark-2.3.0.jar 失败：连接超时', details: 'java.net.SocketTimeoutException: Read timed out\n    at cn.dreamingfish.updater.engine.HttpSource.read(HttpSource.java:182)\n    at cn.dreamingfish.updater.engine.Downloader.fetch(Downloader.java:97)\n    at cn.dreamingfish.updater.engine.UpdateEngine.download(UpdateEngine.java:311)' },
+  { time: '19:31:41', level: 'WARN', cat: '下载文件', text: '保留已下载的 116.4 MB，等待重试' },
+  { time: '19:52:04', start: true, text: '更新器启动 · 本次第 2 次' },
+  { time: '19:52:05', level: 'INFO', cat: '检查更新', text: '断点续传：还需下载 167.6 MB' },
+  { time: '19:52:05', level: 'INFO', cat: '校验', text: '发布清单签名校验通过' },
+  { time: '19:52:06', level: 'WARN', cat: '本地文件', text: '检测到 2 个自选模组，保留不动' },
+  { time: '19:52:29', level: 'INFO', cat: '下载文件', text: '下载完成，平均 12.1 MB/s' },
+  { time: '19:52:30', level: 'INFO', cat: '备份', text: 'config/journeymap/ 已移入备份' },
+  { time: '19:52:31', level: 'INFO', cat: '本地文件', text: '保留你的修改：config/sodium-options.json' },
+  { time: '19:52:33', level: 'INFO', cat: '安装', text: '安装完成，412 个文件校验一致' },
+  { time: '19:52:33', level: 'INFO', cat: '启动', text: '允许启动 Minecraft，12 秒后自动关闭' }
+];
+var GROUPS = [
+  { id: 'shader', title: '光影包', size: '约 18 MB', desc: '画面更好看，需要独立显卡。', members: ['Iris Shaders', 'Complementary Reimagined'], def: true },
+  { id: 'hd', title: '高清材质 32x', size: '约 600 MB', desc: '更细腻的方块贴图，占用较多显存。', members: ['Faithful 32x'], def: false },
+  { id: 'map', title: '小地图', size: '约 4 MB', desc: '右上角显示地图与路径点。', members: ['Xaero’s Minimap', 'Xaero’s World Map'], def: true },
+  { id: 'voice', title: '语音聊天', size: '约 6 MB', desc: '靠近其他玩家时可以直接说话，需要麦克风权限。', members: ['Simple Voice Chat'], def: false }
+];
+var PRESET_LABELS = { REQUIRED: '强制同步', SYNC: '普通同步', INITIAL: '首次提供', DEFAULT_CONFIG: '旧版：未修改才更新' };
+var PRESET_HINTS = { REQUIRED: '始终和服主保持一致', SYNC: '跟随服主更新', INITIAL: '只在缺失时放一份，之后由你决定', DEFAULT_CONFIG: '你没改过就跟随更新，改过就保留你的' };
+var TREE = [
+  { path: 'config', dir: true, count: 38 },
+  { path: 'config/season3.toml', preset: 'REQUIRED', forced: true, lock: '服主设为强制同步：赛季规则配置，改了也会被换回' },
+  { path: 'config/sodium-options.json', preset: 'DEFAULT_CONFIG', modified: true },
+  { path: 'config/xaerominimap.txt', preset: 'INITIAL' },
+  { more: 'config', text: '还有 35 个文件，搜索可以直接找到' },
+  { path: 'mods', dir: true, count: 86 },
+  { path: 'mods/create-1.20.1-0.5.1.f.jar', preset: 'REQUIRED', forced: true, lock: '服主设为必需：服务器依赖这个模组' },
+  { path: 'mods/deeper-dark-2.3.0.jar', preset: 'REQUIRED', forced: true, lock: '服主设为必需：永夜维度依赖这个模组' },
+  { path: 'mods/farmers-delight-1.20.1-2.1.jar', preset: 'SYNC' },
+  { path: 'mods/iris-1.7.0.jar', preset: 'SYNC', forced: true, group: '光影包', lock: '由可选内容「光影包」统一开关' },
+  { more: 'mods', text: '还有 82 个文件，搜索可以直接找到' },
+  { path: 'resourcepacks', dir: true, count: 2 },
+  { path: 'resourcepacks/whalesong-ui-s3.zip', preset: 'SYNC' },
+  { path: 'resourcepacks/faithful-32x.zip', preset: 'SYNC', forced: true, group: '高清材质 32x', lock: '由可选内容「高清材质 32x」统一开关' },
+  { path: 'shaderpacks', dir: true, count: 2 },
+  { path: 'shaderpacks/complementary-r5.2.zip', preset: 'SYNC' },
+  { path: 'shaderpacks/bsl-v8.2.zip', preset: 'SYNC' },
+  { path: 'options.txt', preset: 'INITIAL', modified: true },
+  { path: 'servers.dat', preset: 'INITIAL' }
+];
+var MODS = [
+  { key: 'create', name: 'Create', version: '0.5.1f', path: 'mods/create-1.20.1-0.5.1.f.jar', source: 'required', lock: '服主设为必需：服务器依赖这个模组' },
+  { key: 'deeperdark', name: 'Deeper Dark', version: '2.3.0', path: 'mods/deeper-dark-2.3.0.jar', source: 'required', lock: '服主设为必需：永夜维度依赖这个模组' },
+  { key: 'farmers', name: 'Farmer’s Delight', version: '2.1', path: 'mods/farmers-delight-1.20.1-2.1.jar', source: 'pack' },
+  { key: 'sodium', name: 'Sodium', version: '0.5.11', path: 'mods/sodium-fabric-0.5.11.jar', source: 'pack' },
+  { key: 'iris', name: 'Iris Shaders', version: '1.7.0', path: 'mods/iris-1.7.0.jar', source: 'group', group: '光影包', lock: '由可选内容「光影包」统一开关' },
+  { key: 'xmap', name: 'Xaero’s Minimap', version: '24.6.1', path: 'mods/xaeros-minimap-24.6.1.jar', source: 'group', group: '小地图', lock: '由可选内容「小地图」统一开关' },
+  { key: 'zoom', name: 'Zoomify', version: '2.13', path: 'mods/zoomify-2.13.jar', source: 'pack', off: true },
+  { key: 'worldmap', name: 'Xaero’s World Map', version: '1.38.1', path: 'mods/xaeros-worldmap-1.38.1.jar', source: 'pack', withdrawn: '会让区块加载卡顿，下次更新自动换成 1.38.4' }
+];
+var PLAYER_MODS = [
+  { key: 'ipn', name: 'Inventory Profiles Next', version: '1.10.10', path: 'mods/InventoryProfilesNext-fabric-1.20.1-1.10.10.jar' },
+  { key: 'mt', name: 'Mouse Tweaks', version: '2.26', path: 'mods/MouseTweaks-fabric-mc1.20-2.26.jar' }
+];
+var ARCHIVES = [
+  { id: 'r13', title: '更新到版本 1.20.1-r13 时', time: '10 月 22 日 19:52', size: '1.3 MB', files: [
+    { path: 'config/journeymap/', reason: '删除前备份 · 你改过里面的设置' },
+    { path: 'config/xaerominimap.txt', reason: '恢复默认前备份 · 你要求换回服主默认' }
+  ] },
+  { id: 'r12', title: '更新到版本 1.20.1-r12 时', time: '10 月 16 日 21:03', size: '4.3 MB', files: [
+    { path: 'mods/OptiFine_1.20.1_HD_U_I6.jar', reason: '和整合包里的 Sodium 冲突 · 你自己放进来的模组' },
+    { path: 'mods/xaeros-worldmap-1.37.0.jar', reason: '服主撤回 · 版本 1.37.0 · 会丢失路径点', restoredAt: '10 月 17 日 18:40' }
+  ] },
+  { id: 'legacy', title: '旧版备份', time: '9 月 2 日 10:15', size: '12.6 MB', files: [
+    { path: 'resourcepacks/whalesong-ui-s1.zip', reason: '旧版更新器留下的备份' }
+  ] }
+];
+
+function parentOf(p) { var i = p.lastIndexOf('/'); return i < 0 ? null : p.slice(0, i); }
+function nameOf(p) { var i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1); }
+function depthOf(p) { return p.split('/').length - 1; }
+function initialOf(n) { return n.replace(/[^A-Za-z]/g, '').slice(0, 2) || n.slice(0, 1); }
+
+class Component extends DCLogic {
+  componentDidMount() {
+    var expanded = this.props.expanded === true || this.props.expanded === 'true';
+    this.setState({
+      tab: this.props.tab || 'update',
+      expanded: expanded,
+      fileQuery: '', modQuery: '', pmQuery: '',
+      excluded: { 'shaderpacks/complementary-r5.2.zip': true },
+      open: { config: true, mods: false, resourcepacks: false, shaderpacks: true },
+      resetPending: {},
+      modOff: { zoom: true }, modTouched: {},
+      pmOff: {},
+      choice: { voice: true },
+      restored: {}, deleted: {},
+      logOpen: { 2: true },
+      confirm: null
+    });
+  }
+  ask(conf, fn) { this._pending = fn; this.setState({ confirm: conf }); }
+  renderVals() {
+    var self = this;
+    var s = this.state || {};
+    var accent = this.props.accent || '#2EE8DF';
+    var tab = s.tab || this.props.tab || 'update';
+    var TONES = {
+      accent: { color: accent, bg: 'color-mix(in oklab, ' + accent + ' 15%, transparent)' },
+      blue: { color: '#8AB4FF', bg: 'rgba(138,180,255,.14)' },
+      orange: { color: '#FF9A62', bg: 'rgba(255,154,98,.14)' },
+      gold: { color: '#FFD27A', bg: 'rgba(255,210,122,.14)' },
+      violet: { color: '#D7CFFF', bg: 'rgba(215,207,255,.12)' },
+      muted: { color: 'rgba(243,239,230,.78)', bg: 'rgba(255,255,255,.07)' }
+    };
+    function sep(i) { return i === 0 ? '0 solid transparent' : '1px solid rgba(255,255,255,.06)'; }
+    function sw(on) {
+      return { checked: on ? 'true' : 'false', track: on ? accent : 'rgba(255,255,255,.16)', knob: on ? '#04161A' : '#F3EFE6', x: on ? 18 : 0 };
+    }
+    var excluded = s.excluded || {};
+    var modOff = s.modOff || {};
+    var pmOff = s.pmOff || {};
+    var choice = s.choice || {};
+    var deleted = s.deleted || {};
+    var restored = s.restored || {};
+    var archivesLeft = ARCHIVES.filter(function (a) { return !deleted[a.id]; });
+    var errorCount = LOGS.filter(function (l) { return l.level === 'ERROR'; }).length;
+    var warnCount = LOGS.filter(function (l) { return l.level === 'WARN'; }).length;
+    var badges = {
+      logs: { text: errorCount + ' 错误', color: '#FF8E7A', bg: 'rgba(255,142,122,.14)' },
+      options: { text: String(GROUPS.length) },
+      mods: { text: '86' },
+      playermods: { text: String(PLAYER_MODS.length) },
+      backups: { text: String(archivesLeft.length) }
+    };
+    var nav = NAV.map(function (grp) {
+      return {
+        label: grp.label,
+        items: grp.items.map(function (id) {
+          var on = id === tab;
+          var b = badges[id];
+          return {
+            label: NAV_LABELS[id], current: on ? 'page' : 'false',
+            bg: on ? 'rgba(255,255,255,.08)' : 'transparent',
+            color: on ? '#FFFFFF' : 'rgba(243,239,230,.74)',
+            iconColor: on ? accent : 'rgba(243,239,230,.6)',
+            weight: on ? 700 : 500,
+            paths: ICONS[id].map(function (d) { return { d: d }; }),
+            hasBadge: !!b, badge: b ? b.text : '',
+            badgeColor: b && b.color ? b.color : 'rgba(243,239,230,.7)',
+            badgeBg: b && b.bg ? b.bg : 'rgba(255,255,255,.07)',
+            pick: function () { self.setState({ tab: id }); }
+          };
+        })
+      };
+    });
+
+    var actions = {
+      files: { label: '恢复全部管理', run: function () {
+        self.ask({ tone: 'INFO', title: '恢复全部管理？', message: '你取消管理的文件都会重新跟随整合包更新，下次更新时可能被服主的版本覆盖。被覆盖前会先放进备份。', action: '恢复管理' },
+          function () { self.setState({ excluded: {} }); });
+      } },
+      mods: { label: '恢复整合包默认', run: function () {
+        self.ask({ tone: 'INFO', title: '恢复整合包默认？', message: '你在本机停用的整合包模组都会重新启用，更改从下次启动生效。', action: '恢复默认' },
+          function () { self.setState({ modOff: {}, modTouched: {} }); });
+      } },
+      backups: { label: '打开备份文件夹', run: function () {} },
+      logs: { label: '打开日志文件夹', run: function () {} }
+    };
+    var act = actions[tab];
+    var page = Object.assign({}, PAGES[tab], { hasAction: !!act, actionLabel: act ? act.label : '', action: act ? act.run : function () {} });
+
+    var opCounts = OP_ORDER.map(function (op) {
+      var n = UPDATE_ROWS.filter(function (r) { return r.op === op; }).length;
+      return Object.assign({ label: OP_META[op].label, n: n }, TONES[OP_META[op].tone]);
+    }).filter(function (c) { return c.n > 0; });
+    var updateRows = OP_ORDER.reduce(function (acc, op) {
+      return acc.concat(UPDATE_ROWS.filter(function (r) { return r.op === op; }));
+    }, []).map(function (r, i) {
+      return Object.assign({}, r, TONES[OP_META[r.op].tone], { label: OP_META[r.op].label, sep: sep(i), hasNote: !!r.note, note: r.note || '' });
+    });
+    var changelog = CHANGELOG.map(function (c) { return Object.assign({}, c, TONES[c.tone]); });
+    var history = HISTORY.map(function (h) { return Object.assign({}, h, { current: !!h.current, dot: h.current ? accent : 'rgba(255,255,255,.22)' }); });
+
+    var logOpen = s.logOpen || {};
+    var logs = LOGS.map(function (l, i) {
+      var level = l.level || 'INFO';
+      var color = level === 'ERROR' ? '#FF8E7A' : (level === 'WARN' ? '#FFD27A' : 'rgba(243,239,230,.72)');
+      var open = !!logOpen[i];
+      return Object.assign({}, l, {
+        isStart: !!l.start, isEntry: !l.start,
+        levelLabel: level === 'ERROR' ? '错误' : (level === 'WARN' ? '提醒' : '信息'),
+        color: color,
+        levelBg: level === 'ERROR' ? 'rgba(255,142,122,.14)' : (level === 'WARN' ? 'rgba(255,210,122,.12)' : 'rgba(255,255,255,.06)'),
+        bg: level === 'ERROR' ? 'rgba(255,142,122,.06)' : 'transparent',
+        hasDetails: !!l.details, details: l.details || '', open: open,
+        expandedAria: open ? 'true' : 'false',
+        toggleLabel: open ? '收起异常详情' : '查看异常详情',
+        toggle: function () { var n = Object.assign({}, (self.state || {}).logOpen || {}); n[i] = !open; self.setState({ logOpen: n }); }
+      });
+    });
+
+    var groups = GROUPS.map(function (g) {
+      var explicit = choice[g.id] !== undefined;
+      var on = explicit ? choice[g.id] : g.def;
+      var initial = g.id === 'voice' ? true : g.def;
+      return Object.assign({}, g, sw(on), {
+        members: g.members.map(function (n) { return { name: n }; }),
+        explicit: explicit, changed: on !== initial,
+        stateText: (on ? '已开启' : '已关闭') + (explicit ? ' · 你的选择（服主默认' + (g.def ? '开启' : '关闭') + '）' : ' · 跟随服主默认'),
+        stateColor: on ? accent : 'rgba(243,239,230,.6)',
+        bg: on ? 'rgba(255,255,255,.045)' : 'rgba(255,255,255,.02)',
+        border: on ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.06)',
+        resetLabel: '恢复服主默认（' + (g.def ? '开启' : '关闭') + '）',
+        toggle: function () { var n = Object.assign({}, (self.state || {}).choice || {}); n[g.id] = !on; self.setState({ choice: n }); },
+        reset: function () { var n = Object.assign({}, (self.state || {}).choice || {}); delete n[g.id]; self.setState({ choice: n }); }
+      });
+    });
+
+    var fq = (s.fileQuery || '').trim().toLowerCase();
+    var open = s.open || {};
+    var resetPending = s.resetPending || {};
+    var entries = TREE.filter(function (e) { return !e.more; });
+    function inheritedOf(p) { var par = parentOf(p); while (par) { if (excluded[par]) return par; par = parentOf(par); } return null; }
+    function partialOf(p) { return Object.keys(excluded).some(function (k) { return excluded[k] && k.indexOf(p + '/') === 0; }); }
+    var matchSet = null;
+    if (fq) {
+      matchSet = {};
+      entries.forEach(function (e) {
+        if (e.path.toLowerCase().indexOf(fq) < 0) return;
+        matchSet[e.path] = true;
+        var par = parentOf(e.path);
+        while (par) { matchSet[par] = true; par = parentOf(par); }
+        if (e.dir) entries.forEach(function (c) { if (c.path.indexOf(e.path + '/') === 0) matchSet[c.path] = true; });
+      });
+    }
+    function visible(e) {
+      if (e.more) return !fq && !!open[e.more];
+      if (matchSet) return !!matchSet[e.path];
+      var par = parentOf(e.path);
+      while (par) { if (!open[par]) return false; par = parentOf(par); }
+      return true;
+    }
+    var rowIndex = 0;
+    var fileRows = TREE.filter(visible).map(function (e) {
+      if (e.more) return { isMore: true, isEntry: false, text: e.text, pad: 14 + (depthOf(e.more) + 1) * 22 + 32 };
+      var i = rowIndex++;
+      var inherited = inheritedOf(e.path);
+      var direct = !!excluded[e.path];
+      var partial = !!e.dir && !direct && !inherited && partialOf(e.path);
+      var forced = !!e.forced;
+      var locked = forced || !!inherited;
+      var managed = forced || (!direct && !inherited);
+      var pending = !!resetPending[e.path];
+      var hasChildren = !!e.dir;
+      var isOpen = matchSet ? true : !!open[e.path];
+      var parts = [];
+      if (forced && e.group) parts.push(e.lock);
+      else if (forced) parts.push(e.preset === 'REQUIRED' && !e.dir ? PRESET_LABELS.REQUIRED + ' · ' + PRESET_HINTS.REQUIRED : '服主强制同步');
+      else if (inherited) parts.push('随 ' + inherited + '/ 自行管理');
+      else if (direct) parts.push('你自行管理 · 更新不再安装、覆盖或删除它');
+      else if (partial) parts.push('部分子项由你自行管理');
+      else if (e.preset && !e.dir) parts.push(PRESET_LABELS[e.preset] + ' · ' + PRESET_HINTS[e.preset]);
+      else parts.push('由更新器管理');
+      if (e.dir) parts.push(e.count + ' 个远程文件');
+      else if (pending) parts.push('下次更新时恢复默认');
+      else if (e.preset === 'DEFAULT_CONFIG' && e.modified && managed) parts.push('你改过，更新时保留你的版本');
+      else if (e.preset === 'INITIAL' && e.modified) parts.push('你改过这份');
+      var label = forced ? (e.group ? '随可选内容' : (e.preset === 'REQUIRED' || e.dir ? '必需' : '固定')) : (inherited ? '随目录' : '管理');
+      var tip = forced ? (e.lock || '服主设为强制同步，不能在本机取消管理') : (inherited ? '由目录 ' + inherited + '/ 控制' : '取消勾选后改为自行管理：更新器不再安装、覆盖或删除它');
+      var canReset = !e.dir && (e.preset === 'DEFAULT_CONFIG' || e.preset === 'INITIAL') && !!e.modified && !pending && !direct && !inherited;
+      var showCheck = managed && !partial && !inherited && !forced;
+      return {
+        isMore: false, isEntry: true,
+        name: nameOf(e.path) + (e.dir ? '/' : ''),
+        detail: parts.join(' · ') + ' · ' + e.path,
+        pad: 14 + depthOf(e.path) * 22,
+        sep: sep(i),
+        bg: direct || inherited ? 'rgba(255,255,255,.01)' : 'rgba(255,255,255,.02)',
+        hasChildren: hasChildren, noChildren: !hasChildren, dir: !!e.dir, file: !e.dir,
+        rot: isOpen ? 90 : 0,
+        ariaExpanded: hasChildren ? (isOpen ? 'true' : 'false') : undefined,
+        discloseLabel: (isOpen ? '收起 ' : '展开 ') + e.path,
+        disclose: function () { var n = Object.assign({}, (self.state || {}).open || {}); n[e.path] = !isOpen; self.setState({ open: n }); },
+        iconColor: managed ? (e.dir ? '#FFD27A' : 'rgba(243,239,230,.7)') : 'rgba(243,239,230,.4)',
+        nameColor: managed ? '#F3EFE6' : 'rgba(243,239,230,.6)',
+        canReset: canReset, resetPending: pending,
+        reset: function () {
+          self.ask({ tone: 'INFO', title: '下次更新时恢复默认？', message: '会换回服主提供的默认 ' + nameOf(e.path) + '。你现在的这份会先移入备份，随时可以放回。', action: '恢复默认' },
+            function () { var n = Object.assign({}, (self.state || {}).resetPending || {}); n[e.path] = true; self.setState({ resetPending: n }); });
+        },
+        aria: partial ? 'mixed' : (managed ? 'true' : 'false'),
+        checkAria: '管理 ' + e.path,
+        tip: tip, label: label, locked: locked,
+        cursor: locked ? 'default' : 'pointer',
+        ctlBorder: locked ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.12)',
+        ctlBg: locked ? 'rgba(255,255,255,.03)' : 'rgba(255,255,255,.05)',
+        labelColor: locked ? 'rgba(243,239,230,.55)' : 'rgba(243,239,230,.88)',
+        boxBorder: (showCheck || partial) ? accent : (forced ? 'transparent' : 'rgba(255,255,255,.45)'),
+        boxBg: (showCheck || partial) ? accent : (forced ? 'rgba(255,255,255,.14)' : 'transparent'),
+        showCheck: showCheck, showDash: partial, showLock: forced,
+        toggle: function () {
+          if (locked) return;
+          var n = Object.assign({}, (self.state || {}).excluded || {});
+          if (partial) {
+            Object.keys(n).forEach(function (k) { if (k === e.path || k.indexOf(e.path + '/') === 0) delete n[k]; });
+          } else if (n[e.path]) {
+            delete n[e.path];
+          } else {
+            n[e.path] = true;
+          }
+          self.setState({ excluded: n });
+        }
+      };
+    });
+
+    var mq = (s.modQuery || '').trim().toLowerCase();
+    var touched = s.modTouched || {};
+    var modList = MODS.filter(function (m) { return !mq || m.name.toLowerCase().indexOf(mq) >= 0 || m.path.toLowerCase().indexOf(mq) >= 0; });
+    var mods = modList.map(function (m, i) {
+      var forced = m.source === 'required' || m.source === 'group';
+      var on = !modOff[m.key];
+      var source = m.source === 'required' ? '服主强制' : (m.source === 'group' ? '可选内容「' + m.group + '」' : '整合包');
+      var parts = forced ? [] : [source];
+      if (!on) parts.push(touched[m.key] ? '等待停用' : '已停用');
+      parts.push(m.path);
+      return Object.assign({}, m, sw(on || forced), {
+        sep: sep(i),
+        bg: on ? 'rgba(255,255,255,.02)' : 'rgba(255,255,255,.008)',
+        initial: initialOf(m.name),
+        tileColor: m.source === 'required' ? '#FFD27A' : (m.source === 'group' ? '#8AB4FF' : accent),
+        tileBg: m.source === 'required' ? 'rgba(255,210,122,.12)' : (m.source === 'group' ? 'rgba(138,180,255,.12)' : 'color-mix(in oklab, ' + accent + ' 13%, transparent)'),
+        nameColor: on ? '#F3EFE6' : 'rgba(243,239,230,.55)',
+        detail: parts.join(' · '),
+        hasWithdrawn: !!m.withdrawn, withdrawn: m.withdrawn || '',
+        showLock: forced && !m.withdrawn, lock: m.lock || '',
+        lockTip: forced ? (m.lock || '服主设为强制同步，不能在本机停用') : '',
+        toggleLabel: m.source === 'required' ? '必需' : (m.source === 'group' ? '随可选内容' : '启用'),
+        forced: forced,
+        switchOpacity: forced ? 0.45 : 1,
+        cursor: forced ? 'default' : 'pointer',
+        toggle: function () {
+          if (forced) return;
+          var apply = function () {
+            var off = Object.assign({}, (self.state || {}).modOff || {});
+            var t = Object.assign({}, (self.state || {}).modTouched || {});
+            if (on) { off[m.key] = true; t[m.key] = true; } else { delete off[m.key]; delete t[m.key]; }
+            self.setState({ modOff: off, modTouched: t });
+          };
+          if (on) {
+            self.ask({ tone: 'WARNING', title: '停用「' + m.name + '」？', message: '停用整合包里的模组可能导致游戏崩溃或无法连接服务器。更改会在本次更新完成前重新校验；游戏已经启动时，从下次启动生效。', action: '仍然停用' }, apply);
+          } else {
+            apply();
+          }
+        }
+      });
+    });
+    var offCount = Object.keys(modOff).filter(function (k) { return modOff[k]; }).length;
+
+    var pq = (s.pmQuery || '').trim().toLowerCase();
+    var pmList = PLAYER_MODS.filter(function (m) { return !pq || m.name.toLowerCase().indexOf(pq) >= 0 || m.path.toLowerCase().indexOf(pq) >= 0; });
+    var playerMods = pmList.map(function (m, i) {
+      var on = !pmOff[m.key];
+      return Object.assign({}, m, sw(on), {
+        sep: sep(i), bg: 'rgba(255,255,255,.02)',
+        initial: initialOf(m.name),
+        nameColor: on ? '#F3EFE6' : 'rgba(243,239,230,.55)',
+        detail: '玩家添加 · ' + (on ? '' : '已停用 · ') + m.path,
+        toggle: function () {
+          var apply = function () { var n = Object.assign({}, (self.state || {}).pmOff || {}); if (on) n[m.key] = true; else delete n[m.key]; self.setState({ pmOff: n }); };
+          if (on) self.ask({ tone: 'WARNING', title: '停用「' + m.name + '」？', message: '这个模组是你自己添加的，停用后会移出游戏但保留在本机。如果其他模组依赖它，可能导致启动失败。', action: '仍然停用' }, apply);
+          else apply();
+        }
+      });
+    });
+    var pmEnabled = PLAYER_MODS.filter(function (m) { return !pmOff[m.key]; }).length;
+
+    var archives = archivesLeft.map(function (a) {
+      return {
+        title: a.title,
+        meta: a.time + ' · ' + a.files.length + ' 个文件 · ' + a.size,
+        files: a.files.map(function (f) {
+          var key = a.id + '|' + f.path;
+          var at = restored[key] || f.restoredAt || '';
+          return {
+            path: f.path, reason: f.reason, restored: !!at, notRestored: !at, restoredAt: at,
+            restore: function () { var n = Object.assign({}, (self.state || {}).restored || {}); n[key] = '刚刚'; self.setState({ restored: n }); }
+          };
+        }),
+        remove: function () {
+          self.ask({ tone: 'DANGER', title: '删除这份备份？', message: '「' + a.title + '」里的 ' + a.files.length + ' 个文件会从电脑上永久删除，之后无法再放回游戏。', action: '删除备份' },
+            function () { var n = Object.assign({}, (self.state || {}).deleted || {}); n[a.id] = true; self.setState({ deleted: n }); });
+        }
+      };
+    });
+
+    var c = s.confirm;
+    var toneColor = c ? (c.tone === 'DANGER' ? '#FF7A6B' : (c.tone === 'WARNING' ? '#FFD27A' : accent)) : accent;
+    var expanded = !!s.expanded;
+
+    return {
+      accent: accent,
+      accentSoft: 'color-mix(in oklab, ' + accent + ' 45%, transparent)',
+      accentTint: 'color-mix(in oklab, ' + accent + ' 14%, transparent)',
+      panelLeft: expanded ? 14 : 306,
+      expanded: expanded, notExpanded: !expanded,
+      expandLabel: expanded ? '恢复侧栏' : '铺满内容区',
+      toggleExpand: function () { self.setState({ expanded: !expanded }); },
+      nav: nav, page: page,
+      tUpdate: tab === 'update', tHistory: tab === 'history', tLogs: tab === 'logs', tOptions: tab === 'options',
+      tFiles: tab === 'files', tMods: tab === 'mods', tPlayerMods: tab === 'playermods', tBackups: tab === 'backups',
+      opCounts: opCounts, updateRows: updateRows, changelog: changelog, history: history,
+      logs: logs, logStats: { total: LOGS.filter(function (l) { return !l.start; }).length, warn: warnCount, error: errorCount },
+      groups: groups,
+      fileQuery: s.fileQuery || '', fileRows: fileRows, filesEmpty: fileRows.length === 0,
+      onFileQuery: function (ev) { self.setState({ fileQuery: ev && ev.target ? ev.target.value : '' }); },
+      modQuery: s.modQuery || '', mods: mods, modsEmpty: mods.length === 0, modMore: !mq,
+      modSummary: '共 86 个 · 本机停用 ' + offCount + ' 个',
+      onModQuery: function (ev) { self.setState({ modQuery: ev && ev.target ? ev.target.value : '' }); },
+      pmQuery: s.pmQuery || '', playerMods: playerMods, pmEmpty: playerMods.length === 0,
+      pmSummary: '共 ' + PLAYER_MODS.length + ' 个 · ' + pmEnabled + ' 个启用',
+      onPmQuery: function (ev) { self.setState({ pmQuery: ev && ev.target ? ev.target.value : '' }); },
+      archives: archives, archivesEmpty: archives.length === 0,
+      hasConfirm: !!c,
+      confirm: c ? Object.assign({}, c, { tone: toneColor, toneBg: c.tone === 'DANGER' ? 'rgba(255,122,107,.14)' : (c.tone === 'WARNING' ? 'rgba(255,210,122,.14)' : 'color-mix(in oklab, ' + accent + ' 15%, transparent)'), isInfo: c.tone === 'INFO', isAlert: c.tone !== 'INFO' }) : { title: '', message: '', action: '', tone: accent, toneBg: 'transparent', isInfo: true, isAlert: false },
+      cancelConfirm: function () { self._pending = null; self.setState({ confirm: null }); },
+      acceptConfirm: function () { var fn = self._pending; self._pending = null; self.setState({ confirm: null }); if (fn) fn(); }
+    };
+  }
+}
+</script>
+</body>
+</html>

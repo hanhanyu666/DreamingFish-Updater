@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { usePlayerStore } from "../stores/player";
+import AppIcon from "./AppIcon.vue";
 
 const store = usePlayerStore();
 const request = computed(() => store.state.confirm);
@@ -81,12 +82,15 @@ onBeforeUnmount(restoreFocus);
       tabindex="-1"
       @keydown="onDialogKeydown"
     >
-      <div class="dfs-dialog-header">
-        <div class="dfs-dialog-accent" aria-hidden="true"></div>
-        <div class="dfs-dialog-title">{{ request.title }}</div>
-        <div id="dfs-confirm-heading" class="dfs-dialog-heading">{{ request.heading }}</div>
+      <div class="dfs-dialog-body">
+        <span class="dfs-dialog-icon" aria-hidden="true">
+          <AppIcon :name="request.tone === 'INFO' ? 'info' : 'warning'" />
+        </span>
+        <div class="dfs-dialog-copy">
+          <h2 id="dfs-confirm-heading" class="dfs-dialog-heading" :title="request.title">{{ request.heading }}</h2>
+          <p id="dfs-confirm-message" class="dfs-dialog-message">{{ request.message }}</p>
+        </div>
       </div>
-      <div id="dfs-confirm-message" class="dfs-dialog-message">{{ request.message }}</div>
       <div class="dfs-dialog-actions">
         <button ref="cancelButton" class="dfs-dialog-secondary" type="button" @click="cancel">
           {{ request.cancelText }}

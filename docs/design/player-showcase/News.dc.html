@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>玩家端 · 服务器公告</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&amp;family=Noto+Serif+SC:wght@700;900&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+.dfs-hv{transition:background-color .18s ease,border-color .18s ease,color .18s ease}
+.dfs-hv:hover{background-color:rgba(255,255,255,.1)!important;color:#fff!important}
+.dfs-close:hover{background-color:#C4302B!important;color:#fff!important}
+.dfs-nav:hover{color:#fff!important}
+.dfs-card img{transition:transform .7s cubic-bezier(.2,.7,.2,1)}
+.dfs-card:hover img{transform:scale(1.04)}
+.dfs-row{transition:background-color .18s ease}
+.dfs-row:hover{background-color:rgba(255,255,255,.06)!important}
+.dfs-scroll::-webkit-scrollbar{width:8px}
+.dfs-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px}
+.dfs-scroll::-webkit-scrollbar-track{background:transparent}
+:focus-visible{outline:2px solid #FFF6E0;outline-offset:2px}
+</style>
+</helmet>
+<div style="position: relative; width: 1180px; height: 680px; overflow: hidden; border-radius: 12px; background: #070A12; color: #F3EFE6; font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+  <img src="/_blob/8e4a628a4c3abcbe2cb023589ae04d86" alt="" aria-hidden="true" style="position: absolute; left: -60px; top: -60px; width: 1300px; height: 800px; object-fit: cover; filter: blur(46px) brightness(.34) saturate(1.3)">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(7,10,18,.5)"></div>
+  <svg aria-hidden="true" width="1180" height="680" style="position: absolute; inset: 0; pointer-events: none; opacity: .07; mix-blend-mode: overlay">
+    <filter id="dfs-grain-n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"></feTurbulence></filter>
+    <rect width="100%" height="100%" filter="url(#dfs-grain-n)"></rect>
+  </svg>
+
+  <header style="position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 28px; padding-left: 20px; z-index: 5">
+    <a href="Main.dc.html" aria-label="鲸歌生存服 首页" style="display: flex; align-items: center; gap: 10px">
+      <span style="width: 30px; height: 30px; border-radius: 8px; background: #0E2533; border: 1px solid {{accentSoft}}; display: grid; place-items: center; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 16px; color: {{accent}}; flex: none">鲸</span>
+      <span style="display: flex; flex-direction: column; line-height: 1.15">
+        <span style="font-size: 14px; font-weight: 700; letter-spacing: .04em">鲸歌生存服</span>
+        <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 8.5px; letter-spacing: .18em; color: rgba(243,239,230,.62)">WHALESONG</span>
+      </span>
+    </a>
+    <nav aria-label="主导航" style="display: flex; align-items: stretch; gap: 2px; align-self: stretch">
+      <a href="Main.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">首页</a>
+      <a href="News.dc.html" aria-current="page" style="position: relative; display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 700; color: #FFFFFF">公告<span style="position: absolute; left: 12px; right: 12px; bottom: 10px; height: 2px; border-radius: 2px; background: {{accent}}"></span></a>
+      <a href="Guide.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">服务器介绍</a>
+      <a href="Gallery.dc.html" class="dfs-nav" style="display: flex; align-items: center; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: rgba(243,239,230,.74)">画廊</a>
+    </nav>
+    <div style="flex: 1; align-self: stretch"></div>
+    <a href="Main.dc.html" class="dfs-hv" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 8px; border-radius: 999px; border: 1px solid {{accentSoft}}; background: {{accentTint}}; font-size: 12px; color: #F3EFE6">
+      <span style="width: 18px; height: 18px; border-radius: 50%; background: {{accent}}; color: #04161A; display: grid; place-items: center"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+      r13 已就绪 · 窗口保持打开
+    </a>
+    <div style="display: flex; align-self: stretch">
+      <button type="button" class="dfs-hv" aria-label="最小化" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8)"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><path d="M1.5 6h9"></path></svg></button>
+      <button type="button" class="dfs-hv" aria-label="最大化" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8)"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5"></rect></svg></button>
+      <button type="button" class="dfs-close" aria-label="关闭" style="width: 46px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: rgba(243,239,230,.8); border-top-right-radius: 12px"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.2"><path d="M2 2l8 8"></path><path d="M10 2l-8 8"></path></svg></button>
+    </div>
+  </header>
+
+  <sc-if value="{{isList}}" hint-placeholder-val="{{true}}">
+    <main style="position: absolute; left: 40px; right: 40px; top: 52px; bottom: 24px; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-top: 14px">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 10px; letter-spacing: .2em; color: {{accent}}">SERVER NEWS</span>
+          <h1 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 30px; line-height: 1.2; color: #FFF6E0">服务器公告</h1>
+        </div>
+        <div role="group" aria-label="按分类筛选" style="display: flex; gap: 6px">
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+            <button type="button" onClick="{{f.pick}}" aria-pressed="{{f.pressed}}" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid {{f.border}}; background: {{f.bg}}; color: {{f.color}}; font-size: 12.5px; font-weight: 500; display: flex; align-items: center; gap: 6px; cursor: pointer; transition: background-color .18s ease">{{f.label}}<span style="font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums">{{f.count}}</span></button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.38fr) minmax(0, 1fr); gap: 20px">
+        <button type="button" class="dfs-card" onClick="{{featured.open}}" aria-label="阅读：{{featured.title}}" style="position: relative; display: flex; flex-direction: column; padding: 0; border-radius: 18px; overflow: hidden; border: 1px solid rgba(255,255,255,.1); background: rgba(12,16,26,.72); text-align: left; cursor: pointer; box-shadow: 0 24px 60px rgba(0,0,0,.35)">
+          <span style="position: relative; display: block; height: 300px; overflow: hidden; flex: none">
+            <img src="/_blob/8e4a628a4c3abcbe2cb023589ae04d86" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: {{featured.pos}}; transform-origin: {{featured.pos}}; scale: {{featured.scale}}; filter: {{featured.filter}}">
+            <span style="position: absolute; inset: 0; background: {{featured.tint}}; mix-blend-mode: {{featured.blend}}"></span>
+            <span style="position: absolute; inset: 0; background: linear-gradient(0deg, rgba(12,16,26,.9) 0%, rgba(12,16,26,0) 45%)"></span>
+            <span style="position: absolute; left: 20px; top: 18px; display: flex; gap: 6px">
+              <span style="height: 24px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; font-size: 12px; font-weight: 700; color: #1A1204; background: #FFD27A">最新</span>
+              <span style="height: 24px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; font-size: 12px; font-weight: 500; color: #F3EFE6; background: rgba(8,12,20,.6); backdrop-filter: blur(8px)">{{featured.cat}}</span>
+            </span>
+          </span>
+          <span style="display: flex; flex-direction: column; gap: 10px; padding: 4px 26px 24px; flex: 1; min-height: 0">
+            <span style="display: flex; gap: 8px; font-size: 12px; color: rgba(243,239,230,.66)">{{featured.date}}<span aria-hidden="true">·</span>{{featured.author}}<span aria-hidden="true">·</span>{{featured.read}}</span>
+            <span style="font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 27px; line-height: 1.3; color: #FFF6E0; text-wrap: balance">{{featured.title}}</span>
+            <span style="font-size: 14px; line-height: 1.75; color: rgba(243,239,230,.8); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{featured.summary}}</span>
+            <span style="flex: 1"></span>
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; color: {{accent}}">阅读全文<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span>
+          </span>
+        </button>
+
+        <section aria-label="更多公告" style="display: flex; flex-direction: column; padding: 6px; border-radius: 18px; border: 1px solid rgba(255,255,255,.08); background: rgba(10,14,24,.5); backdrop-filter: blur(16px); min-height: 0; overflow: hidden">
+          <sc-for list="{{rest}}" as="a" hint-placeholder-count="4">
+            <button type="button" class="dfs-row" onClick="{{a.open}}" style="flex: 1; max-height: 128px; display: grid; grid-template-columns: 56px minmax(0, 1fr) 16px; align-items: center; gap: 14px; padding: 12px 14px; border: 0; border-top: {{a.sep}}; border-radius: 12px; background: transparent; text-align: left; cursor: pointer">
+              <span style="display: flex; flex-direction: column; align-items: center; padding: 8px 0; border-radius: 10px; background: rgba(255,255,255,.05)">
+                <span style="font-size: 22px; font-weight: 700; line-height: 1.1; color: #FFF6E0; font-variant-numeric: tabular-nums">{{a.day}}</span>
+                <span style="font-size: 11px; color: rgba(243,239,230,.62)">{{a.month}}</span>
+              </span>
+              <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                <span style="display: flex; align-items: center; gap: 8px">
+                  <span style="height: 19px; padding: 0 7px; border-radius: 5px; display: flex; align-items: center; font-size: 11px; font-weight: 500; color: {{a.catColor}}; background: {{a.catBg}}">{{a.cat}}</span>
+                </span>
+                <span style="font-size: 14.5px; font-weight: 700; color: #F3EFE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.title}}</span>
+                <span style="font-size: 12.5px; line-height: 1.6; color: rgba(243,239,230,.66); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{a.summary}}</span>
+              </span>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: rgba(243,239,230,.5); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M9.5 6l6 6-6 6"></path></svg>
+            </button>
+          </sc-for>
+          <sc-if value="{{restEmpty}}" hint-placeholder-val="{{false}}">
+            <div style="flex: 1; display: grid; place-items: center; text-align: center; padding: 24px; color: rgba(243,239,230,.62); font-size: 13px">这个分类只有左边这一篇公告</div>
+          </sc-if>
+        </section>
+      </div>
+    </main>
+  </sc-if>
+
+  <sc-if value="{{isArticle}}" hint-placeholder-val="{{false}}">
+    <main style="position: absolute; left: 40px; right: 40px; top: 52px; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr) 272px; gap: 32px">
+      <div id="dfs-article-scroll" class="dfs-scroll" style="overflow-y: auto; padding: 10px 14px 40px 0">
+        <button type="button" class="dfs-hv" onClick="{{back}}" style="height: 34px; padding: 0 12px 0 8px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; color: rgba(243,239,230,.86)"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M19 12H5"></path><path d="M11 6l-6 6 6 6"></path></svg>返回公告列表</button>
+        <article style="display: flex; flex-direction: column; gap: 18px; max-width: 700px; margin-top: 16px">
+          <div style="position: relative; height: 220px; border-radius: 16px; overflow: hidden">
+            <img src="/_blob/8e4a628a4c3abcbe2cb023589ae04d86" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: {{article.pos}}; transform-origin: {{article.pos}}; scale: {{article.scale}}; filter: {{article.filter}}">
+            <div style="position: absolute; inset: 0; background: {{article.tint}}; mix-blend-mode: {{article.blend}}"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: rgba(243,239,230,.66)">
+              <span style="height: 20px; padding: 0 8px; border-radius: 5px; display: flex; align-items: center; font-size: 11.5px; font-weight: 500; color: {{article.catColor}}; background: {{article.catBg}}">{{article.cat}}</span>
+              {{article.date}}<span aria-hidden="true">·</span>{{article.author}}<span aria-hidden="true">·</span>{{article.read}}
+            </div>
+            <h1 style="margin: 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 34px; line-height: 1.3; color: #FFF6E0; text-wrap: balance">{{article.title}}</h1>
+          </div>
+          <sc-for list="{{article.blocks}}" as="b" hint-placeholder-count="5">
+            <sc-if value="{{b.isP}}" hint-placeholder-val="{{true}}">
+              <p style="margin: 0; font-size: 15px; line-height: 1.9; color: rgba(243,239,230,.86); text-wrap: pretty">{{b.text}}</p>
+            </sc-if>
+            <sc-if value="{{b.isH2}}" hint-placeholder-val="{{false}}">
+              <h2 id="{{b.anchor}}" style="margin: 10px 0 0; font-family: 'Noto Serif SC', 'Songti SC', serif; font-weight: 900; font-size: 21px; line-height: 1.4; color: #FFF6E0">{{b.text}}</h2>
+            </sc-if>
+            <sc-if value="{{b.isList}}" hint-placeholder-val="{{false}}">
+              <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px">
+                <sc-for list="{{b.items}}" as="li" hint-placeholder-count="3">
+                  <li style="display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; font-size: 15px; line-height: 1.8; color: rgba(243,239,230,.86)"><span aria-hidden="true" style="width: 6px; height: 6px; margin-top: 11px; background: {{accent}}"></span><span><strong style="color: #FFF6E0; font-weight: 700">{{li.head}}</strong>{{li.text}}</span></li>
+                </sc-for>
+              </ul>
+            </sc-if>
+            <sc-if value="{{b.isCallout}}" hint-placeholder-val="{{false}}">
+              <div style="display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; padding: 16px 18px; border-radius: 14px; border: 1px solid {{accentSoft}}; background: {{accentTint}}">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="fill: none; stroke: {{accent}}; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5.5"></path><path d="M12 7.6v.01"></path></svg>
+                <div style="display: flex; flex-direction: column; gap: 4px">
+                  <strong style="font-size: 14px; font-weight: 700; color: #FFF6E0">{{b.title}}</strong>
+                  <span style="font-size: 14px; line-height: 1.75; color: rgba(243,239,230,.86)">{{b.text}}</span>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{b.isImg}}" hint-placeholder-val="{{false}}">
+              <figure style="margin: 4px 0 0; display: flex; flex-direction: column; gap: 8px">
+                <div style="position: relative; height: 240px; border-radius: 14px; overflow: hidden">
+                  <img src="/_blob/8e4a628a4c3abcbe2cb023589ae04d86" alt="{{b.caption}}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: {{b.pos}}; transform-origin: {{b.pos}}; scale: {{b.scale}}; filter: {{b.filter}}">
+                </div>
+                <figcaption style="font-size: 12.5px; color: rgba(243,239,230,.62)">{{b.caption}}</figcaption>
+              </figure>
+            </sc-if>
+          </sc-for>
+        </article>
+      </div>
+
+      <aside style="display: flex; flex-direction: column; gap: 14px; padding-top: 60px">
+        <nav aria-label="本文目录" style="padding: 16px 18px; border-radius: 16px; border: 1px solid rgba(255,255,255,.08); background: rgba(10,14,24,.5); backdrop-filter: blur(16px); display: flex; flex-direction: column; gap: 10px">
+          <span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 9.5px; letter-spacing: .2em; color: rgba(243,239,230,.6)">CONTENTS</span>
+          <sc-for list="{{toc}}" as="h" hint-placeholder-count="3">
+            <a href="#{{h.anchor}}" style="display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: rgba(243,239,230,.84)"><span style="font-family: Silkscreen, ui-monospace, monospace; font-size: 10px; color: {{accent}}">{{h.num}}</span>{{h.text}}</a>
+          </sc-for>
+        </nav>
+        <section aria-label="相关公告" style="display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 12px; color: rgba(243,239,230,.62); padding-left: 4px">接着看</span>
+          <sc-for list="{{related}}" as="r" hint-placeholder-count="2">
+            <button type="button" class="dfs-row" onClick="{{r.open}}" style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08); background: rgba(10,14,24,.45); text-align: left; cursor: pointer">
+              <span style="position: relative; display: block; width: 64px; height: 48px; border-radius: 8px; overflow: hidden"><img src="/_blob/8e4a628a4c3abcbe2cb023589ae04d86" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: {{r.pos}}; transform-origin: {{r.pos}}; scale: {{r.scale}}; filter: {{r.filter}}"></span>
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="font-size: 11px; color: {{r.catColor}}">{{r.cat}} · {{r.date}}</span>
+                <span style="font-size: 13px; font-weight: 700; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{r.title}}</span>
+              </span>
+            </button>
+          </sc-for>
+        </section>
+      </aside>
+    </main>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2EE8DF","options":["#2EE8DF","#FFB454","#9BE15D","#B79CFF"],"section":"主题"},"$preview":{"width":1180,"height":680}}'>
+var NIGHT = { pos: '50% 50%', scale: 1, filter: 'brightness(.5) saturate(.8) contrast(1.12)', tint: 'linear-gradient(180deg, rgba(24,44,120,.62), rgba(10,16,48,.5))', blend: 'multiply' };
+var CAT_STYLE = {
+  '活动': { color: '#FFD27A', bg: 'rgba(255,210,122,.14)' },
+  '维护': { color: '#FF9A62', bg: 'rgba(255,154,98,.14)' },
+  '更新': { color: '#8AB4FF', bg: 'rgba(138,180,255,.14)' },
+  '规则': { color: '#D7CFFF', bg: 'rgba(215,207,255,.12)' }
+};
+var ARTICLES = [
+  {
+    id: 's3', cat: '活动', day: '22', month: '10 月', date: '10 月 22 日', author: '鲸歌运营组', read: '约 3 分钟',
+    title: '第三赛季「永夜之境」今晚开放',
+    summary: '新维度、深海神殿与跨服交易所上线。老玩家背包保留，第二赛季的领地会保留到 11 月 30 日。',
+    pos: NIGHT.pos, scale: NIGHT.scale, filter: NIGHT.filter, tint: NIGHT.tint, blend: NIGHT.blend,
+    blocks: [
+      { t: 'p', text: '第三赛季「永夜之境」将于今晚 20:00 开放。这一季我们把重心放在探索和合作上：新维度不卖装备、不设排行榜，奖励只有外观和纪念品。' },
+      { t: 'callout', title: '开服信息', text: '10 月 22 日 20:00 开放。整合包版本 1.20.1-r13，更新器会在启动时自动下载，不需要手动安装。' },
+      { t: 'h2', text: '这一季有什么' },
+      { t: 'list', items: [
+        { head: '永夜维度：', text: '从主城中央的传送门进入，地表永远停在黄昏，越往深处越暗。' },
+        { head: '深海神殿：', text: '每周刷新一次的合作副本，最多 4 人组队。' },
+        { head: '跨服交易所：', text: '在主城银行挂单，下线以后也能成交。' }
+      ] },
+      { t: 'img', caption: '永夜维度的入口，就在新主城中央广场', pos: '62% 56%', scale: 1.5, filter: 'brightness(.52) saturate(.8) contrast(1.1) hue-rotate(-8deg)' },
+      { t: 'h2', text: '旧存档怎么处理' },
+      { t: 'p', text: '背包、末影箱与经济余额全部保留。第二赛季的领地在主世界保留到 11 月 30 日，之后整体迁移到「旧城」存档，可以随时传送回去参观。' },
+      { t: 'h2', text: '开服当晚' },
+      { t: 'p', text: '20:00 在主城广场集合，管理组会带大家第一次进入永夜维度。全程大约一小时，参加的玩家会拿到第三赛季纪念披风。' }
+    ]
+  },
+  {
+    id: 'build', cat: '活动', day: '20', month: '10 月', date: '10 月 20 日', author: 'Kirin_Ra', read: '约 2 分钟',
+    title: '秋日建筑大赛开始报名',
+    summary: '本期主题「湖畔小镇」。10 月 24 日晚开赛直播，31 日截止登记坐标，前三名作品永久保留在新主城。',
+    pos: '80% 48%', scale: 1.9, filter: 'saturate(1.1) contrast(1.04) sepia(.12)', tint: 'linear-gradient(180deg, rgba(255,140,60,.10), rgba(40,10,0,.28))', blend: 'normal',
+    blocks: [
+      { t: 'p', text: '一年一度的秋日建筑大赛又来了。这次的主题是「湖畔小镇」，单人或两人组队都可以，建筑区在新主城东侧湖边，已经提前清好了地。' },
+      { t: 'callout', title: '参赛方式', text: '10 月 31 日 23:59 前，在主城报名处的告示牌写下你的地块编号和队友名字即可。' },
+      { t: 'h2', text: '评分看什么' },
+      { t: 'list', items: [
+        { head: '贴合主题：', text: '像不像一座有人生活的湖边小镇。' },
+        { head: '细节：', text: '室内、灯光、花园和路，都算分。' },
+        { head: '和邻居的关系：', text: '能和旁边的作品连成一条街会加分。' }
+      ] },
+      { t: 'p', text: '24 日晚 20:00 会在主城广场开赛直播，评委组现场讲一遍规则，也会展示去年的获奖作品。' }
+    ]
+  },
+  {
+    id: 'maint', cat: '维护', day: '19', month: '10 月', date: '10 月 19 日', author: 'MossyStone', read: '约 1 分钟',
+    title: '10 月 29 日凌晨例行维护',
+    summary: '03:00–05:00 停服更新服务端，期间无法进入服务器。背包与领地数据不受影响。',
+    pos: '12% 42%', scale: 1.6, filter: 'saturate(.9) brightness(.9)', tint: 'linear-gradient(180deg, rgba(40,80,140,.22), rgba(0,0,0,.2))', blend: 'normal',
+    blocks: [
+      { t: 'callout', title: '维护时间', text: '10 月 29 日（周四）03:00–05:00，预计提前结束。' },
+      { t: 'p', text: '这次维护会更新服务端核心和两个性能相关的插件，不需要更新整合包。维护期间服务器无法进入，背包、领地与经济数据不受影响。' },
+      { t: 'p', text: '维护结束后会在 QQ 群和这里同时通知。' }
+    ]
+  },
+  {
+    id: 'r12', cat: '更新', day: '16', month: '10 月', date: '10 月 16 日', author: '鲸歌运营组', read: '约 2 分钟',
+    title: '整合包 r12：性能优化与可选光影',
+    summary: '光影包改为可选内容，低配电脑可以在「本地内容」里关掉，下次启动生效。',
+    pos: '60% 72%', scale: 2, filter: 'saturate(1.05)', tint: 'rgba(0,0,0,0)', blend: 'normal',
+    blocks: [
+      { t: 'p', text: 'r12 主要是性能优化。我们换掉了两个容易卡顿的模组，并把光影包改成了可选内容。' },
+      { t: 'h2', text: '改了什么' },
+      { t: 'list', items: [
+        { head: '可选光影：', text: '默认开启。电脑带不动的话，在更新器「本地内容 › 可选内容」里关掉，下次启动就不会再下载。' },
+        { head: '性能：', text: 'Sodium 升级到 0.5.11，大型红石区域帧数明显更稳。' },
+        { head: '移除：', text: '旧版小地图，改用 Xaero 小地图，原路径点会自动迁移。' }
+      ] }
+    ]
+  },
+  {
+    id: 'rules', cat: '规则', day: '08', month: '10 月', date: '10 月 8 日', author: '阿鲸', read: '约 2 分钟',
+    title: '服务器规则更新',
+    summary: '补充了领地借用与红石机器的条款，进入服务器前请花一分钟看完。',
+    pos: '50% 36%', scale: 2.2, filter: 'saturate(1.05) brightness(.92)', tint: 'rgba(0,0,0,0)', blend: 'normal',
+    blocks: [
+      { t: 'p', text: '规则一共只有五条，这次补充的是两条大家问得最多的。完整版本在「服务器介绍 › 服务器规则」。' },
+      { t: 'h2', text: '新增的两条' },
+      { t: 'list', items: [
+        { head: '领地借用：', text: '把领地借给朋友前，记得在领地设置里添加对方，否则对方拆东西会被系统拦下。' },
+        { head: '红石机器：', text: '刷怪塔与大型农场请建在野外区域，主城内每个区块最多 64 个漏斗。' }
+      ] }
+    ]
+  }
+];
+var FILTERS = ['全部', '活动', '维护', '更新', '规则'];
+
+class Component extends DCLogic {
+  componentDidMount() {
+    this.setState({ view: 'list', articleId: 's3', filter: '全部' });
+  }
+  renderVals() {
+    var self = this;
+    var s = this.state || {};
+    var accent = this.props.accent || '#2EE8DF';
+    var filter = s.filter || '全部';
+    function open(id) {
+      return function () {
+        self.setState({ view: 'article', articleId: id });
+        var el = document.getElementById('dfs-article-scroll');
+        if (el) el.scrollTop = 0;
+      };
+    }
+    function decorate(a) {
+      var st = CAT_STYLE[a.cat] || CAT_STYLE['活动'];
+      return Object.assign({}, a, { catColor: st.color, catBg: st.bg, open: open(a.id) });
+    }
+    var list = ARTICLES.filter(function (a) { return filter === '全部' || a.cat === filter; }).map(decorate);
+    var featured = list[0] || decorate(ARTICLES[0]);
+    var rest = list.slice(1).map(function (a, i) {
+      return Object.assign({}, a, { sep: i === 0 ? '1px solid transparent' : '1px solid rgba(255,255,255,.06)' });
+    });
+    var filters = FILTERS.map(function (f) {
+      var on = f === filter;
+      var count = f === '全部' ? ARTICLES.length : ARTICLES.filter(function (a) { return a.cat === f; }).length;
+      return {
+        label: f, count: count, pressed: on ? 'true' : 'false',
+        bg: on ? 'color-mix(in oklab, ' + accent + ' 18%, transparent)' : 'rgba(255,255,255,.05)',
+        border: on ? 'color-mix(in oklab, ' + accent + ' 55%, transparent)' : 'rgba(255,255,255,.1)',
+        color: on ? '#FFFFFF' : 'rgba(243,239,230,.78)',
+        pick: function () { self.setState({ filter: f }); }
+      };
+    });
+
+    var current = decorate(ARTICLES.filter(function (a) { return a.id === s.articleId; })[0] || ARTICLES[0]);
+    var h2n = 0;
+    var blocks = current.blocks.map(function (b, i) {
+      var anchor = '';
+      if (b.t === 'h2') { h2n += 1; anchor = 'sec-' + current.id + '-' + h2n; }
+      return Object.assign({}, b, {
+        isP: b.t === 'p', isH2: b.t === 'h2', isList: b.t === 'list', isCallout: b.t === 'callout', isImg: b.t === 'img',
+        anchor: anchor, items: b.items || []
+      });
+    });
+    var toc = blocks.filter(function (b) { return b.isH2; }).map(function (b, i) {
+      return { text: b.text, anchor: b.anchor, num: (i < 9 ? '0' : '') + (i + 1) };
+    });
+    var related = ARTICLES.filter(function (a) { return a.id !== current.id; }).slice(0, 2).map(decorate);
+
+    return {
+      accent: accent,
+      accentSoft: 'color-mix(in oklab, ' + accent + ' 45%, transparent)',
+      accentTint: 'color-mix(in oklab, ' + accent + ' 14%, transparent)',
+      isList: (s.view || 'list') === 'list',
+      isArticle: s.view === 'article',
+      filters: filters,
+      featured: featured,
+      rest: rest,
+      restEmpty: rest.length === 0,
+      article: Object.assign({}, current, { blocks: blocks }),
+      toc: toc,
+      related: related,
+      back: function () { self.setState({ view: 'list' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

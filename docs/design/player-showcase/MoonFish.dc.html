@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>梦鱼小鱼</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+@keyframes mf-swim{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-5%) rotate(5deg)}}
+@keyframes mf-happy{0%,100%{transform:translateY(0)}35%,55%{transform:translateY(-8%)}}
+@keyframes mf-shiver{0%,58%,100%{transform:translateX(0)}62%{transform:translateX(-2.4%)}66%{transform:translateX(2.4%)}70%{transform:translateX(-2%)}74%{transform:translateX(1.6%)}78%{transform:translateX(0)}}
+@keyframes mf-doze{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(3%) rotate(3deg)}}
+@keyframes mf-hop{0%{transform:translateY(0) rotate(0deg)}16%{transform:translateY(-26%) rotate(-16deg)}32%{transform:translateY(0) rotate(8deg)}40%{transform:translateY(-5%) rotate(-3deg)}48%,100%{transform:translateY(0) rotate(0deg)}}
+@keyframes mf-fin{0%,100%{transform:rotate(-16deg)}50%{transform:rotate(14deg)}}
+@keyframes mf-rise{0%{transform:translateY(80%) scale(.5);opacity:0}25%{opacity:.95}100%{transform:translateY(-320%) scale(1);opacity:0}}
+@keyframes mf-spin{to{transform:rotate(360deg)}}
+@keyframes mf-twinkle{0%,100%{transform:scale(.5);opacity:.3}50%{transform:scale(1);opacity:1}}
+@keyframes mf-z{0%{transform:translate(0,40%);opacity:0}30%{opacity:1}100%{transform:translate(40%,-160%);opacity:0}}
+@keyframes mf-drip{0%,100%{transform:translateY(0)}50%{transform:translateY(22%)}}
+@keyframes mf-heart{0%{transform:translateY(30%) scale(.3);opacity:0}12%{transform:translateY(0) scale(1.15);opacity:1}45%,100%{transform:translateY(-120%) scale(.9);opacity:0}}
+.mf-swim{animation:mf-swim 1.2s ease-in-out infinite}
+.mf-happy{animation:mf-happy 1.5s ease-in-out infinite}
+.mf-shiver{animation:mf-shiver 2.6s linear infinite}
+.mf-doze{animation:mf-doze 4.4s ease-in-out infinite}
+.mf-hop{animation:mf-hop 2.2s cubic-bezier(.3,.7,.4,1) infinite}
+.mf-fin{animation:mf-fin .5s ease-in-out infinite}
+.mf-rise{animation:mf-rise 2.4s ease-in infinite}
+.mf-spin{animation:mf-spin 2.6s linear infinite}
+.mf-twinkle{animation:mf-twinkle 1.6s ease-in-out infinite}
+.mf-z{animation:mf-z 3s ease-out infinite}
+.mf-drip{animation:mf-drip 1.5s ease-in-out infinite}
+.mf-heart{animation:mf-heart 2.2s ease-out infinite}
+@media (prefers-reduced-motion: reduce){[class*="mf-"]{animation:none!important}}
+</style>
+</helmet>
+<div style="position: relative; width: {{size}}px; height: {{size}}px; flex: none; font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif; color: #F3EFE6">
+  <svg viewBox="{{viewBox}}" width="{{size}}" height="{{size}}" aria-hidden="true" style="display: block; overflow: visible">
+    <defs>
+      <linearGradient id="mf-bg" x1="92" y1="0" x2="391" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" style="stop-color: #6399EC"></stop><stop offset="1" style="stop-color: #3D70CB"></stop></linearGradient>
+      <linearGradient id="mf-body" x1="230" y1="164" x2="314" y2="371" gradientUnits="userSpaceOnUse"><stop offset="0" style="stop-color: #FFFCF1"></stop><stop offset="1" style="stop-color: #FAEFD9"></stop></linearGradient>
+      <clipPath id="mf-sil"><path d="M182 244c1-50 43-84 98-84 70 0 119 49 119 109 0 60-48 100-108 100-56 0-99-37-109-85l-46 27c-8 5-15-1-11-10l16-32-16-34c-4-9 2-15 11-10Z"></path></clipPath>
+      <clipPath id="mf-tile"><rect width="512" height="512" rx="120"></rect></clipPath>
+      <clipPath id="mf-round"><circle cx="256" cy="256" r="256"></circle></clipPath>
+    </defs>
+
+    <g style="display: {{dTile}}">
+      <rect width="512" height="512" rx="120" style="fill: url(#mf-bg)"></rect>
+      <g style="clip-path: url(#mf-tile)">
+        <path d="M0 397c112-38 172 27 278 6 82-17 144-33 234-9v118H0Z" style="fill: #AADCF0; opacity: .17"></path>
+        <path d="M0 440c120-25 202 20 308 1 80-15 143-14 204 3v68H0Z" style="fill: #2C62BA; opacity: .17"></path>
+      </g>
+    </g>
+    <g style="display: {{dBubble}}">
+      <circle cx="256" cy="256" r="256" style="fill: url(#mf-bg)"></circle>
+      <g style="clip-path: url(#mf-round)">
+        <path d="M0 397c112-38 172 27 278 6 82-17 144-33 234-9v118H0Z" style="fill: #AADCF0; opacity: .2"></path>
+        <path d="M0 440c120-25 202 20 308 1 80-15 143-14 204 3v68H0Z" style="fill: #2C62BA; opacity: .2"></path>
+      </g>
+      <path d="M54 182A215 215 0 0 1 165 61" style="fill: none; stroke: #FFFFFF; stroke-opacity: .32; stroke-width: 24; stroke-linecap: round"></path>
+    </g>
+
+    <g transform="{{place}}">
+      <g class="{{motion}}" style="transform-box: fill-box; transform-origin: 50% 50%">
+        <g transform="rotate(-14 256 264)">
+          <path d="M182 244c1-50 43-84 98-84 70 0 119 49 119 109 0 60-48 100-108 100-56 0-99-37-109-85l-46 27c-8 5-15-1-11-10l16-32-16-34c-4-9 2-15 11-10Z" style="fill: url(#mf-body)"></path>
+          <path d="M174 295c72 50 159 49 229-18l25 108-228 26Z" style="fill: #EAE3F1; opacity: .78; clip-path: url(#mf-sil)"></path>
+          <path d="M212 216c18-20 45-31 72-30" style="display: {{dDetail}}; fill: none; stroke: #FFFFFF; stroke-opacity: .7; stroke-width: {{hiW}}; stroke-linecap: round"></path>
+          <path d="m138 242 18 20m-18 31 19-18" style="display: {{dDetail}}; fill: none; stroke: #D9D1EB; stroke-opacity: .65; stroke-width: 4; stroke-linecap: round"></path>
+          <path class="{{finClass}}" d="M257 254c-22-3-36 7-30 19 5 11 22 5 30-7" style="fill: #C8BDEA; transform-box: fill-box; transform-origin: 100% 30%"></path>
+          <path d="M326 247q10 12 20 0" style="display: {{dEyeSleep}}; fill: none; stroke: #615579; stroke-width: {{eyeW}}; stroke-linecap: round"></path>
+          <path d="M325 253q11 -14 22 0" style="display: {{dEyeHappy}}; fill: none; stroke: #615579; stroke-width: {{eyeW}}; stroke-linecap: round"></path>
+          <g style="display: {{dEyeOpen}}">
+            <circle cx="336" cy="249" r="{{eyeR}}" style="fill: #615579"></circle>
+            <circle cx="332.5" cy="245.5" r="{{eyeHi}}" style="fill: #FFFFFF"></circle>
+            <path d="M321 231q12 -10 26 -3" style="fill: none; stroke: #615579; stroke-width: {{mouthW}}; stroke-linecap: round"></path>
+          </g>
+          <path d="M328 238l16 10-16 10" style="display: {{dEyeWow}}; fill: none; stroke: #615579; stroke-width: {{eyeW}}; stroke-linecap: round; stroke-linejoin: round"></path>
+          <ellipse cx="335" cy="277" rx="{{blushRx}}" ry="{{blushRy}}" style="fill: #EFB3C4"></ellipse>
+          <path d="M369 274q5 6 10 0" style="display: {{dMouthSmile}}; fill: none; stroke: #615579; stroke-width: {{mouthW}}; stroke-linecap: round"></path>
+          <path d="M366 271q8 11 17 0" style="display: {{dMouthBig}}; fill: none; stroke: #615579; stroke-width: {{mouthW}}; stroke-linecap: round"></path>
+          <path d="M367 281q6 -6 12 0" style="display: {{dMouthFrown}}; fill: none; stroke: #615579; stroke-width: {{mouthW}}; stroke-linecap: round"></path>
+        </g>
+      </g>
+
+      <g style="display: {{dBubbles}}">
+        <g transform="{{tBub}}">
+          <circle class="mf-rise" cx="398" cy="228" r="9" style="fill: none; stroke: #E6DFFB; stroke-width: 4; transform-box: fill-box; transform-origin: 50% 50%"></circle>
+          <circle class="mf-rise" cx="406" cy="212" r="6" style="fill: none; stroke: #E6DFFB; stroke-width: 3.5; transform-box: fill-box; transform-origin: 50% 50%; animation-delay: -.8s"></circle>
+          <circle class="mf-rise" cx="394" cy="220" r="4.5" style="fill: none; stroke: #E6DFFB; stroke-width: 3; transform-box: fill-box; transform-origin: 50% 50%; animation-delay: -1.6s"></circle>
+        </g>
+      </g>
+      <g style="display: {{dZ}}">
+        <g transform="{{tZ}}">
+          <path class="mf-z" d="M330 128h24l-24 24h24" style="fill: none; stroke: #E6DFFB; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; transform-box: fill-box; transform-origin: 50% 50%"></path>
+          <path class="mf-z" d="M364 100h16l-16 16h16" style="fill: none; stroke: #E6DFFB; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; transform-box: fill-box; transform-origin: 50% 50%; animation-delay: -1.5s"></path>
+        </g>
+      </g>
+      <g style="display: {{dSweat}}">
+        <g transform="{{tSweat}}">
+          <g class="mf-drip" style="transform-box: fill-box; transform-origin: 50% 50%">
+            <path d="M388 160c8 11 12 17 12 23a12 12 0 0 1-24 0c0-6 4-12 12-23Z" style="fill: #9FD8FF"></path>
+            <path d="M383 182q0 5 4 7" style="fill: none; stroke: #FFFFFF; stroke-opacity: .8; stroke-width: 3; stroke-linecap: round"></path>
+          </g>
+        </g>
+      </g>
+      <g style="display: {{dHeart}}">
+        <g transform="{{tHeart}}">
+          <path class="mf-heart" d="M380 166c-15-10-22-17-22-25a10 10 0 0 1 22-5 10 10 0 0 1 22 5c0 8-7 15-22 25Z" style="fill: #FF8FB1; transform-box: fill-box; transform-origin: 50% 50%"></path>
+        </g>
+      </g>
+      <g style="display: {{dSpark}}">
+        <g transform="{{tSpark1}}">
+          <path class="mf-twinkle" d="M382 116c2 6 4 8 10 10-6 2-8 4-10 10-2-6-4-8-10-10 6-2 8-4 10-10Z" style="fill: #FFE6AD; transform-box: fill-box; transform-origin: 50% 50%"></path>
+        </g>
+        <g transform="{{tSpark2}}">
+          <path class="mf-twinkle" d="M382 116c2 6 4 8 10 10-6 2-8 4-10 10-2-6-4-8-10-10 6-2 8-4 10-10Z" style="fill: #FFE6AD; transform-box: fill-box; transform-origin: 50% 50%; animation-delay: -.8s"></path>
+        </g>
+      </g>
+    </g>
+
+    <g style="display: {{dBadge}}" transform="{{badgeT}}">
+      <circle cx="382" cy="126" r="25" style="fill: #FFE6AD; opacity: .1"></circle>
+      <g class="{{badgeSpin}}" style="display: {{dArrow}}; transform-box: fill-box; transform-origin: 50% 50%">
+        <circle cx="382" cy="126" r="25" style="fill: none; stroke: none"></circle>
+        <path d="M392.57 148.66A25 25 0 1 1 403.65 113.5M395.1 108.59l8.55 4.91.02-9.86" style="fill: none; stroke: #FFE6AD; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round"></path>
+      </g>
+      <circle cx="382" cy="126" r="25" style="display: {{dDone}}; fill: none; stroke: #FFE6AD; stroke-width: 5.5"></circle>
+      <path d="M382 116c2 6 4 8 10 10-6 2-8 4-10 10-2-6-4-8-10-10 6-2 8-4 10-10Z" style="fill: #FFE6AD"></path>
+      <circle cx="370" cy="164" r="4.2" style="fill: #E6DFFB; opacity: .8"></circle>
+      <circle cx="359" cy="177" r="2.5" style="fill: #E6DFFB; opacity: .65"></circle>
+    </g>
+  </svg>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mood":{"editor":"enum","options":["swim","happy","worried","sleep","wow"],"default":"swim","section":"小鱼"},"size":{"editor":"int","default":160,"min":16,"max":320,"section":"小鱼"},"shape":{"editor":"enum","options":["none","tile","bubble"],"default":"tile","section":"小鱼"},"badge":{"editor":"boolean","default":true,"section":"小鱼"},"$preview":{"width":160,"height":160}}'>
+// The admin app's moon fish (admin-desktop/src/brand-logo.ts), drawn per mood:
+// swim = dreaming while it swims (updating), happy (done), worried (failed), sleep (offline), wow (someone petted it).
+var MOODS = {
+  swim: { eye: 'sleep', mouth: 'smile', motion: 'mf-swim', fin: true, bubbles: true },
+  happy: { eye: 'happy', mouth: 'big', motion: 'mf-happy', spark: true },
+  worried: { eye: 'open', mouth: 'frown', motion: 'mf-shiver', sweat: true },
+  sleep: { eye: 'sleep', mouth: 'smile', motion: 'mf-doze', z: true },
+  wow: { eye: 'wow', mouth: 'big', motion: 'mf-hop', fin: true, heart: true }
+};
+
+function around(x, y, k) { return 'translate(' + x + ' ' + y + ') scale(' + k.toFixed(3) + ') translate(' + (-x) + ' ' + (-y) + ')'; }
+
+class Component extends DCLogic {
+  renderVals() {
+    var size = parseInt(this.props.size, 10);
+    if (!(size > 0)) size = 160;
+    var shape = this.props.shape === 'tile' || this.props.shape === 'bubble' ? this.props.shape : 'none';
+    var mood = MOODS[this.props.mood] ? this.props.mood : 'swim';
+    var badge = this.props.badge === true || this.props.badge === 'true';
+    var m = MOODS[mood];
+    var framed = shape !== 'none';
+    // Fish units per screen pixel, so the face keeps a readable line weight at 30px and at 160px.
+    var u = framed ? 512 / size / 1.2 : 312 / size;
+    var eyeW = Math.max(1.5, size * 0.022) * u;
+    var eyeR = Math.max(2.6, size * 0.06) / 2 * u;
+    var ex = Math.max(1, Math.min(framed ? 1.6 : 2.4, 64 / size));
+    var D = function (on) { return on ? 'inline' : 'none'; };
+    return {
+      size: size,
+      viewBox: framed ? '0 0 512 512' : '100 110 312 312',
+      place: framed ? 'translate(-8 8) translate(256 264) scale(1.2) translate(-256 -264)' : 'translate(0 0)',
+      badgeT: framed ? 'translate(8 -14)' : 'translate(0 0)',
+      dTile: D(shape === 'tile'),
+      dBubble: D(shape === 'bubble'),
+      dBadge: D(badge),
+      dArrow: D(mood !== 'happy'),
+      dDone: D(mood === 'happy'),
+      badgeSpin: mood === 'swim' ? 'mf-spin' : '',
+      motion: m.motion,
+      finClass: m.fin ? 'mf-fin' : '',
+      dDetail: D(size >= 48),
+      hiW: Math.max(6, eyeW * 0.8).toFixed(1),
+      eyeW: eyeW.toFixed(1),
+      mouthW: (eyeW * 0.68).toFixed(1),
+      eyeR: eyeR.toFixed(1),
+      eyeHi: (eyeR * 0.34).toFixed(1),
+      blushRx: Math.max(13, 2.4 * u).toFixed(1),
+      blushRy: Math.max(8, 1.5 * u).toFixed(1),
+      dEyeSleep: D(m.eye === 'sleep'),
+      dEyeHappy: D(m.eye === 'happy'),
+      dEyeOpen: D(m.eye === 'open'),
+      dEyeWow: D(m.eye === 'wow'),
+      dMouthSmile: D(size >= 56 && m.mouth === 'smile'),
+      dMouthBig: D(size >= 56 && m.mouth === 'big'),
+      dMouthFrown: D(size >= 56 && m.mouth === 'frown'),
+      dBubbles: D(!!m.bubbles),
+      dZ: D(!!m.z),
+      dSweat: D(!!m.sweat),
+      dHeart: D(!!m.heart),
+      dSpark: D(!!m.spark),
+      tBub: around(398, 222, ex),
+      tZ: around(348, 140, ex),
+      tSweat: around(388, 176, ex),
+      tHeart: around(380, 150, ex),
+      tSpark1: 'translate(158 166) scale(' + (1.7 * ex).toFixed(3) + ') translate(-382 -126)',
+      tSpark2: 'translate(398 322) scale(' + (1.1 * ex).toFixed(3) + ') translate(-382 -126)'
+    };
+  }
+}
+</script>
+</body>
+</html>

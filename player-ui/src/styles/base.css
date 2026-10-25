@@ -1,0 +1,397 @@
+/* ==== Foundations: type, colour, the shared controls ======================================== */
+
+/* HarmonyOS Sans for all interface text (HarmonyOS Sans Fonts License, see
+   assets/fonts/HarmonyOS_Sans_SC_LICENSE.txt): Regular to read, Bold for labels and numbers. */
+@font-face {
+  font-family: "HarmonyOS Sans SC";
+  src: url("../assets/fonts/HarmonyOS_Sans_SC_Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "HarmonyOS Sans SC";
+  src: url("../assets/fonts/HarmonyOS_Sans_SC_Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Owner settings; the store overwrites these from the published branding. */
+  --dfs-accent: #2ee8df;
+  --dfs-secondary: #b06cff;
+  --dfs-title-color: #fff6e0;
+  --dfs-topbar-rgb: 3, 7, 8;
+  --dfs-topbar-opacity: 0.22;
+  --dfs-card-rgb: 3, 7, 8;
+  --dfs-card-radius: 18px;
+  --dfs-card-alpha: 0.6;
+  --dfs-card-blur: 18px;
+
+  /* Two voices: the serif for titles, HarmonyOS Sans for everything else (Bold for labels,
+     buttons and numbers, Regular for what you read). */
+  --font-display: "DFS Title Serif", "Songti SC", "SimSun", serif;
+  --font-body: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+  --font-strong: var(--font-body);
+  --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, ui-monospace, monospace;
+
+  /* Night ink and warm paper. */
+  --ink: #07090d;
+  --ink-raised: #0e1118;
+  --paper: #f4efe6;
+  --text-1: #f4efe6;
+  --text-2: rgba(244, 239, 230, 0.72);
+  --text-3: rgba(244, 239, 230, 0.5);
+  --text-4: rgba(244, 239, 230, 0.32);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.14);
+  --fill-1: rgba(255, 255, 255, 0.035);
+  --fill-2: rgba(255, 255, 255, 0.07);
+  --fill-3: rgba(255, 255, 255, 0.12);
+
+  --gold: #f2c36b;
+  --orange: #ff9a62;
+  --blue: #8cb8ff;
+  --violet: #b9a2ff;
+  --danger: #ff7b6e;
+  --ok: #6fe3a6;
+
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: var(--dfs-card-radius);
+  /* The frosted card: the owner's card colour, alpha and blur, a light rim and a soft shadow. */
+  --glass: rgba(var(--dfs-card-rgb), var(--dfs-card-alpha));
+  --glass-strong: rgba(var(--dfs-card-rgb), calc(var(--dfs-card-alpha) + 0.14));
+  --glass-filter: blur(var(--dfs-card-blur)) saturate(1.4);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --content-gutter: max(56px, calc((100% - 1160px) / 2));
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  color: var(--text-1);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+strong,
+b {
+  font-family: var(--font-strong);
+  font-weight: 700;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dfs-accent), white 20%);
+  outline-offset: 3px;
+}
+
+.app-icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Small capitals above a title: the one place letters are spaced. */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dfs-accent);
+  font-family: var(--font-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.eyebrow.muted {
+  color: var(--text-3);
+}
+
+.index-number {
+  flex: none;
+  color: var(--text-4);
+  font-family: var(--font-strong);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+/* ---- Buttons: paper for the one thing to do, a hairline for the rest ------------------------- */
+
+.button-primary,
+.button-secondary {
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 11px;
+  font-family: var(--font-strong);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms var(--ease);
+}
+
+.button-primary {
+  background: var(--paper);
+  color: #0a0c11;
+}
+
+.button-primary:hover {
+  background: #fffaf1;
+}
+
+.button-primary:active,
+.button-secondary:active {
+  transform: translateY(1px);
+}
+
+.button-secondary {
+  border: 1px solid var(--line-2);
+  background: var(--fill-1);
+  color: var(--text-1);
+}
+
+.button-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: var(--fill-2);
+}
+
+.button-primary .app-icon,
+.button-secondary .app-icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
+}
+
+/* ---- Switch and checkbox, drawn on real inputs so keyboards and tests keep working ----------- */
+
+.dfs-switch,
+.optional-switch input {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex: none;
+  display: block;
+  margin: 0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.14);
+  appearance: none;
+  cursor: pointer;
+  transition: background-color 220ms ease;
+}
+
+.dfs-switch::before,
+.optional-switch input::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fbf8f2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 240ms var(--ease-out);
+}
+
+.dfs-switch:checked,
+.optional-switch input:checked {
+  background: var(--dfs-accent);
+}
+
+.dfs-switch:checked::before,
+.optional-switch input:checked::before {
+  transform: translateX(16px);
+}
+
+.dfs-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.dfs-check {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.32);
+  border-radius: 5px;
+  background: transparent center / 12px 12px no-repeat;
+  appearance: none;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.dfs-check:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.dfs-check:checked {
+  border-color: var(--dfs-accent);
+  background-color: var(--dfs-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6.2 4.9 8.4 9.4 3.6' fill='none' stroke='%2307090d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.dfs-check:indeterminate {
+  border-color: var(--dfs-accent);
+  background-color: color-mix(in oklab, var(--dfs-accent) 30%, transparent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' fill='none' stroke='%23f4efe6' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.dfs-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ---- Search fields with the magnifier inside --------------------------------------------------- */
+
+.search-field {
+  width: min(340px, 100%);
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--fill-1);
+  color: var(--text-3);
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.search-field:focus-within {
+  border-color: color-mix(in oklab, var(--dfs-accent) 55%, transparent);
+  background: var(--fill-2);
+}
+
+.search-field .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.search-field input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-1);
+  font-size: 13px;
+}
+
+.search-field input::placeholder {
+  color: var(--text-4);
+}
+
+.search-field input::-webkit-search-cancel-button {
+  filter: invert(1) opacity(0.5);
+}
+
+/* ---- Scrollbars and motion ------------------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14) padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26) padding-box;
+}
+
+@keyframes dfs-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dfs-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes dfs-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

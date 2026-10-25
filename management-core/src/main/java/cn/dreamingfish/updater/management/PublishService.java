@@ -11,6 +11,9 @@ import cn.dreamingfish.updater.protocol.ManifestFile;
 import cn.dreamingfish.updater.protocol.ManifestValidator;
 import cn.dreamingfish.updater.protocol.PathSafety;
 import cn.dreamingfish.updater.protocol.PlayerMusicTrack;
+import cn.dreamingfish.updater.protocol.Branding;
+import cn.dreamingfish.updater.protocol.PlayerPresentationImage;
+import cn.dreamingfish.updater.protocol.ShowcaseRules;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
 import cn.dreamingfish.updater.protocol.ReleaseManifest;
 import cn.dreamingfish.updater.protocol.Withdrawal;
@@ -88,6 +91,7 @@ public final class PublishService {
                 objects.require(project.branding().coverObject());
             }
             verifyMusicObjects(project.branding().musicTracks());
+            Branding publishedBranding = publishedImages(project.branding());
 
             List<ScannedFile> finalScan = scanner.scan(project);
             if (!preview.files().equals(finalScan)) {
@@ -131,7 +135,7 @@ public final class PublishService {
                     List.of(),
                     List.of(),
                     releasedPaths,
-                    project.branding(),
+                    publishedBranding,
                     targetFiles,
                     rules.cleanupDirectories(),
                     ScanService.publishedGroups(finalScan, rules),
@@ -170,6 +174,7 @@ public final class PublishService {
                 objects.require(old.branding().coverObject());
             }
             verifyMusicObjects(old.branding().musicTracks());
+            publishedImages(old.branding());
 
             Instant now = Instant.now();
             long sequence = project.nextSequence();
@@ -452,6 +457,22 @@ public final class PublishService {
 
     private static String fold(String path) {
         return path.replace('\\', '/').toLowerCase(Locale.ROOT);
+    }
+
+    private Branding publishedImages(Branding branding) {
+        var available = new java.util.HashMap<String, PlayerPresentationImage>();
+        if (branding.presentationImages() != null) {
+            for (var image : branding.presentationImages()) available.put(image.fileName(), image);
+        }
+        List<PlayerPresentationImage> selected = new ArrayList<>();
+        for (String name : ShowcaseRules.referencedImageFiles(branding)) {
+            var image = available.get(name);
+            if (image == null) throw new ManagementException("展示图片尚未上传，请先上传后重新检查并发布：" + name);
+            try { objects.verify(objects.require(image.sha256()), image.sha256(), image.size()); }
+            catch (IOException error) { throw new ManagementException("无法校验展示图片：" + name, error); }
+            selected.add(image);
+        }
+        return branding.withPresentationImages(branding.presentationImages() == null && selected.isEmpty() ? null : selected);
     }
 
     private void verifyMusicObjects(List<PlayerMusicTrack> tracks) {

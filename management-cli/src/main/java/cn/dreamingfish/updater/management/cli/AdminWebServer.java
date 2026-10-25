@@ -29,6 +29,11 @@ import cn.dreamingfish.updater.protocol.ManifestFile;
 import cn.dreamingfish.updater.protocol.PlayerCustomPage;
 import cn.dreamingfish.updater.protocol.PlayerContentPage;
 import cn.dreamingfish.updater.protocol.PlayerNewsArticle;
+import cn.dreamingfish.updater.protocol.PlayerSpotlight;
+import cn.dreamingfish.updater.protocol.PlayerServerCard;
+import cn.dreamingfish.updater.protocol.PlayerEvent;
+import cn.dreamingfish.updater.protocol.PlayerTheme;
+import cn.dreamingfish.updater.protocol.ShowcaseRules;
 import cn.dreamingfish.updater.protocol.ProtocolException;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
@@ -426,6 +431,32 @@ final class AdminWebServer implements AutoCloseable {
         }
 
         String projectId = segments.get(2);
+        if (segments.size() == 4 && segments.get(3).equals("presentation-images")
+                && exchange.getRequestMethod().equals("GET")) {
+            var images = root.services().database().requireProject(projectId).branding().presentationImages();
+            sendJson(exchange, 200, Map.of("presentationImages", images == null ? List.of() : images));
+            return;
+        }
+        if (segments.size() == 5 && segments.get(3).equals("presentation-images")) {
+            String fileName = segments.get(4);
+            if (fileName.equals("upload") && exchange.getRequestMethod().equals("POST")) {
+                sendJson(exchange, 201, mutate(() -> uploadPresentationImage(exchange, projectId)));
+            } else if (exchange.getRequestMethod().equals("GET")) {
+                ShowcaseRules.validateImageFileName(fileName);
+                var images = root.services().database().requireProject(projectId).branding().presentationImages();
+                var image = (images == null ? java.util.stream.Stream.<cn.dreamingfish.updater.protocol.PlayerPresentationImage>empty() : images.stream())
+                        .filter(item -> item.fileName().equals(fileName)).findFirst()
+                        .orElseThrow(() -> new WebApiException(404, "image_not_found", "展示图片不存在"));
+                var file = root.services().objects().require(image.sha256());
+                root.services().objects().verify(file, image.sha256(), image.size());
+                exchange.getResponseHeaders().set("Content-Type", presentationImageMime(fileName));
+                exchange.getResponseHeaders().set("Cache-Control", "no-store");
+                sendBytes(exchange, 200, Files.readAllBytes(file));
+            } else if (exchange.getRequestMethod().equals("DELETE")) {
+                sendJson(exchange, 200, mutate(() -> projectView(root.services().projects().removePresentationImage(projectId, fileName))));
+            } else throw new WebApiException(405, "method_not_allowed", "展示图片只允许 GET、DELETE 或 POST 上传");
+            return;
+        }
         if (segments.size() == 4 && segments.get(3).equals("cover")) {
             if (exchange.getRequestMethod().equals("GET")) {
                 sendProjectCover(exchange, projectId);
@@ -877,6 +908,39 @@ final class AdminWebServer implements AutoCloseable {
                     "请选择 PNG、JPEG、GIF、BMP 或 WebP 图片");
         }
         return projectView(root.services().projects().setCover(projectId, source));
+    }
+
+    private Map<String, Object> uploadPresentationImage(HttpExchange exchange, String projectId) throws IOException {
+        String fileName = ShowcaseRules.validateImageFileName(query(exchange.getRequestURI(), "fileName"));
+        long expected = contentLength(exchange);
+        if (expected == 0) throw new WebApiException(400, "empty_image", "展示图片不能为空");
+        if (expected > ShowcaseRules.MAX_IMAGE_BYTES) throw new WebApiException(413, "image_too_large", "单张展示图片不能超过 8 MiB");
+        Path directory = Files.createDirectories(Path.of(root.settings().dataDirectory()).resolve("tmp"));
+        Path temporary = Files.createTempFile(directory, "presentation-upload-", ".tmp");
+        try {
+            long total = 0;
+            try (InputStream input = exchange.getRequestBody(); OutputStream output = Files.newOutputStream(temporary)) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    total += read;
+                    if (total > ShowcaseRules.MAX_IMAGE_BYTES) throw new WebApiException(413, "image_too_large", "单张展示图片不能超过 8 MiB");
+                    output.write(buffer, 0, read);
+                }
+            }
+            return projectView(root.services().projects().addPresentationImage(projectId, fileName, temporary));
+        } finally { Files.deleteIfExists(temporary); }
+    }
+
+    private static String presentationImageMime(String fileName) {
+        String extension = fileName.substring(fileName.lastIndexOf('.') + 1);
+        return switch (extension) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            default -> throw new WebApiException(415, "unsupported_image", "图片格式不支持");
+        };
     }
 
     private Map<String, Object> uploadMusicTrack(
@@ -1463,7 +1527,17 @@ final class AdminWebServer implements AutoCloseable {
                 coverObject, accent, secondary, brandName, brandEnglishName,
                 newsArticles, customPage, contentPages,
                 current == null ? null : current.musicTracks(),
-                welcomeText, topBarColor, cardColor, topBarOpacity, titleColor);
+                welcomeText, topBarColor, cardColor, topBarOpacity, titleColor,
+                request.spotlights != null ? request.spotlights : current == null ? null : current.spotlights(),
+                request.serverCard != null ? request.serverCard : current == null ? null : current.serverCard(),
+                request.events != null ? request.events : current == null ? null : current.events(),
+                request.theme != null ? request.theme : current == null ? null : current.theme(),
+                current == null ? null : current.presentationImages(),
+                request.addressPlacement != null ? request.addressPlacement
+                        : current == null ? null : current.addressPlacement(),
+                // Blank clears the logo, so the page sends "" rather than leaving the field out.
+                request.brandLogoFile != null ? request.brandLogoFile
+                        : current == null ? null : current.brandLogoFile());
     }
 
     private Map<String, Object> projectSummary(
@@ -1485,6 +1559,7 @@ final class AdminWebServer implements AutoCloseable {
         result.put("sourceDirectory", project.sourceDirectory().toString());
         result.put("publicBaseUrl", project.publicBaseUrl());
         result.put("branding", project.branding());
+        result.put("presentationImages", project.branding().presentationImages() == null ? List.of() : project.branding().presentationImages());
         Map<String, Object> maintenance = new LinkedHashMap<>();
         maintenance.put("presets", project.rules().presets());
         maintenance.put("cleanupDirectories", project.rules().cleanupDirectories());
@@ -1587,6 +1662,7 @@ final class AdminWebServer implements AutoCloseable {
         result.put("previewDigest", preview.confirmationDigest());
         result.put("projectDigest", preview.projectDigest());
         result.put("policyChanges", preview.policyChanges());
+        result.put("presentationChanges", preview.presentationChanges());
         result.put("warnings", preview.warnings());
         result.put("requiresPlayerUpgrade", preview.requiresPlayerProgramAcknowledgement());
         result.put("policyPlayerVersion", ScanService.POLICY_PLAYER_VERSION);
@@ -2011,7 +2087,13 @@ final class AdminWebServer implements AutoCloseable {
             PlayerCustomPage customPage,
             List<PlayerContentPage> contentPages,
             String coverPath,
-            Boolean removeCover
+            Boolean removeCover,
+            List<PlayerSpotlight> spotlights,
+            PlayerServerCard serverCard,
+            List<PlayerEvent> events,
+            PlayerTheme theme,
+            String addressPlacement,
+            String brandLogoFile
     ) {
     }
 

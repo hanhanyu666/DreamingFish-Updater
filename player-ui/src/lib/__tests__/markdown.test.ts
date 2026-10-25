@@ -10,6 +10,14 @@ describe("renderMarkdown", () => {
     expect(html).toContain('<em class="markdown-emphasis">斜体</em>');
   });
 
+  it("keeps bold that ends or starts on Chinese punctuation", () => {
+    expect(renderMarkdown("- **永夜维度：**从主城进入")).toContain('<strong class="markdown-strong">永夜维度：</strong>从主城进入');
+    expect(renderMarkdown("这是**「重点」**内容")).toContain('这是<strong class="markdown-strong">「重点」</strong>内容');
+    expect(renderMarkdown("**a *b* c**")).toContain('<strong class="markdown-strong">a <em class="markdown-emphasis">b</em> c</strong>');
+    expect(renderMarkdown("a ** b ** c")).not.toContain("<strong");
+    expect(renderMarkdown("`**不是粗体**`")).toContain('<code class="markdown-inline-code">**不是粗体**</code>');
+  });
+
   it("renders quotes, lists, code and dividers", () => {
     const html = renderMarkdown("> 引用\n\n- 一\n- 二\n\n```java\nint x;\n```\n\n---");
     expect(html).toContain('<blockquote class="markdown-quote">');

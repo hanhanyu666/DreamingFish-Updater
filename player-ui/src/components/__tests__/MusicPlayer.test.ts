@@ -60,18 +60,60 @@ describe("MusicPlayer", () => {
     expect(root.querySelector(".music-player-expanded")).toBeNull();
     expect(root.querySelector(".music-player-collapsed-track")?.textContent).toContain("first.mp3");
 
+    expect(root.querySelector(".music-player-toggle")?.getAttribute("aria-label")).toContain("first.mp3");
+
     collapsed?.click();
     await nextTick();
     expect(root.querySelector(".music-player-expanded")).not.toBeNull();
-    expect(root.querySelector(".music-player-select")).not.toBeNull();
+    expect(root.querySelector(".music-player-collapsed")?.getAttribute("aria-expanded")).toBe("true");
+    const options = () => [...root!.querySelectorAll<HTMLButtonElement>(".music-player-track-option")];
+    expect(options().map((option) => option.querySelector(".music-player-track-name")?.textContent)).toEqual(["first.mp3", "第二首"]);
+    expect(options().map((option) => option.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
 
-    showPage("ABOUT");
+    options()[1].click();
     await nextTick();
-    const contentPlayer = root.querySelector<HTMLElement>(".music-player");
-    expect(contentPlayer?.classList.contains("on-content-page")).toBe(true);
-    expect(contentPlayer?.classList.contains("expanded")).toBe(true);
+    expect(options().map((option) => option.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
+    expect(root.querySelector(".music-player-collapsed-track")?.textContent).toContain("第二首");
 
     root.querySelector<HTMLButtonElement>(".music-player-collapse")?.click();
+    await nextTick();
+    expect(root.querySelector(".music-player-expanded")).toBeNull();
+  });
+
+  it("closes the window on a click elsewhere or on Escape", async () => {
+    handleSidecarMessage({
+      type: "branding",
+      branding: {
+        productName: "测试整合包",
+        subtitle: "测试",
+        serverAddress: "",
+        coverObject: null,
+        accentColor: "#2ee8df",
+        secondaryAccentColor: "#b06cff",
+        brandName: "测试服",
+        brandEnglishName: "Test",
+        musicTracks: [{ id: "first", title: "第一首", fileName: "first.mp3" }],
+      },
+    });
+    root = document.createElement("div");
+    document.body.append(root);
+    app = createApp(MusicPlayer);
+    app.mount(root);
+    await nextTick();
+
+    root.querySelector<HTMLButtonElement>(".music-player-collapsed")?.click();
+    await nextTick();
+    expect(root.querySelector(".music-player-expanded")).not.toBeNull();
+    // A single track needs no list.
+    expect(root.querySelector(".music-player-list")).toBeNull();
+
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    await nextTick();
+    expect(root.querySelector(".music-player-expanded")).toBeNull();
+
+    root.querySelector<HTMLButtonElement>(".music-player-collapsed")?.click();
+    await nextTick();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await nextTick();
     expect(root.querySelector(".music-player-expanded")).toBeNull();
   });

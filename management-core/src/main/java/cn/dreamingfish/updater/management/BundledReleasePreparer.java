@@ -82,6 +82,12 @@ public final class BundledReleasePreparer {
         SignedManifest signed = readAndVerify(project, stored);
         validateProtectedPaths(instance, home, signed.manifest());
         verifyMusicObjects(signed.manifest());
+        if (signed.manifest().branding().presentationImages() != null) {
+            for (var image : signed.manifest().branding().presentationImages()) {
+                try { objects.verify(objects.require(image.sha256()), image.sha256(), image.size()); }
+                catch (IOException error) { throw new ManagementException("无法校验展示图片：" + image.fileName(), error); }
+            }
+        }
 
         List<PreparedFile> files = preflightFiles(instance, signed.manifest());
         MaintenanceModel model = MaintenanceModel.of(signed.manifest());

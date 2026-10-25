@@ -21,6 +21,11 @@ public interface PlayerViewPort {
 
     void setBranding(Branding branding);
 
+    default void setServerStatus(ServerStatus status) { }
+
+    /** Invalidates image read failures and cached files after optional resources have arrived. */
+    default void presentationImagesUpdated() { }
+
     void setBackground(Path localCover);
 
     void setLogs(List<String> lines);

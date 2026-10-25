@@ -55,8 +55,13 @@ describe("DetailsDrawer local file management", () => {
     const element = mount();
     await nextTick();
 
-    expect(element.querySelectorAll('[role="tab"]')).toHaveLength(3);
-    expect(element.querySelector("#local-option-panel")).not.toBeNull();
+    const tabs = [...element.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs.map((tab) => tab.querySelector(".drawer-rail-label")?.textContent)).toEqual([
+      "本次更新", "更新记录", "运行记录", "可选内容", "文件管理", "模组启停", "备份与恢复",
+    ]);
+    expect(element.querySelector(".drawer-rail-item.selected")?.textContent).toContain("可选内容");
+    expect(element.querySelector("#drawer-panel-options")).not.toBeNull();
+    expect(element.querySelector(".drawer-page-title")?.textContent).toBe("可选内容");
     expect(element.querySelector(".optional-state")?.textContent).toContain("跟随服主默认");
     expect(element.querySelector(".optional-member")?.textContent).toBe("Iris Shaders");
     const toggle = element.querySelector<HTMLInputElement>(".optional-switch input");
@@ -81,7 +86,8 @@ describe("DetailsDrawer local file management", () => {
     await nextTick();
 
     expect(sent).toContainEqual({ command: "archives" });
-    expect(element.querySelector(".drawer-tab.selected")?.textContent?.trim()).toBe("备份与恢复");
+    expect(element.querySelector(".drawer-rail-item.selected .drawer-rail-label")?.textContent).toBe("备份与恢复");
+    expect(element.querySelector(".drawer-rail-item.selected .drawer-rail-badge")?.textContent?.trim()).toBe("1");
     expect(element.querySelector(".backup-heading strong")?.textContent).toBe("更新到版本 1.1 时");
     const reason = element.querySelector(".backup-file-reason")?.textContent ?? "";
     expect(reason).toContain("服主撤回了这个版本");
@@ -89,32 +95,52 @@ describe("DetailsDrawer local file management", () => {
     expect(reason).toContain("进入主城会崩溃");
     element.querySelector<HTMLButtonElement>(".backup-file .backup-action")?.click();
     expect(sent).toContainEqual({ command: "restore-archive", archiveId: "a1", path: "mods/old.jar" });
+    element.querySelector<HTMLButtonElement>(".drawer-page-action")?.click();
+    expect(sent).toContainEqual({ command: "open-archive" });
   });
 
-  it("explains both local management modes and switches their panels", async () => {
+  it("switches local management sections from the rail and explains each one", async () => {
+    const sent = captureCommands();
     openDrawer("FILES");
     showLocalMode("FILES");
-
-    root = document.createElement("div");
-    document.body.append(root);
-    mountedApp = createApp(DetailsDrawer);
-    mountedApp.mount(root);
+    const element = mount();
     await nextTick();
 
-    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-    expect(tabs).toHaveLength(2);
-    expect(tabs[0].textContent).toContain("文件管理范围");
-    expect(tabs[0].textContent).toContain("决定哪些文件随整合包更新");
-    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
-    expect(root.querySelector("#local-file-management-panel")).not.toBeNull();
+    const rail = () => [...element.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(rail()).toHaveLength(6);
+    const files = rail().find((tab) => tab.textContent?.includes("文件管理"));
+    expect(files?.getAttribute("aria-selected")).toBe("true");
+    expect(element.querySelector("#drawer-panel-files")).not.toBeNull();
+    expect(element.querySelector(".drawer-page-title")?.textContent).toBe("文件管理范围");
+    expect(element.querySelector(".drawer-page-description")?.textContent).toContain("取消勾选“管理”后改为自行管理");
+    expect(element.querySelector(".drawer-page-action")?.textContent?.trim()).toBe("恢复全部管理");
 
-    tabs[1].click();
+    rail().find((tab) => tab.textContent?.includes("模组启停"))?.click();
+    await nextTick();
+    expect(rail().find((tab) => tab.textContent?.includes("模组启停"))?.getAttribute("aria-selected")).toBe("true");
+    expect(element.querySelector("#drawer-panel-mods")).not.toBeNull();
+    expect(element.querySelector(".drawer-page-description")?.textContent).toContain("停用必要模组可能导致游戏崩溃");
+    expect(element.querySelector(".drawer-page-action")?.textContent?.trim()).toBe("恢复整合包默认");
+
+    rail().find((tab) => tab.textContent?.includes("更新记录"))?.click();
+    await nextTick();
+    expect(element.querySelector("#drawer-panel-history")).not.toBeNull();
+    expect(element.querySelector(".drawer-page-action")).toBeNull();
+
+    element.querySelector<HTMLButtonElement>(".drawer-rail-folder")?.click();
+    expect(sent).toContainEqual({ command: "open-directory" });
+  });
+
+  it("marks running log errors on the rail", async () => {
+    openDrawer("UPDATE");
+    setLogs(["2026-08-13 12:08:42.184 | ERROR | 整合包更新 | 更新失败：连接超时"]);
+    const element = mount();
     await nextTick();
 
-    expect(tabs[1].textContent).toContain("模组启停");
-    expect(tabs[1].textContent).toContain("启用或停用整合包内模组");
-    expect(tabs[1].getAttribute("aria-selected")).toBe("true");
-    expect(root.querySelector("#local-mod-management-panel")).not.toBeNull();
+    const badge = element.querySelector(".drawer-rail-badge.alert");
+    expect(badge?.textContent?.trim()).toBe("1 错误");
+    expect(element.querySelector(".drawer-page-title")?.textContent).toBe("本次更新");
+    expect(element.querySelector(".update-details-page .drawer-empty")?.textContent).toContain("尚未完成更新");
   });
 
   it("groups running logs by date and separates levels from messages", async () => {

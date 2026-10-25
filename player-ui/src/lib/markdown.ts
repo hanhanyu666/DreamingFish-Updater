@@ -57,8 +57,10 @@ renderer.list = function (this: Renderer, { ordered, start, items }: Tokens.List
   let number = ordered ? Math.max(1, typeof start === "number" ? start : 1) : 1;
   const rows = items
     .map((item) => {
-      const marker = ordered ? number++ + "." : "•";
-      return `<div class="markdown-list-row"><span class="markdown-list-marker">${marker}</span><div class="markdown-list-item">${this.parser.parse(item.tokens)}</div></div>`;
+      // Unordered lists get the design's small accent square instead of a bullet glyph.
+      const marker = ordered ? number++ + "." : "";
+      const markerClass = ordered ? "markdown-list-marker" : "markdown-list-marker markdown-list-bullet";
+      return `<div class="markdown-list-row"><span class="${markerClass}" aria-hidden="${!ordered}">${marker}</span><div class="markdown-list-item">${this.parser.parse(item.tokens)}</div></div>`;
     })
     .join("");
   return `<div class="markdown-list">${rows}</div>`;
@@ -98,7 +100,8 @@ renderer.image = function ({ href, text }: Tokens.Image) {
   if (!source) {
     return `<span class="markdown-image-missing">${alternative}</span>`;
   }
-  return `<span class="markdown-image-frame"><img class="markdown-image" src="${escapeHtml(source)}" alt="${alternative}" /><span class="markdown-image-missing">${alternative}</span></span>`;
+  const caption = text?.trim() ? `<span class="markdown-image-caption">${alternative}</span>` : "";
+  return `<span class="markdown-image-frame"><img class="markdown-image" src="${escapeHtml(source)}" alt="${alternative}" /><span class="markdown-image-missing">${alternative}</span></span>${caption}`;
 };
 
 renderer.strong = function (this: Renderer, { tokens }: Tokens.Strong) {
@@ -109,10 +112,33 @@ renderer.em = function (this: Renderer, { tokens }: Tokens.Em) {
   return `<em class="markdown-emphasis">${this.parser.parseInline(tokens)}</em>`;
 };
 
+/**
+ * CommonMark only closes `**` when the text before it is not punctuation, so Chinese like
+ * `**永夜维度：**从主城进入` stays literal. Owners write that all the time; take `**…**` as bold
+ * wherever it appears, before the standard rules see it.
+ */
+const cjkStrong = {
+  name: "cjkStrong",
+  level: "inline" as const,
+  start(source: string): number | undefined {
+    const index = source.indexOf("**");
+    return index < 0 ? undefined : index;
+  },
+  tokenizer(this: { lexer: { inlineTokens(text: string): Tokens.Generic[] } }, source: string) {
+    const match = /^\*\*(?![\s*])([^\n]*?[^\s*])\*\*(?!\*)/.exec(source);
+    if (match == null) return undefined;
+    return { type: "cjkStrong", raw: match[0], tokens: this.lexer.inlineTokens(match[1]) };
+  },
+  renderer(this: { parser: { parseInline(tokens: Tokens.Generic[]): string } }, token: Tokens.Generic) {
+    return `<strong class="markdown-strong">${this.parser.parseInline(token.tokens ?? [])}</strong>`;
+  },
+};
+
 marked.use({
   gfm: true,
   breaks: false,
   renderer,
+  extensions: [cjkStrong],
 });
 
 export function renderMarkdown(markdown: string, options: MarkdownRenderOptions = {}): string {

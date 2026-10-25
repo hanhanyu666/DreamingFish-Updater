@@ -100,7 +100,8 @@ public final class StaticDistributionService {
             String projectRoot = "v1/projects/" + projectId + "/";
 
             SignedPayload presentation = signedPresentation(project);
-            registerBrandingObjects(objectSizes, project.branding());
+            // Draft uploads are private until referenced by a signed release.
+            registerBrandingObjects(objectSizes, project.branding().withPresentationImages(null));
 
             int programCount = 0;
             Map<String, SignedPayload> currentPrograms = new LinkedHashMap<>();
@@ -287,6 +288,9 @@ public final class StaticDistributionService {
 
     private void registerBrandingObjects(Map<String, Long> target, Branding branding) {
         if (branding == null) return;
+        if (branding.presentationImages() != null) {
+            for (var image : branding.presentationImages()) registerObject(target, image.sha256(), image.size());
+        }
         if (branding.coverObject() != null && !branding.coverObject().isBlank()) {
             registerObject(target, branding.coverObject(), -1);
         }

@@ -28,6 +28,13 @@ public record PlayerPresentation(
                 source.topBarColor(),
                 source.cardColor(),
                 source.topBarOpacity(),
-                source.titleColor());
+                source.titleColor(),
+                source.spotlights(),
+                source.serverCard(),
+                source.events(),
+                source.theme(),
+                null,
+                source.addressPlacement(),
+                source.brandLogoFile());
     }
 }

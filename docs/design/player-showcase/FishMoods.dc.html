@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>梦鱼小鱼 · 表情</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&amp;family=Noto+Serif+SC:wght@700;900&amp;family=Silkscreen&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid #FFF6E0;outline-offset:2px}
+.fm-card{transition:background-color .2s ease,border-color .2s ease,transform .2s ease}
+.fm-card:hover{background-color:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.2)!important;transform:translateY(-2px)}
+</style>
+</helmet>
+<div style="width: 1180px; height: 400px; box-sizing: border-box; padding: 32px; display: flex; gap: 28px; border-radius: 12px; background: radial-gradient(120% 140% at 15% 0%, #16305A 0%, #0A1426 55%, #070A12 100%); font-family: 'Noto Sans SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif; color: #F3EFE6; -webkit-font-smoothing: antialiased">
+  <div style="width: 196px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px">
+    <dc-import name="MoonFish" mood="swim" size="140" shape="tile" badge="true" hint-size="140px,140px"></dc-import>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center">
+      <span style="font-size: 15px; font-weight: 700">梦鱼更新器</span>
+      <span style="font-size: 12px; line-height: 1.5; color: rgba(243,239,230,.7)">和管理端同一条月眠鱼<br>更新时右上角的梦泡会转</span>
+    </div>
+  </div>
+  <div style="flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px">
+    <sc-for list="{{moods}}" as="m" hint-placeholder-count="5">
+      <button type="button" class="fm-card" onClick="{{m.pet}}" aria-label="{{m.aria}}" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 18px 10px; border-radius: 18px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); cursor: pointer">
+        <dc-import name="MoonFish" mood="{{m.mood}}" size="112" shape="none" badge="false" hint-size="112px,112px"></dc-import>
+        <span style="display: flex; flex-direction: column; align-items: center; gap: 2px">
+          <span style="font-size: 15px; font-weight: 700">{{m.name}}</span>
+          <span style="font-size: 12px; color: rgba(243,239,230,.7)">{{m.when}}</span>
+        </span>
+      </button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":400}}'>
+var MOODS = [
+  { mood: 'swim', name: '梦游中', when: '正在更新' },
+  { mood: 'happy', name: '笑眯眯', when: '更新完成' },
+  { mood: 'worried', name: '冒冷汗', when: '更新没有完成' },
+  { mood: 'sleep', name: '睡着了', when: '离线启动' },
+  { mood: 'wow', name: '被摸了', when: '点一下小鱼' }
+];
+
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this._t); }
+  renderVals() {
+    var self = this;
+    var s = this.state || {};
+    return {
+      moods: MOODS.map(function (m, i) {
+        return {
+          mood: s.petted === i ? 'wow' : m.mood,
+          name: m.name,
+          when: m.when,
+          aria: '摸摸' + m.name + '的小鱼',
+          pet: function () {
+            clearTimeout(self._t);
+            self.setState({ petted: i });
+            self._t = setTimeout(function () { self.setState({ petted: -1 }); }, 1300);
+          }
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

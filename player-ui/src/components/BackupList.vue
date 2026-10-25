@@ -3,6 +3,7 @@ import { formatBytes, formatHistoryTime } from "../lib/format";
 import { archiveTitle } from "../lib/maintenance";
 import type { ArchivedFileDto } from "../lib/types";
 import { usePlayerStore } from "../stores/player";
+import AppIcon from "./AppIcon.vue";
 
 const store = usePlayerStore();
 
@@ -19,14 +20,6 @@ function reasonLine(file: ArchivedFileDto): string {
 
 <template>
   <div class="backup-page">
-    <div class="backup-tools">
-      <div class="backup-intro">
-        更新器不会直接删除你的文件：被替换、清理、撤回或恢复默认的本地文件都会先移到这里，需要时可以放回游戏。
-      </div>
-      <button type="button" class="restore-mods-button" @click="store.openArchive()">
-        打开备份文件夹
-      </button>
-    </div>
     <div v-if="!store.state.archivesLoaded" class="drawer-empty">正在读取备份…</div>
     <div v-else-if="store.state.archives.length === 0" class="drawer-empty">
       还没有备份。更新需要移走你的文件时，会先在这里保存一份。
@@ -34,10 +27,11 @@ function reasonLine(file: ArchivedFileDto): string {
     <div v-else class="backup-list">
       <section v-for="archive in store.state.archives" :key="archive.id" class="backup-card">
         <div class="backup-header">
+          <span class="backup-icon" aria-hidden="true"><AppIcon name="archive" /></span>
           <div class="backup-heading">
             <strong>{{ archiveTitle(archive) }}</strong>
             <span>
-              {{ formatHistoryTime(archive.createdAt ?? "") }}  ·  {{ archive.files.length }} 个文件  ·
+              {{ formatHistoryTime(archive.createdAt ?? "") }} · {{ archive.files.length }} 个文件 ·
               {{ formatBytes(archive.totalBytes) }}
             </span>
           </div>

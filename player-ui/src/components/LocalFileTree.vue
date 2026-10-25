@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { buildTree, buildVisibleEntries } from "../lib/fileTree";
 import { usePlayerStore } from "../stores/player";
+import AppIcon from "./AppIcon.vue";
 import TreeBranch from "./TreeBranch.vue";
 
 const store = usePlayerStore();
@@ -19,19 +20,21 @@ const emptyText = computed(() =>
 <template>
   <div class="local-file-page">
     <div class="file-tools">
-      <input v-model="search" class="mod-search" placeholder="搜索目录、文件名或路径" type="text" />
-      <button type="button" class="restore-mods-button" @click="store.confirmRestoreFiles">
-        恢复全部管理
-      </button>
-    </div>
-    <div class="mod-warning">
-      取消勾选“管理”后改为自行管理：更新不再安装、覆盖或删除它。服主设为强制同步的文件不能取消；首次提供的文件之后由你维护，也可以主动恢复默认；服主明确移除或处理问题版本时会先备份再移出。
+      <label class="search-field">
+        <AppIcon name="search" />
+        <input v-model="search" class="mod-search" placeholder="搜索目录、文件名或路径" type="search" aria-label="搜索本地文件" />
+      </label>
+      <span class="file-legend" aria-hidden="true">
+        <span><i class="legend-managed"></i>随整合包更新</span>
+        <span><i class="legend-self"></i>自行管理</span>
+        <span><AppIcon name="lock" />服主锁定</span>
+      </span>
     </div>
     <div class="local-file-tree-pane">
       <div v-if="visibleEntries.length === 0" class="drawer-empty local-file-empty">
         {{ emptyText }}
       </div>
-      <div v-else class="local-file-tree">
+      <div v-else class="local-file-tree" role="tree" aria-label="本地文件">
         <TreeBranch
           v-for="node in tree"
           :key="node.entry.path"

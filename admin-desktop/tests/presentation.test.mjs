@@ -22,7 +22,7 @@ test('all policy kinds use Chinese labels and resolve group and problem subjects
 });
 test('collapsed navigation retains operations and every other section',()=>{
  assert(viewSections.changes.some(v=>v.id==='operations'&&v.label==='操作记录'));
- assert.equal(viewSections.settings.length,3);assert.equal(viewSections.appearance.length,4);
+ assert.equal(viewSections.settings.length,3);assert.deepEqual(viewSections.appearance.map(v=>v.id),['branding','home','server','colors','pages','images','music','showcase']);
 });
 test('interface links retain project and view but reject unknown sections',()=>{
  assert.deepEqual(interfaceLanding('?project=test&view=changes&section=operations'),{projectId:'test',view:'changes',section:'operations'});

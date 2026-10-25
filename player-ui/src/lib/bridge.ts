@@ -6,6 +6,7 @@ import type {
   SidecarCommand,
   SidecarMessage,
 } from "./types";
+import { mockPresentationImage, previewBranding, previewServerStatus } from "./previewShowcase";
 
 export interface PlayerBridge {
   readonly isTauri: boolean;
@@ -15,6 +16,8 @@ export interface PlayerBridge {
   assetUrl(path: string | null): Promise<string | null>;
   startupMusic(): Promise<string | null>;
   musicTrackUrl(fileName: string): Promise<string | null>;
+  /** An uploaded presentation image shipped with the release, as a displayable address. */
+  presentationImageUrl(fileName: string): Promise<string | null>;
   window: {
     show(): Promise<void>;
     minimize(): void;
@@ -38,6 +41,14 @@ export function getBridge(): PlayerBridge {
   }
   return singleton;
 }
+
+/** A release note in the shape owners usually write, so the preview shows tagged lines. */
+const PREVIEW_CHANGELOG = [
+  "新增：永夜维度与深海神殿，主城传送门已开放",
+  "修复：交易所偶尔无法上架物品",
+  "调整：光影改为可选内容，低配电脑可以在本地管理里关闭",
+  "移除：旧版渲染优化模组，避免与新光影冲突",
+].join("\n");
 
 class TauriBridge implements PlayerBridge {
   readonly isTauri = true;
@@ -149,6 +160,11 @@ class TauriBridge implements PlayerBridge {
     return invoke<string | null>("read_music_track", { fileName });
   }
 
+  async presentationImageUrl(fileName: string): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string | null>("read_presentation_image", { fileName });
+  }
+
   window = {
     async show(): Promise<void> {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -227,6 +243,10 @@ class MockBridge implements PlayerBridge {
     return null;
   }
 
+  async presentationImageUrl(fileName: string): Promise<string | null> {
+    return mockPresentationImage(fileName);
+  }
+
   window = {
     async show(): Promise<void> {
       // no-op in the browser
@@ -270,19 +290,7 @@ class MockBridge implements PlayerBridge {
     const adminPreview = new URLSearchParams(window.location.search)
       .get("adminPreview") === "1";
     this.emit({ type: "identity", name: "Player" });
-    this.emit({ type: "branding", branding: {
-      productName: "Minecraft 整合包",
-      subtitle: "准备好后，一起进入游戏。",
-      serverAddress: "play.example.com",
-      coverObject: null,
-      accentColor: "#2ee8df",
-      secondaryAccentColor: "#b06cff",
-      brandName: "梦鱼更新器",
-      brandEnglishName: "DreamingFish",
-      newsArticles: null,
-      customPage: null,
-      contentPages: [],
-    } });
+    this.emit({ type: "branding", branding: previewBranding() });
     this.emit({ type: "background", path: null });
     this.emit({ type: "logs", lines: [
       "2026-08-13 12:08:40.210 | START | 启动 | 玩家端 0.2.0 · 项目 preview",
@@ -301,6 +309,8 @@ class MockBridge implements PlayerBridge {
       return;
     }
     this.later(300, () => this.emit({ type: "ready" }));
+    this.emit({ type: "server-status", status: { state: "CHECKING" } });
+    this.later(700, () => this.emit({ type: "server-status", status: previewServerStatus() }));
     this.later(400, () => this.emit({ type: "progress", event: {
       stage: "CHECKING", message: "正在连接更新服务", currentPath: null, completedBytes: 0, totalBytes: 0, fraction: -1,
     } }));
@@ -325,7 +335,7 @@ class MockBridge implements PlayerBridge {
         createdAt: new Date(Date.now() - 86_400_000).toISOString(),
         outcome: "UPDATED",
         displayVersion: "1.20.1-r12",
-        changelog: "更新模组与资源包",
+        changelog: PREVIEW_CHANGELOG,
         downloadedBytes: 271 * 1024 * 1024,
         installedPaths: [
           "mods/dreamingfish-core.jar",
@@ -354,7 +364,7 @@ class MockBridge implements PlayerBridge {
         projectId: "preview",
         releases: [
           { releaseId: "r000012", sequence: 12, displayVersion: "1.20.1-r12",
-            createdAt: new Date(Date.now() - 86_400_000).toISOString(), changelog: "更新模组与资源包" },
+            createdAt: new Date(Date.now() - 86_400_000).toISOString(), changelog: PREVIEW_CHANGELOG },
           { releaseId: "r000011", sequence: 11, displayVersion: "1.20.1-r11",
             createdAt: new Date(Date.now() - 172_800_000).toISOString(), changelog: "修复部分任务无法完成的问题" },
         ],
@@ -449,6 +459,11 @@ class MockBridge implements PlayerBridge {
       }
       case "keep-open": {
         this.emit({ type: "launch-kept-open" });
+        break;
+      }
+      case "refresh-server-status": {
+        this.emit({ type: "server-status", status: { state: "CHECKING" } });
+        this.later(600, () => this.emit({ type: "server-status", status: previewServerStatus() }));
         break;
       }
       case "confirm": {

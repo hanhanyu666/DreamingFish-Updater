@@ -11,6 +11,10 @@ import java.util.Objects;
 /** Private, reversible project settings; signing keys and account data are excluded. */
 public record ProjectSettingsSnapshot(String displayName, String sourceDirectory,
                                       String publicBaseUrl, Branding branding, ProjectRules rules) {
+    private static String placement(String value) {
+        return value == null || value.equals("CARD") ? "服务器卡片" : value.equals("HERO") ? "焦点图按钮旁" : "不显示";
+    }
+
     public static ProjectSettingsSnapshot of(ProjectRecord project) {
         return new ProjectSettingsSnapshot(project.displayName(), project.sourceDirectory().toString(),
                 project.publicBaseUrl(), project.branding(), project.rules());
@@ -28,6 +32,9 @@ public record ProjectSettingsSnapshot(String displayName, String sourceDirectory
             add(result,"中文品牌名",branding.brandName(),next.branding.brandName());
             add(result,"英文品牌名",branding.brandEnglishName(),next.branding.brandEnglishName());
             add(result,"游戏服务器地址",branding.serverAddress(),next.branding.serverAddress());
+            add(result,"首页地址位置",placement(branding.addressPlacement()),placement(next.branding.addressPlacement()));
+            add(result,"左上角图标",branding.brandLogoFile()==null?"梦鱼更新器图标":branding.brandLogoFile(),
+                    next.branding.brandLogoFile()==null?"梦鱼更新器图标":next.branding.brandLogoFile());
             add(result,"封面",branding.coverObject(),next.branding.coverObject());
             add(result,"强调色",branding.accentColor(),next.branding.accentColor());
             add(result,"次强调色",branding.secondaryAccentColor(),next.branding.secondaryAccentColor());
@@ -39,6 +46,11 @@ public record ProjectSettingsSnapshot(String displayName, String sourceDirectory
             if(!Objects.equals(branding.contentPages(),next.branding.contentPages()))result.add(new Change("页面与公告","原页面内容","修改后的页面内容"));
             if(!Objects.equals(branding.newsArticles(),next.branding.newsArticles())||!Objects.equals(branding.customPage(),next.branding.customPage()))result.add(new Change("旧版页面与新闻","原内容","修改后的内容"));
             if(!Objects.equals(branding.musicTracks(),next.branding.musicTracks()))result.add(new Change("启动音乐","原播放列表","修改后的播放列表"));
+            if(!Objects.equals(branding.spotlights(),next.branding.spotlights()))result.add(new Change("首页轮播","原焦点图","修改后的焦点图"));
+            if(!Objects.equals(branding.serverCard(),next.branding.serverCard()))result.add(new Change("服务器卡片","原卡片设置","修改后的卡片设置"));
+            if(!Objects.equals(branding.events(),next.branding.events()))result.add(new Change("首页活动","原活动","修改后的活动"));
+            if(!Objects.equals(branding.theme(),next.branding.theme()))result.add(new Change("展示主题","原主题","修改后的主题"));
+            if(!Objects.equals(branding.presentationImages(),next.branding.presentationImages()))result.add(new Change("展示图片","原图片清单","修改后的图片清单"));
         }
         Map<String, String> before = ruleValues(rules), after = ruleValues(next.rules);
         java.util.Set<String> names = new java.util.LinkedHashSet<>(before.keySet());

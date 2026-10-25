@@ -108,7 +108,8 @@ public final class ScanService {
                 project.rules(),
                 projectDigest(project),
                 policyChanges(previous, files, project.rules()),
-                warnings(project, previous, files, changes)
+                warnings(project, previous, files, changes),
+                PresentationChange.between(previous == null ? null : previous.branding(), project.branding())
         );
         save(preview);
         return preview;

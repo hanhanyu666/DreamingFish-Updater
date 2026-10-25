@@ -1,0 +1,37 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-10-22T10:00:00Z"},
+  "title": "梦鱼玩家端 · 新版界面设计",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1180, "h": 680, "title": "首页 · 更新进行中", "is_interactive": true, "radius": 12},
+    "HomeReady.dc.html": {"x": 1260, "y": 0, "w": 1180, "h": 680, "title": "首页 · 更新完成，倒计时关闭", "is_interactive": true, "radius": 12},
+    "HomeError.dc.html": {"x": 2520, "y": 0, "w": 1180, "h": 680, "title": "首页 · 更新没有完成", "is_interactive": true, "radius": 12},
+    "News.dc.html": {"x": 0, "y": 1100, "w": 1180, "h": 680, "title": "公告 · 杂志式排版", "is_interactive": true, "radius": 12},
+    "Guide.dc.html": {"x": 1260, "y": 1100, "w": 1180, "h": 680, "title": "服务器介绍 · 内容块", "is_interactive": true, "radius": 12},
+    "Gallery.dc.html": {"x": 2520, "y": 1100, "w": 1180, "h": 680, "title": "画廊 · 玩家作品墙", "is_interactive": true, "radius": 12},
+    "Details.dc.html": {"x": 0, "y": 2200, "w": 1180, "h": 680, "title": "更新与本地管理 · 本次更新", "is_interactive": true, "radius": 12},
+    "ManageFiles.dc.html": {"x": 1260, "y": 2200, "w": 1180, "h": 680, "title": "本地管理 · 文件管理范围（铺满内容区）", "is_interactive": true, "radius": 12},
+    "ManageMods.dc.html": {"x": 2520, "y": 2200, "w": 1180, "h": 680, "title": "本地管理 · 模组启停", "is_interactive": true, "radius": 12},
+    "ManageBackups.dc.html": {"x": 3780, "y": 2200, "w": 1180, "h": 680, "title": "本地管理 · 备份与恢复", "is_interactive": true, "radius": 12},
+    "DockCapsuleSwim.dc.html": {"x": 0, "y": 3300, "w": 1920, "h": 300, "title": "更新区新方案 · 胶囊游水线（B + D 合并，首页默认）", "is_interactive": true, "radius": 12},
+    "DockBubble.dc.html": {"x": 0, "y": 3720, "w": 1544, "h": 300, "title": "更新区方案 A · 梦泡图标", "is_interactive": true, "radius": 12},
+    "DockSwim.dc.html": {"x": 0, "y": 4140, "w": 1544, "h": 300, "title": "更新区方案 B · 小鱼游水线", "is_interactive": true, "radius": 12},
+    "DockTank.dc.html": {"x": 0, "y": 4560, "w": 1544, "h": 300, "title": "更新区方案 C · 鱼缸水位", "is_interactive": true, "radius": 12},
+    "DockCapsule.dc.html": {"x": 0, "y": 4980, "w": 1920, "h": 300, "title": "更新区方案 D · 灵动胶囊", "is_interactive": true, "radius": 12},
+    "DockPixel.dc.html": {"x": 0, "y": 5400, "w": 1544, "h": 300, "title": "更新区方案 E · 像素经验条", "is_interactive": true, "radius": 12},
+    "FishMoods.dc.html": {"x": 2000, "y": 3300, "w": 1180, "h": 400, "title": "梦鱼小鱼 · 五种表情（点一下就是摸鱼）", "is_interactive": true, "radius": 12},
+    "MoonFish.dc.html": {"x": 2000, "y": 3820, "w": 160, "h": 160, "title": "组件 · 梦鱼小鱼", "is_interactive": true},
+    "UpdateDock.dc.html": {"x": 2240, "y": 3820, "w": 312, "h": 180, "title": "组件 · 更新区", "is_interactive": true}
+  },
+  "order": ["Main.dc.html", "HomeReady.dc.html", "HomeError.dc.html", "News.dc.html", "Guide.dc.html", "Gallery.dc.html", "Details.dc.html", "ManageFiles.dc.html", "ManageMods.dc.html", "ManageBackups.dc.html", "DockCapsuleSwim.dc.html", "DockBubble.dc.html", "DockSwim.dc.html", "DockTank.dc.html", "DockCapsule.dc.html", "DockPixel.dc.html", "FishMoods.dc.html", "MoonFish.dc.html", "UpdateDock.dc.html"],
+  "notes": {
+    "row1": {"x": 0, "y": -330, "text": "首页：启动舞台", "kind": "title1", "maxW": 3700},
+    "row2": {"x": 0, "y": 770, "text": "服主的展示页", "kind": "title1", "maxW": 3700},
+    "row3": {"x": 0, "y": 1870, "text": "更新器本职功能：更新与本地管理", "kind": "title1", "maxW": 4960},
+    "row4": {"x": 0, "y": 2970, "text": "更新区：胶囊游水线和备选方案，都带梦鱼小鱼", "kind": "title1", "maxW": 3180},
+    "fields": {"x": 3780, "y": 0, "w": 440, "size": "m", "fill": "teal", "text": "服主需要新增的配置项\n\n· 首页焦点：图片、标签、标题、一句话、按钮跳转（3–5 条轮播）\n· 服务器卡：Logo、MOTD、版本标签、社区链接\n· 在线人数与延迟：玩家端 Ping 服务器（新能力）\n· 下一场活动：标题与时间，玩家端自动倒计时\n· 画廊：图片、标题、作者、分类、坐标\n· 介绍页：特色 / 步骤 / 规则 / 团队 / 问答 五种内容块"}
+  },
+  "designSystems": []
+}

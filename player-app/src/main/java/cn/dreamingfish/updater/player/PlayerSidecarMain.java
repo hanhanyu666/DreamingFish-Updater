@@ -164,6 +164,7 @@ public final class PlayerSidecarMain {
                 else controller.openArchive(archiveId);
             }
             case "keep-open" -> controller.keepWindowOpen();
+            case "refresh-server-status" -> controller.refreshServerStatus();
             case "close" -> controller.requestClose();
             case "quit" -> controller.exitApplication();
             default -> {
@@ -217,6 +218,8 @@ public final class PlayerSidecarMain {
 
     private record BrandingMessage(String type, Branding branding) {
     }
+
+    private record ServerStatusMessage(String type, ServerStatus status) { }
 
     private record IdentityMessage(String type, String name) {
     }
@@ -410,6 +413,9 @@ public final class PlayerSidecarMain {
         public void setBranding(Branding branding) {
             emit(new BrandingMessage("branding", branding));
         }
+
+        @Override public void setServerStatus(ServerStatus status) { emit(new ServerStatusMessage("server-status", status)); }
+        @Override public void presentationImagesUpdated() { emit(Map.of("type", "presentation-images-updated")); }
 
         @Override
         public void setBackground(Path localCover) {

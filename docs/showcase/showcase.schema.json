@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hanhanyu666/DreamingFish-Updater/docs/showcase/showcase.schema.json",
+  "title": "梦鱼更新器展示内容文件",
+  "description": "玩家端首页与页面的展示内容。只描述内容和内置组件的选项，不包含任何 HTML、CSS 或脚本。规则说明见同目录 README.md。",
+  "type": "object",
+  "required": ["format", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": "dreamingfish-showcase" },
+    "version": { "const": 1 },
+    "productName": { "$ref": "#/$defs/title" },
+    "subtitle": { "$ref": "#/$defs/lead" },
+    "welcomeText": { "$ref": "#/$defs/label" },
+    "serverAddress": { "type": "string", "maxLength": 255 },
+    "addressPlacement": { "enum": ["CARD", "HERO", "HIDDEN"] },
+    "brandName": { "$ref": "#/$defs/label" },
+    "brandEnglishName": { "$ref": "#/$defs/label" },
+    "brandLogoFile": { "$ref": "#/$defs/imageFile" },
+    "accentColor": { "$ref": "#/$defs/color" },
+    "secondaryAccentColor": { "$ref": "#/$defs/color" },
+    "titleColor": { "$ref": "#/$defs/color" },
+    "topBarColor": { "$ref": "#/$defs/color" },
+    "topBarOpacity": { "type": "number", "minimum": 0, "maximum": 1 },
+    "cardColor": { "$ref": "#/$defs/color" },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "corner": { "enum": ["ROUND", "SOFT", "SQUARE"], "description": "圆角风格" },
+        "surface": { "enum": ["GLASS", "SOLID", "CLEAR"], "description": "卡片质感：毛玻璃、实色、通透" }
+      }
+    },
+    "spotlights": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/spotlight" }
+    },
+    "serverCard": { "$ref": "#/$defs/serverCard" },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" }
+    },
+    "contentPages": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "$ref": "#/$defs/page" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+    "label": { "type": "string", "maxLength": 24 },
+    "eyebrow": { "type": "string", "maxLength": 40 },
+    "title": { "type": "string", "maxLength": 60 },
+    "lead": { "type": "string", "maxLength": 300 },
+    "text": { "type": "string", "maxLength": 600 },
+    "markdown": { "type": "string", "maxLength": 20000 },
+    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "httpUrl": { "type": "string", "maxLength": 2048, "pattern": "^https?://" },
+    "imageFile": {
+      "type": "string",
+      "maxLength": 120,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.(png|jpe?g|webp|gif)$",
+      "description": "在管理端上传的图片文件名"
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "imageFile": { "$ref": "#/$defs/imageFile" },
+        "imageUrl": { "$ref": "#/$defs/httpUrl" }
+      }
+    },
+    "icon": {
+      "enum": ["star", "shield", "users", "chat", "globe", "calendar", "pin", "image", "sparkle", "sword",
+        "pickaxe", "heart", "home", "gift", "trophy", "book", "clock", "check", "info", "signal"]
+    },
+    "action": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "$ref": "#/$defs/label" },
+        "kind": { "enum": ["PAGE", "ARTICLE", "URL"] },
+        "pageId": { "$ref": "#/$defs/id" },
+        "articleId": { "$ref": "#/$defs/id" },
+        "url": { "$ref": "#/$defs/httpUrl" }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "PAGE" } } }, "then": { "required": ["pageId"] } },
+        { "if": { "properties": { "kind": { "const": "ARTICLE" } } }, "then": { "required": ["pageId", "articleId"] } },
+        { "if": { "properties": { "kind": { "const": "URL" } } }, "then": { "required": ["url"] } }
+      ]
+    },
+    "spotlight": {
+      "type": "object",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "tag": { "$ref": "#/$defs/label" },
+        "label": { "$ref": "#/$defs/label", "description": "首页切换器上的短名字，比如“建筑大赛”；留空用标题" },
+        "eyebrow": { "$ref": "#/$defs/eyebrow" },
+        "title": { "$ref": "#/$defs/title", "minLength": 1 },
+        "lead": { "$ref": "#/$defs/lead" },
+        "imageFile": { "$ref": "#/$defs/imageFile" },
+        "imageUrl": { "$ref": "#/$defs/httpUrl" },
+        "action": { "$ref": "#/$defs/action" }
+      }
+    },
+    "communityLink": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["QQ", "DISCORD", "KOOK", "BILIBILI", "WEBSITE", "OTHER"] },
+        "label": { "$ref": "#/$defs/label" },
+        "url": { "$ref": "#/$defs/httpUrl" },
+        "copyText": { "type": "string", "maxLength": 60, "description": "没有 url 时，点击复制这段文字，比如 QQ 群号" }
+      },
+      "anyOf": [{ "required": ["url"] }, { "required": ["copyText"] }]
+    },
+    "serverCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "showStatus": { "type": "boolean" },
+        "versionLabel": { "$ref": "#/$defs/label" },
+        "motd": { "type": "string", "maxLength": 200, "description": "可以使用 § 颜色码，最多两行" },
+        "logoFile": { "$ref": "#/$defs/imageFile" },
+        "links": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/communityLink" } }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["id", "title", "startsAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/title" },
+        "startsAt": { "type": "string", "format": "date-time" },
+        "endsAt": { "type": "string", "format": "date-time" },
+        "action": { "$ref": "#/$defs/action" }
+      }
+    },
+    "article": {
+      "type": "object",
+      "required": ["id", "title", "publishedOn"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/title" },
+        "summary": { "$ref": "#/$defs/lead" },
+        "publishedOn": { "type": "string", "format": "date" },
+        "coverUrl": { "anyOf": [{ "const": "" }, { "$ref": "#/$defs/httpUrl" }] },
+        "markdown": { "$ref": "#/$defs/markdown" },
+        "category": { "$ref": "#/$defs/label", "description": "分类，比如 活动、维护、更新、规则；公告页按它筛选" },
+        "author": { "$ref": "#/$defs/eyebrow", "description": "作者，显示在日期旁边" }
+      }
+    },
+    "galleryItem": {
+      "type": "object",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/title" },
+        "author": { "$ref": "#/$defs/eyebrow" },
+        "category": { "$ref": "#/$defs/label" },
+        "caption": { "$ref": "#/$defs/lead" },
+        "location": { "$ref": "#/$defs/eyebrow" },
+        "featured": { "type": "boolean", "description": "在图片上标“本周精选”" },
+        "imageFile": { "$ref": "#/$defs/imageFile" },
+        "imageUrl": { "$ref": "#/$defs/httpUrl" }
+      },
+      "anyOf": [{ "required": ["imageFile"] }, { "required": ["imageUrl"] }]
+    },
+    "blockItem": {
+      "type": "object",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/title" },
+        "text": { "$ref": "#/$defs/text" },
+        "meta": { "$ref": "#/$defs/eyebrow" },
+        "icon": { "$ref": "#/$defs/icon" },
+        "imageFile": { "$ref": "#/$defs/imageFile" },
+        "imageUrl": { "$ref": "#/$defs/httpUrl" },
+        "action": { "$ref": "#/$defs/action" }
+      }
+    },
+    "block": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["TEXT", "CARDS", "STEPS", "LIST", "TEAM", "FAQ", "STATS", "CALLOUT", "IMAGE", "GALLERY"] },
+        "title": { "$ref": "#/$defs/title" },
+        "lead": { "$ref": "#/$defs/lead" },
+        "navLabel": { "$ref": "#/$defs/label" },
+        "eyebrow": { "$ref": "#/$defs/eyebrow", "description": "标题上方的英文小字，比如 FEATURES；留空按种类显示默认值" },
+        "tone": { "enum": ["DEFAULT", "ACCENT", "SECONDARY", "WARM", "MUTED"] },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "markdown": { "$ref": "#/$defs/markdown" },
+        "imageFile": { "$ref": "#/$defs/imageFile" },
+        "imageUrl": { "$ref": "#/$defs/httpUrl" },
+        "items": { "type": "array", "maxItems": 24, "items": { "$ref": "#/$defs/blockItem" } },
+        "actions": { "type": "array", "maxItems": 3, "items": { "$ref": "#/$defs/action" } }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["id", "navigationLabel", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "navigationLabel": { "$ref": "#/$defs/label" },
+        "announcementPage": { "type": "boolean" },
+        "layout": { "enum": ["MARKDOWN", "ANNOUNCEMENTS", "GALLERY", "BLOCKS"] },
+        "eyebrow": { "$ref": "#/$defs/eyebrow" },
+        "title": { "$ref": "#/$defs/title" },
+        "lead": { "$ref": "#/$defs/lead" },
+        "markdown": { "$ref": "#/$defs/markdown" },
+        "articles": { "type": ["array", "null"], "maxItems": 100, "items": { "$ref": "#/$defs/article" } },
+        "gallery": { "type": "array", "maxItems": 60, "items": { "$ref": "#/$defs/galleryItem" } },
+        "blocks": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/block" } },
+        "imageFile": { "$ref": "#/$defs/imageFile", "description": "内容块页顶部的大图；留空用项目背景" },
+        "imageUrl": { "$ref": "#/$defs/httpUrl" },
+        "tags": { "type": "array", "maxItems": 6, "items": { "$ref": "#/$defs/label", "minLength": 1 }, "description": "内容块页标题下的小标签" }
+      }
+    }
+  }
+}

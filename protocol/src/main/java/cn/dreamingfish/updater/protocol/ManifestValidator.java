@@ -481,6 +481,7 @@ public final class ManifestValidator {
         validateCustomPage(branding.customPage());
         validateContentPages(branding.contentPages());
         validateMusic(branding.musicTracks());
+        ShowcaseRules.validate(branding);
     }
 
     private static void validateMusic(List<PlayerMusicTrack> tracks) {
@@ -527,6 +528,7 @@ public final class ManifestValidator {
                     || !ids.add(page.id())) {
                 throw new ProtocolException("Invalid or duplicate player content page ID");
             }
+            if (page.layout() != null) continue; // Validated with the showcase limits below.
             requireText(page.navigationLabel(), "player page navigation label", 12);
             requireLength(page.eyebrow(), "player page eyebrow", 48);
             requireText(page.title(), "player page title", 120);

@@ -1257,6 +1257,87 @@ class AdminWebServerTest {
                 .split(";", 2)[0];
     }
 
+    @Test
+    void managesShowcaseImagesAndPersistsNewSettingsWithoutTrustingClientAssetMetadata() throws Exception {
+        var root = new ManagementCli(temporary.resolve("showcase-admin/settings.json"), new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("showcase-source"));
+        try (var server = new AdminWebServer(root, new InetSocketAddress("127.0.0.1", 0))) {
+            server.start();
+            URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            String token = json.read(send(base, "/api/session", "GET", null, null).body().getBytes(StandardCharsets.UTF_8), Map.class).get("token").toString();
+            assertEquals(201, send(base, "/api/projects", "POST", json.writeString(Map.of("id", "showcase", "displayName", "展示项目", "sourceDirectory", source.toString())), token).statusCode());
+            byte[] png = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=");
+            var upload = HttpRequest.newBuilder(base.resolve("/api/projects/showcase/presentation-images/upload?fileName=hero.png"))
+                    .header("X-DFS-Token", token).header("Content-Type", "application/octet-stream").POST(HttpRequest.BodyPublishers.ofByteArray(png)).build();
+            var uploaded = client.send(upload, HttpResponse.BodyHandlers.ofString());
+            assertEquals(201, uploaded.statusCode(), uploaded.body());
+            assertTrue(uploaded.body().contains("\"sha256\""));
+            var fetched = client.send(HttpRequest.newBuilder(base.resolve("/api/projects/showcase/presentation-images/hero.png")).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(200, fetched.statusCode());
+            assertEquals("image/png", fetched.headers().firstValue("Content-Type").orElseThrow());
+            org.junit.jupiter.api.Assertions.assertArrayEquals(png, fetched.body());
+            String settings = json.writeString(Map.of(
+                    "spotlights", List.of(Map.of("id", "welcome", "title", "欢迎", "imageFile", "hero.png")),
+                    "serverCard", Map.of("showStatus", false, "links", List.of(Map.of("id", "qq", "kind", "QQ", "copyText", "123456"))),
+                    "events", List.of(Map.of("id", "event", "title", "活动", "startsAt", "2026-10-24T20:00:00+08:00")),
+                    "theme", Map.of("corner", "SQUARE", "surface", "SOLID"),
+                    "presentationImages", List.of(Map.of("fileName", "evil.png", "sha256", "a".repeat(64), "size", 1))));
+            var saved = send(base, "/api/projects/showcase", "PUT", settings, token);
+            assertEquals(200, saved.statusCode(), saved.body());
+            assertFalse(saved.body().contains("evil.png"));
+            var later = send(base, "/api/projects/showcase", "PUT", "{\"productName\":\"修改标题\"}", token);
+            assertEquals(200, later.statusCode(), later.body());
+            assertTrue(later.body().contains("SQUARE"));
+            assertTrue(later.body().contains("hero.png"));
+            assertTrue(later.body().contains("2026-10-24T20:00:00+08:00"));
+            assertEquals(400, send(base, "/api/projects/showcase/presentation-images/hero.png", "DELETE", null, token).statusCode());
+            var invalid = send(base, "/api/projects/showcase", "PUT", "{\"spotlights\":[{\"id\":\"bad\",\"title\":\"坏引用\",\"action\":{\"kind\":\"PAGE\",\"pageId\":\"missing\"}}]}", token);
+            assertEquals(400, invalid.statusCode(), invalid.body());
+            assertTrue(invalid.body().contains("spotlights[0].action.pageId"));
+            assertEquals(200, send(base, "/api/projects/showcase", "PUT", "{\"spotlights\":[]}", token).statusCode());
+            assertEquals(200, send(base, "/api/projects/showcase/presentation-images/hero.png", "DELETE", null, token).statusCode());
+            assertEquals(404, send(base, "/api/projects/showcase/presentation-images/hero.png", "GET", null, null).statusCode());
+            var wrongType = HttpRequest.newBuilder(upload.uri()).header("X-DFS-Token", token)
+                    .POST(HttpRequest.BodyPublishers.ofString("this is not an image")).build();
+            assertEquals(400, client.send(wrongType, HttpResponse.BodyHandlers.ofString()).statusCode());
+            try (var files = Files.list(Path.of(root.settings().dataDirectory()).resolve("tmp"))) { assertEquals(0, files.count()); }
+        }
+    }
+
+    @Test
+    void savesAndReloadsEveryNewShowcaseFieldAndRejectsBadMetadataWithoutChangingTheDraft() throws Exception {
+        var root = new ManagementCli(temporary.resolve("showcase-metadata/settings.json"), new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("showcase-metadata-source"));
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var document = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(Files.readAllBytes(Path.of("..", "docs", "showcase", "example-whalesong.json")));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) document.at("/contentPages/1")).put("imageUrl", "https://example.com/guide-fallback.webp");
+        List<String> fields = List.of("/spotlights/0/label", "/contentPages/0/articles/0/category", "/contentPages/0/articles/0/author",
+                "/contentPages/1/imageFile", "/contentPages/1/imageUrl", "/contentPages/1/tags",
+                "/contentPages/1/blocks/0/eyebrow", "/contentPages/2/gallery/0/featured");
+        try (var server = new AdminWebServer(root, new InetSocketAddress("127.0.0.1", 0))) {
+            server.start();
+            URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            String token = json.read(send(base, "/api/session", "GET", null, null).body().getBytes(StandardCharsets.UTF_8), Map.class).get("token").toString();
+            assertEquals(201, send(base, "/api/projects", "POST", json.writeString(Map.of("id", "metadata", "displayName", "展示元数据", "sourceDirectory", source.toString())), token).statusCode());
+            var saved = send(base, "/api/projects/metadata", "PUT", document.toString(), token);
+            assertEquals(200, saved.statusCode(), saved.body());
+            var savedBranding = mapper.readTree(saved.body()).get("branding");
+            for (String field : fields) assertEquals(document.at(field), savedBranding.at(field), field);
+            assertEquals(200, send(base, "/api/projects/metadata", "PUT", "{\"subtitle\":\"修改简介\"}", token).statusCode());
+            var loaded = send(base, "/api/projects/metadata", "GET", null, null);
+            assertEquals(200, loaded.statusCode(), loaded.body());
+            var loadedBranding = mapper.readTree(loaded.body()).get("branding");
+            for (String field : fields) assertEquals(document.at(field), loadedBranding.at(field), field);
+
+            ((com.fasterxml.jackson.databind.node.ObjectNode) document.at("/contentPages/1")).putArray("tags").add("");
+            var rejected = send(base, "/api/projects/metadata", "PUT", document.toString(), token);
+            assertEquals(400, rejected.statusCode(), rejected.body());
+            assertTrue(rejected.body().contains("contentPages[1].tags[0]"));
+            var afterRejection = mapper.readTree(send(base, "/api/projects/metadata", "GET", null, null).body()).get("branding");
+            assertEquals(loadedBranding, afterRejection);
+        }
+    }
+
     private HttpResponse<String> sendBytes(
             URI base, String path, byte[] body, String token) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(base.resolve(path))

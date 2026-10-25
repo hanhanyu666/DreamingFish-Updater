@@ -496,6 +496,10 @@ button.status-item.active {color:var(--accent)}
 .diff-copy small.wrap {white-space:normal;line-height:1.65;margin-top:2px}
 .version-shift {display:inline-flex;align-items:center;gap:5px;margin:4px 0 0;padding:1px 7px;border-radius:999px;background:var(--fill);font-size:11.5px;color:var(--muted)}
 .policy-category {display:block;font-size:11.5px;font-weight:650;color:var(--accent);margin-bottom:1px}
+.diff-row.design .policy-category {color:var(--info)}
+.kind-tag.live {background:var(--success-soft);color:var(--success)}
+.kind-tag.pending {background:var(--info-soft);color:var(--info)}
+.diff-row.design .text-action {flex:none;gap:3px;font-size:12.5px}
 .kind-tag {display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;background:var(--fill);color:var(--muted);font-size:11.5px;font-style:normal;font-weight:600;white-space:nowrap;flex:none}
 .kind-tag.added {background:var(--success-soft);color:var(--success)}
 .kind-tag.modified {background:var(--info-soft);color:var(--info)}
@@ -687,6 +691,30 @@ button.status-item.active {color:var(--accent)}
 .music-list strong {display:block;font-size:13px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .music-list small {display:block;font-size:12px;color:var(--muted)}
 .track-art {width:32px;height:32px;border-radius:var(--r-sm);display:grid;place-items:center;flex:none;background:var(--accent-soft);color:var(--accent)}
+/* Showcase editors: list pickers, nested items and the import report */
+.card-header .section-tabs select {height:32px;font-weight:600}
+.new-page-row,.list-actions {display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-8px 0 18px}
+.list-actions {margin:0 0 18px}
+.list-actions .toolbar-spacer {flex:1}
+.item-card {padding:12px 12px 0;margin:0 0 10px;border-radius:var(--r-md);background:var(--surface-2);border:1px solid var(--line)}
+.item-card :where(input:not([type=checkbox],[type=radio]),select,textarea) {background:var(--surface)}
+.item-card>.text-action {margin:-6px 0 12px}
+.item-card .list-actions {margin-bottom:12px}
+.image-field.single {display:block}
+.block-kind {display:inline-flex;align-items:center;height:24px;padding:0 10px;margin:0 0 12px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600}
+.theme-switch {display:flex!important;margin-top:6px}
+.theme-switch>button {flex:1}
+.image-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.image-grid figure {position:relative;margin:0;border-radius:var(--r-md);overflow:hidden;background:var(--surface-2);border:1px solid var(--line)}
+.image-grid img,.image-placeholder {display:grid;place-items:center;width:100%;aspect-ratio:16/10;object-fit:cover;color:var(--muted)}
+.image-grid figcaption {padding:6px 8px;min-width:0}
+.image-grid figcaption strong {display:block;font-size:12px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.image-grid figcaption small {font-size:11px;color:var(--muted)}
+.image-grid .icon-button {position:absolute;top:6px;right:6px;background:color-mix(in srgb,var(--surface) 86%,transparent)}
+.issue-list {list-style:none;margin:0 0 18px;padding:10px 12px;border-radius:var(--r-md);background:var(--danger-soft);display:flex;flex-direction:column;gap:6px;font-size:12.5px;line-height:1.6;color:var(--text)}
+.issue-list code {display:block;font-family:var(--mono);font-size:11.5px;color:var(--danger);overflow-wrap:anywhere}
+.issue-list .issue-head {display:flex;align-items:center;gap:6px;font-weight:600;color:var(--danger)}
+.group-note svg {vertical-align:-2px}
 .save-state {display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
 .save-state i {width:7px;height:7px;border-radius:50%;background:var(--success)}
 .save-state.dirty {color:var(--warning);font-weight:500}

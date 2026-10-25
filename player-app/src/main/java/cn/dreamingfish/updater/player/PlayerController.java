@@ -59,6 +59,10 @@ public final class PlayerController {
     private final PlayerArguments arguments;
     private final PlayerViewPort viewport;
     private final Runnable exitAction;
+    private final PlayerServerStatusMonitor serverStatusMonitor;
+    private final PlayerPresentationImages presentationImages = new PlayerPresentationImages();
+    private final AtomicLong imageGeneration = new AtomicLong();
+    private volatile boolean exited;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
             runnable -> {
                 Thread thread = new Thread(runnable, "player-auto-close");
@@ -107,6 +111,7 @@ public final class PlayerController {
         this.arguments = arguments;
         this.viewport = viewport;
         this.exitAction = exitAction == null ? () -> { } : exitAction;
+        this.serverStatusMonitor = new PlayerServerStatusMonitor(viewport::setServerStatus);
         this.permitClient = new BootstrapPermitClient(arguments);
     }
 
@@ -349,6 +354,9 @@ public final class PlayerController {
     }
 
     public void exitApplication() {
+        exited = true;
+        imageGeneration.incrementAndGet();
+        serverStatusMonitor.close();
         scheduler.shutdownNow();
         exitAction.run();
     }
@@ -370,6 +378,7 @@ public final class PlayerController {
         releaseBranding = loadInitialBranding();
         presentationBranding = presentationClient.loadCached(binding, playerHome);
         applyActiveBranding();
+        refreshPresentationImages();
         viewport.setBackground(resolveBundledCover(binding));
         viewport.setReleaseHistory(releaseHistoryClient.loadCached(binding, playerHome));
     }
@@ -477,6 +486,7 @@ public final class PlayerController {
                 releaseBranding = completedResult.release().branding();
                 applyActiveBranding();
                 finishSuccessfully(completedResult);
+                refreshPresentationImages();
                 refreshReleaseHistory();
             } catch (Exception e) {
                 working = false;
@@ -619,7 +629,24 @@ public final class PlayerController {
     }
 
     private void applyActiveBranding() {
-        viewport.setBranding(mergePresentation(releaseBranding, presentationBranding));
+        Branding branding = mergePresentation(releaseBranding, presentationBranding);
+        viewport.setBranding(branding);
+        serverStatusMonitor.configure(branding);
+    }
+
+    public void refreshServerStatus() { serverStatusMonitor.refresh(); }
+
+    private void refreshPresentationImages() {
+        long generation = imageGeneration.incrementAndGet();
+        Branding snapshot = releaseBranding;
+        if (snapshot == null || snapshot.presentationImages() == null || snapshot.presentationImages().isEmpty()) return;
+        Thread.ofVirtual().name("player-presentation-images").start(() -> {
+            CancellationToken cancellation = () -> exited || generation != imageGeneration.get();
+            presentationImages.sync(binding, arguments.instanceRoot(), snapshot.presentationImages(), cancellation);
+            // A superseded worker may have completed the files just before cancellation.
+            // Also retry cached read failures when this worker finds everything already present.
+            if (!cancellation.isCancelled()) viewport.presentationImagesUpdated();
+        });
     }
 
     static Branding mergePresentation(Branding release, Branding presentation) {
@@ -642,7 +669,14 @@ public final class PlayerController {
                 presentation.topBarColor(),
                 presentation.cardColor(),
                 presentation.topBarOpacity(),
-                presentation.titleColor());
+                presentation.titleColor(),
+                presentation.spotlights(),
+                presentation.serverCard(),
+                presentation.events(),
+                presentation.theme(),
+                base.presentationImages(),
+                presentation.addressPlacement(),
+                presentation.brandLogoFile());
     }
 
     private void restartWithUpdatedProgram(PlayerProgramUpdateResult result) {

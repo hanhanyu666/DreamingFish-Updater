@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { usePlayerStore } from "../stores/player";
 import { getBridge } from "../lib/bridge";
 import NewsPage from "./NewsPage.vue";
+import BlocksPage from "./BlocksPage.vue";
+import GalleryPage from "./GalleryPage.vue";
 import MarkdownBody from "./MarkdownBody.vue";
+import MoonFish from "./MoonFish.vue";
+import { pageLayout } from "../lib/showcase";
+import { chrome } from "../lib/updateStatus";
 
 const store = usePlayerStore();
 const bridge = getBridge();
-const VERSION = "0.2.2";
+const VERSION = "0.3.2";
 const REPOSITORY_URL = "https://github.com/hanhanyu666/DreamingFish-Updater";
 const currentPage = computed(() => {
   const id = store.state.page === "NEWS" ? "news"
@@ -17,6 +22,17 @@ const currentPage = computed(() => {
   if (id == null) return null;
   return store.state.contentPages.find((page) => page.id === id) ?? null;
 });
+const layout = computed(() => (currentPage.value == null ? null : pageLayout(currentPage.value)));
+/** The title bar turns solid once a page scrolls under it. */
+function onScroll(event: Event): void {
+  const target = event.target as HTMLElement | null;
+  const threshold = Number(target?.dataset?.solidAfter ?? 24);
+  chrome.contentScrolled = (target?.scrollTop ?? 0) > threshold;
+}
+watch(() => store.state.page, () => {
+  chrome.contentScrolled = false;
+});
+
 function openRepository(): void {
   bridge.openExternal(REPOSITORY_URL);
 }
@@ -26,13 +42,28 @@ function openRepository(): void {
   <div
     class="content-page-layer"
     :class="{ visible: store.state.page !== 'HOME' }"
+    @scroll.capture="onScroll"
   >
     <div
-      v-if="currentPage?.announcementPage"
+      v-if="currentPage && layout === 'ANNOUNCEMENTS'"
       :key="'announcements-' + currentPage.id + '-' + store.state.newsRequest.seq"
       class="content-page-host page-reveal"
     >
       <NewsPage :page="currentPage" />
+    </div>
+    <div
+      v-else-if="currentPage && layout === 'GALLERY'"
+      :key="'gallery-' + currentPage.id"
+      class="content-page-host page-reveal"
+    >
+      <GalleryPage :page="currentPage" />
+    </div>
+    <div
+      v-else-if="currentPage && layout === 'BLOCKS'"
+      :key="'blocks-' + currentPage.id"
+      class="content-page-host page-reveal"
+    >
+      <BlocksPage :page="currentPage" />
     </div>
     <div
       v-else-if="currentPage"
@@ -56,10 +87,11 @@ function openRepository(): void {
     >
       <div class="content-page-alignment">
         <div class="content-page">
+          <div class="about-mark" aria-hidden="true"><MoonFish mood="happy" :size="46" /></div>
           <div class="page-eyebrow">DREAMINGFISH UPDATER</div>
-          <div class="page-version">玩家端程序版本 {{ VERSION }}</div>
           <div class="page-title">关于更新器</div>
           <div class="page-lead">为 Minecraft 整合包准备的一套开源自动更新工具</div>
+          <div class="page-version">玩家端程序版本 {{ VERSION }}</div>
           <div class="page-divider"></div>
           <div class="page-copy">梦鱼更新器由管理端、玩家端和启动引导程序组成。服主在管理端发布整合包文件，玩家端会在游戏启动前检查变化并完成更新。</div>
           <div class="page-copy">这是一个公开在 GitHub 上的开源项目。你可以查看源代码、了解最新进展，也可以提交使用中遇到的问题。</div>

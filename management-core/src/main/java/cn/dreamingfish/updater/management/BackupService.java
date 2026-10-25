@@ -249,6 +249,14 @@ public final class BackupService {
         ObjectStore restoredObjects = new ObjectStore(restoredPaths);
         Set<String> verifiedObjects = new HashSet<>();
         for (ProjectRecord project : restoredDatabase.listProjects()) {
+            if (project.branding().presentationImages() != null) {
+                cn.dreamingfish.updater.protocol.ShowcaseRules.validate(project.branding());
+                for (var image : project.branding().presentationImages()) {
+                    try { restoredObjects.verify(restoredObjects.require(image.sha256()), image.sha256(), image.size()); }
+                    catch (IOException error) { throw new ManagementException("备份中的展示图片损坏：" + image.fileName(), error); }
+                    verifiedObjects.add(image.sha256());
+                }
+            }
             if (!Files.isRegularFile(project.privateKeyFile())) {
                 throw new ManagementException("Backup is missing private key for " + project.id());
             }
@@ -286,6 +294,13 @@ public final class BackupService {
                         String actual = CryptoSupport.sha256(cover);
                         if (!actual.equals(manifest.branding().coverObject())) {
                             throw new ManagementException("Backup contains a corrupt cover object");
+                        }
+                    }
+                    if (manifest.branding().presentationImages() != null) {
+                        for (var image : manifest.branding().presentationImages()) {
+                            if (verifiedObjects.add(image.sha256())) {
+                                restoredObjects.verify(restoredObjects.require(image.sha256()), image.sha256(), image.size());
+                            }
                         }
                     }
                     if (manifest.branding().musicTracks() != null) {

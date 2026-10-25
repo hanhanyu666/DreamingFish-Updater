@@ -81,7 +81,9 @@ final class ProjectConfigureCommand implements Runnable {
                 topBarColor == null ? old.topBarColor() : topBarColor,
                 cardColor == null ? old.cardColor() : cardColor,
                 topBarOpacity == null ? old.topBarOpacity() : topBarOpacity,
-                titleColor == null ? old.titleColor() : titleColor
+                titleColor == null ? old.titleColor() : titleColor,
+                old.spotlights(), old.serverCard(), old.events(), old.theme(), old.presentationImages(),
+                old.addressPlacement(), old.brandLogoFile()
         );
         ProjectRules rules = rulesFile == null ? current.rules() : ProjectCreateCommand.readRules(services, rulesFile);
         if (clearForceSync && forcedSyncDirectories != null) {

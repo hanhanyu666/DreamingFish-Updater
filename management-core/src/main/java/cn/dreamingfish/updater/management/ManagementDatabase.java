@@ -484,6 +484,14 @@ public final class ManagementDatabase {
                     }
                 }
                 fileStatement.executeBatch();
+                if (manifest.branding().presentationImages() != null) {
+                    for (var image : manifest.branding().presentationImages()) {
+                        objectStatement.setString(1, image.sha256());
+                        objectStatement.setLong(2, image.size());
+                        objectStatement.setString(3, manifest.createdAt().toString());
+                        objectStatement.addBatch();
+                    }
+                }
                 objectStatement.executeBatch();
 
                 advanceStatement.setLong(1, manifest.sequence() + 1);

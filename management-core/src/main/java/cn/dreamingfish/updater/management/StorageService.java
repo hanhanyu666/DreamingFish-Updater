@@ -159,7 +159,11 @@ public final class StorageService {
                 new Category("historyObjects",historyBytes,"全部历史发布引用保留，回滚仍可创建新签名发布"),
                 new Category("unreferencedObjects",Math.max(0,treeBytes(paths.objects())-currentBytes-historyBytes),"无已知引用或未知对象也保守保留，本轮清理不删除对象"));
     }
-    private static void addBranding(Set<String> refs,Branding branding){if(branding.coverObject()!=null)refs.add(branding.coverObject());branding.musicTracks().forEach(track->refs.add(track.sha256()));}
+    private static void addBranding(Set<String> refs,Branding branding){
+        if(branding.coverObject()!=null)refs.add(branding.coverObject());
+        if(branding.musicTracks()!=null)branding.musicTracks().forEach(track->refs.add(track.sha256()));
+        if(branding.presentationImages()!=null)branding.presentationImages().forEach(image->refs.add(image.sha256()));
+    }
     private long objectBytes(Set<String> refs)throws IOException {long bytes=0;for(String hash:refs){if(!Hex.isSha256(hash))throw new ManagementException("对象引用格式无效，保留存储待核对");Path file=paths.objectPath(hash);PathSafety.assertSafePathTree(file);if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS))throw new ManagementException("被引用的发布对象缺失："+hash);bytes=Math.addExact(bytes,Files.size(file));}return bytes;}
 
     private void addCandidate(List<Candidate> list,Path path,String reason,boolean losesUndo)throws IOException {

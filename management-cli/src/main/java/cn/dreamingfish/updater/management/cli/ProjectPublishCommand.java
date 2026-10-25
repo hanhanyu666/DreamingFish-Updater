@@ -55,6 +55,9 @@ final class ProjectPublishCommand implements Runnable {
             for (var policy : preview.policyChanges()) {
                 root.out().println("Policy: " + PolicyText.describe(policy));
             }
+            for (var design : preview.presentationChanges()) {
+                root.out().println("Design: " + design.describe());
+            }
             for (var warning : preview.warnings()) {
                 root.out().println("Warning: " + PolicyText.describe(warning));
             }

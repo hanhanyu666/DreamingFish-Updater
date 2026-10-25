@@ -4,6 +4,8 @@ import cn.dreamingfish.updater.protocol.Branding;
 import cn.dreamingfish.updater.protocol.ManifestValidator;
 import cn.dreamingfish.updater.protocol.PathSafety;
 import cn.dreamingfish.updater.protocol.PlayerMusicTrack;
+import cn.dreamingfish.updater.protocol.PlayerPresentationImage;
+import cn.dreamingfish.updater.protocol.ShowcaseRules;
 import cn.dreamingfish.updater.protocol.ProjectBinding;
 import cn.dreamingfish.updater.protocol.ProtocolConstants;
 
@@ -143,6 +145,70 @@ public final class ProjectService {
         database.updateProject(id, current.displayName(), current.sourceDirectory(),
                 current.publicBaseUrl(), branding, current.rules());
         return database.requireProject(id);
+    }
+
+    /** Adds or replaces a draft image without modifying any immutable release. */
+    public ProjectRecord addPresentationImage(String id, String fileName, Path source) {
+        validateProjectId(id);
+        ShowcaseRules.validateImageFileName(fileName);
+        try (ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(id + ".lock"))) {
+            ProjectRecord current = database.requireProject(id);
+            if (!Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(source)) {
+                throw new ManagementException("展示图片必须是安全的普通文件");
+            }
+            long size = Files.size(source);
+            if (size < 1 || size > ShowcaseRules.MAX_IMAGE_BYTES) throw new ManagementException("展示图片不能为空，单张不能超过 8 MiB");
+            byte[] header;
+            try (var input = Files.newInputStream(source)) { header = input.readNBytes(16); }
+            if (!matchesImageType(fileName, header)) throw new ManagementException("图片内容与扩展名不匹配，请上传 PNG、JPEG、WebP 或 GIF 图片");
+            List<PlayerPresentationImage> images = current.branding().presentationImages() == null
+                    ? new ArrayList<>() : new ArrayList<>(current.branding().presentationImages());
+            for (var image : images) {
+                if (image.fileName().equalsIgnoreCase(fileName) && !image.fileName().equals(fileName)) {
+                    throw new ManagementException("图片文件名的大小写已被使用，请使用原文件名：" + image.fileName());
+                }
+            }
+            images.removeIf(image -> image.fileName().equalsIgnoreCase(fileName));
+            if (images.size() >= ShowcaseRules.MAX_IMAGES) throw new ManagementException("每个项目最多上传 100 张展示图片");
+            var object = objects.importFile(source);
+            images.add(new PlayerPresentationImage(fileName, object.sha256(), object.size()));
+            Branding branding = current.branding().withPresentationImages(images);
+            ShowcaseRules.validate(branding);
+            database.updateProject(id, current.displayName(), current.sourceDirectory(), current.publicBaseUrl(), branding, current.rules());
+            return database.requireProject(id);
+        } catch (IOException error) { throw new ManagementException("无法保存展示图片", error); }
+    }
+
+    /** Removes the draft reference. Immutable published objects remain available to old releases. */
+    public ProjectRecord removePresentationImage(String id, String fileName) {
+        validateProjectId(id);
+        ShowcaseRules.validateImageFileName(fileName);
+        try (ProjectLock ignored = ProjectLock.acquire(paths.locks().resolve(id + ".lock"))) {
+            ProjectRecord current = database.requireProject(id);
+            if (ShowcaseRules.referencedImageFiles(current.branding()).stream().anyMatch(name -> name.equalsIgnoreCase(fileName))) {
+                throw new ManagementException("这张图片仍被展示内容引用，请先修改相关焦点图、服务器标志或页面");
+            }
+            List<PlayerPresentationImage> images = current.branding().presentationImages() == null
+                    ? new ArrayList<>() : new ArrayList<>(current.branding().presentationImages());
+            if (!images.removeIf(image -> image.fileName().equalsIgnoreCase(fileName))) throw new ManagementException("展示图片不存在：" + fileName);
+            database.updateProject(id, current.displayName(), current.sourceDirectory(), current.publicBaseUrl(),
+                    current.branding().withPresentationImages(images), current.rules());
+            return database.requireProject(id);
+        } catch (IOException error) { throw new ManagementException("无法移除展示图片", error); }
+    }
+
+    private static boolean matchesImageType(String name, byte[] bytes) {
+        String ext = name.substring(name.lastIndexOf('.') + 1);
+        return switch (ext) {
+            case "png" -> bytes.length >= 8 && java.util.Arrays.equals(java.util.Arrays.copyOf(bytes, 8),
+                    new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10});
+            case "jpg", "jpeg" -> bytes.length >= 3 && bytes[0] == (byte) 255 && bytes[1] == (byte) 216 && bytes[2] == (byte) 255;
+            case "gif" -> bytes.length >= 6 && (new String(bytes, 0, 6, java.nio.charset.StandardCharsets.US_ASCII).equals("GIF87a")
+                    || new String(bytes, 0, 6, java.nio.charset.StandardCharsets.US_ASCII).equals("GIF89a"));
+            case "webp" -> bytes.length >= 12 && new String(bytes, 0, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF")
+                    && new String(bytes, 8, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("WEBP");
+            default -> false;
+        };
     }
 
     /** Imports an MP3 into the content-addressed object store and adds it to the project playlist. */
