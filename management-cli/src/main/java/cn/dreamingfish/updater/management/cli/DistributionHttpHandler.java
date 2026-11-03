@@ -2,7 +2,6 @@ package cn.dreamingfish.updater.management.cli;
 import cn.dreamingfish.updater.management.*;
 import com.sun.net.httpserver.HttpExchange;
 import java.nio.file.Path;
-import java.net.URI;
 import java.util.*;
 import static cn.dreamingfish.updater.management.cli.AdminWebServer.*;
 /** DistributionHttpHandler adapter; uses the same application services as CLI. */
@@ -62,61 +61,58 @@ final class DistributionHttpHandler {
                 DistributionWebDavRequest request = io.readJson(
                         exchange, DistributionWebDavRequest.class);
                 io.sendJson(exchange, 200, io.mutate(() -> {
-                    Path output = Path.of(required(
-                            request.outputDirectory, "静态分发目录"));
-                    if (!Boolean.FALSE.equals(request.exportFirst)) {
-                        root.services().staticDistribution()
-                                .exportProject(projectId, output);
-                    }
-                    var result = root.services().distributionUploader().uploadWebDav(
-                            output,
-                            new WebDavUploadConfiguration(
-                                    URI.create(required(request.baseUrl,
-                                            "WebDAV / HTTP PUT 地址")),
-                                    defaultValue(request.username, ""),
-                                    request.password == null ? "" : request.password));
-                    return distributionUploadView(result);
+                    var destination = ExternalHostingService.Destination.webDav(
+                            required(request.outputDirectory, "静态分发目录"),
+                            required(request.baseUrl, "WebDAV / HTTP PUT 地址"),
+                            defaultValue(request.username, ""), request.password);
+                    return distributionUploadView(hosting().deliver(projectId, destination,
+                            !Boolean.FALSE.equals(request.exportFirst), Boolean.TRUE.equals(request.remember)));
                 }));
             }
             case "distribution-s3" -> {
                 DistributionS3Request request = io.readJson(
                         exchange, DistributionS3Request.class);
                 io.sendJson(exchange, 200, io.mutate(() -> {
-                    Path output = Path.of(required(
-                            request.outputDirectory, "静态分发目录"));
-                    if (!Boolean.FALSE.equals(request.exportFirst)) {
-                        root.services().staticDistribution()
-                                .exportProject(projectId, output);
-                    }
-                    S3AddressingStyle style;
-                    try {
-                        style = S3AddressingStyle.valueOf(defaultValue(
-                                request.addressingStyle, "PATH")
-                                .toUpperCase(Locale.ROOT));
-                    } catch (IllegalArgumentException e) {
-                        throw new ManagementException("S3 寻址方式无效");
-                    }
-                    var result = root.services().distributionUploader().uploadS3(
-                            output,
-                            new S3UploadConfiguration(
-                                    URI.create(required(request.endpoint,
-                                            "S3 API Endpoint")),
-                                    required(request.region, "S3 Region"),
-                                    required(request.bucket, "S3 Bucket"),
-                                    defaultValue(request.prefix, ""),
-                                    required(request.accessKeyId,
-                                            "Access Key ID"),
-                                    request.secretAccessKey == null
-                                            ? "" : request.secretAccessKey,
-                                    request.sessionToken == null
-                                            ? "" : request.sessionToken,
-                                    style));
-                    return distributionUploadView(result);
+                    var destination = ExternalHostingService.Destination.s3(
+                            required(request.outputDirectory, "静态分发目录"),
+                            required(request.endpoint, "S3 API Endpoint"),
+                            required(request.region, "S3 Region"),
+                            required(request.bucket, "S3 Bucket"),
+                            defaultValue(request.prefix, ""),
+                            required(request.accessKeyId, "Access Key ID"),
+                            request.secretAccessKey, request.sessionToken,
+                            defaultValue(request.addressingStyle, "PATH"));
+                    return distributionUploadView(hosting().deliver(projectId, destination,
+                            !Boolean.FALSE.equals(request.exportFirst), Boolean.TRUE.equals(request.remember)));
                 }));
+            }
+            case "distribution-saved" -> {
+                io.readJson(exchange, java.util.Map.class);
+                io.sendJson(exchange, 200, io.mutate(() -> distributionUploadView(hosting().upload(projectId))));
+            }
+            case "hosting-saved" -> {
+                SavedHostingRequest request = io.readJson(exchange, SavedHostingRequest.class);
+                switch (defaultValue(request.action, "")) {
+                    case "auto" -> {
+                        if (request.enabled == null) throw new ManagementException("请选择是否在发布后自动上传");
+                        io.sendJson(exchange, 200, io.mutate(() -> hosting().setAuto(projectId, request.enabled)));
+                        if (request.enabled) io.automaticHostingUpload().runSoon();
+                    }
+                    case "forget" -> io.sendJson(exchange, 200, io.mutate(() -> {
+                        hosting().forget(projectId);
+                        return Map.of("forgotten", true);
+                    }));
+                    default -> throw new ManagementException("外部托管操作无效");
+                }
             }
             default->{return false;}
         }
         return true;
+    }
+    private ExternalHostingService hosting() {
+        var services = root.services();
+        return new ExternalHostingService(services.paths(), services.database(), services.json(),
+                services.staticDistribution(), services.distributionUploader());
     }
     private record DeploymentRequest(
             String outputDirectory,
@@ -131,7 +127,8 @@ final class DistributionHttpHandler {
             String baseUrl,
             String username,
             String password,
-            Boolean exportFirst
+            Boolean exportFirst,
+            Boolean remember
     ) {
     }
     private record DistributionS3Request(
@@ -144,7 +141,10 @@ final class DistributionHttpHandler {
             String secretAccessKey,
             String sessionToken,
             String addressingStyle,
-            Boolean exportFirst
+            Boolean exportFirst,
+            Boolean remember
     ) {
+    }
+    private record SavedHostingRequest(String action, Boolean enabled) {
     }
 }

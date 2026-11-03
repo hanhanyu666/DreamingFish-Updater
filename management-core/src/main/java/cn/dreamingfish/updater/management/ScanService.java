@@ -344,12 +344,13 @@ public final class ScanService {
     private List<PreviewWarning> warnings(ProjectRecord project, ReleaseManifest previous,
                                           List<ScannedFile> files, List<PreviewChange> changes) {
         List<PreviewWarning> warnings = new ArrayList<>();
+        String requiredVersion = project.rules().packRoot() != null || files.stream().anyMatch(file -> cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path())) ? "0.3.3" : POLICY_PLAYER_VERSION;
         String newest = newestPlayerProgram(project.id());
         if (newest == null || SemanticVersion.parse(newest)
-                .compareTo(SemanticVersion.parse(POLICY_PLAYER_VERSION)) < 0) {
+                .compareTo(SemanticVersion.parse(requiredVersion)) < 0) {
             warnings.add(new PreviewWarning(PreviewWarning.PLAYER_PROGRAM_REQUIRED,
-                    POLICY_PLAYER_VERSION,
-                    "这次发布使用新的文件维护规则，玩家端需要 " + POLICY_PLAYER_VERSION
+                    requiredVersion,
+                    "这次发布使用新的文件维护规则，玩家端需要 " + requiredVersion
                             + " 或更新版本。当前项目" + (newest == null ? "还没有发布玩家端程序"
                             : "已发布的玩家端最高为 " + newest)
                             + "；旧玩家端会拒绝这个版本并无法启动游戏。请先发布新版玩家端，"
@@ -393,7 +394,7 @@ public final class ScanService {
         String bestText = null;
         try {
             for (String platform : programs.listPlatforms(projectId)) {
-                for (StoredPlayerProgram program : programs.list(projectId, platform)) {
+                for (StoredPlayerProgram program : programs.latest(projectId, platform).stream().toList()) {
                     SemanticVersion version = SemanticVersion.parse(program.version());
                     if (best == null || version.compareTo(best) > 0) {
                         best = version;
@@ -416,6 +417,15 @@ public final class ScanService {
             stream.filter(path -> !path.equals(project.sourceDirectory())).forEach(path -> {
                 String relative = project.sourceDirectory().relativize(path).toString().replace('\\', '/');
                 relative = PathSafety.normalizeManifestPath(relative);
+                if (cn.dreamingfish.updater.protocol.ContentRoots.isPackPath(relative)) {
+                    var root = project.rules().packRoot();
+                    boolean namespaceDirectory=root!=null && relative.equals(root.prefix().substring(0,root.prefix().length()-1))
+                            && Files.isDirectory(path,LinkOption.NOFOLLOW_LINKS);
+                    if (!namespaceDirectory) {
+                        if (root == null || !relative.startsWith(root.prefix())) throw new ManagementException("外层文件没有对应的目录配置：" + relative);
+                        cn.dreamingfish.updater.protocol.ContentRoots.validatePackPath(cn.dreamingfish.updater.protocol.ConfigPatches.targetPath(relative.substring(root.prefix().length())));
+                    }
+                }
                 RuleSet.Decision decision = rules.decide(relative);
                 if (decision.excluded()) {
                     if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
@@ -436,6 +446,12 @@ public final class ScanService {
                 if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
                     return;
                 }
+                if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(relative)) {
+                    try {
+                        if (Files.size(path) > 256 * 1024) throw new ManagementException("配置合并规则最多 256 KiB");
+                        cn.dreamingfish.updater.protocol.ConfigPatches.validate(Files.readAllBytes(path));
+                    } catch (IOException error) { throw new java.io.UncheckedIOException(error); }
+                }
                 files.add(hashStable(path, relative, projectRules));
             });
         } catch (IOException | java.io.UncheckedIOException e) {
@@ -443,6 +459,7 @@ public final class ScanService {
         }
         files.sort(Comparator.comparing(ScannedFile::path));
         PathSafety.validateDistinctPaths(files.stream().map(ScannedFile::path).toList());
+        PathSafety.validateDistinctPaths(files.stream().map(file -> cn.dreamingfish.updater.protocol.ConfigPatches.targetPath(file.path())).toList());
         return List.copyOf(files);
     }
 

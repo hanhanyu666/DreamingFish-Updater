@@ -60,36 +60,58 @@ class AdminWebServerTest {
     }
 
     @Test
-    void servesNewAndLegacyInterfacesFromSameOriginWithoutDesktopCredentials() throws Exception {
-        ManagementCli root = new ManagementCli(temporary.resolve("dual-ui/management-settings.json"), new StringReader(""));
-        boolean frontendBuilt = AdminWebServer.class.getResource("web/workbench/index.html") != null;
-        try (AdminWebServer server = new AdminWebServer(root, new InetSocketAddress(InetAddress.getLoopbackAddress(), 0))) {
-            server.start(); URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
-            HttpResponse<String> chooser = send(base, "/", "GET", null, null);
-            assertEquals(200, chooser.statusCode());
-            assertTrue(chooser.body().contains("data-workbench-available=\"" + frontendBuilt + "\""));
-            assertTrue(chooser.body().contains("/interface-mode.js"));
-            HttpResponse<String> legacy = send(base, "/legacy/", "GET", null, null);
-            assertEquals(200, legacy.statusCode());
-            assertTrue(legacy.body().contains("open-workspace-history"));
-            assertTrue(legacy.body().contains("use-new-interface"));
-            HttpResponse<String> workbench = send(base, "/workbench/", "GET", null, null);
-            if (!frontendBuilt) {
-                assertEquals(404, workbench.statusCode());
-                assertEquals(200, send(base, "/api/session", "GET", null, null).statusCode());
-                return;
+    void redirectsOldBookmarksAndServesOnlyTheSharedWorkbench() throws Exception {
+        var root = new ManagementCli(temporary.resolve("single-ui/settings.json"), new StringReader(""));
+        try (var server = new AdminWebServer(root, new InetSocketAddress("127.0.0.1", 0))) {
+            server.start(); URI base=URI.create("http://127.0.0.1:"+server.address().getPort());
+            for (String path : List.of("/", "/index.html", "/legacy", "/legacy/", "/legacy/index.html")) {
+                for (String method : List.of("GET", "HEAD")) {
+                    var redirect=send(base,path,method,null,null);
+                    assertEquals(302,redirect.statusCode(),path);
+                    assertEquals("/workbench/",redirect.headers().firstValue("Location").orElseThrow());
+                    assertEquals("no-store",redirect.headers().firstValue("Cache-Control").orElseThrow());
+                    assertTrue(redirect.body().isEmpty());
+                }
             }
-            assertEquals(200, workbench.statusCode());
-            assertTrue(workbench.body().contains("workbench-app"));
-            assertFalse(workbench.body().contains("__DFS_DESKTOP_TOKEN__"));
-            assertTrue(workbench.headers().firstValue("Content-Security-Policy").orElseThrow().contains("script-src 'self'"));
-            assertFalse(workbench.headers().firstValue("Content-Security-Policy").orElseThrow().contains("unsafe-eval"));
-            var matcher = java.util.regex.Pattern.compile("src=\"(/workbench/assets/[^\"]+\\.js)\"").matcher(workbench.body());
-            assertTrue(matcher.find());
-            assertEquals(200, send(base, matcher.group(1), "GET", null, null).statusCode());
-            assertEquals(200, send(base, "/interface-mode.js", "GET", null, null).statusCode());
-            assertEquals(404, send(base, "/workbench/%2e%2e/pom.xml", "GET", null, null).statusCode());
-            assertEquals(200, send(base, "/api/session", "GET", null, null).statusCode());
+            Map<String,String> views=Map.ofEntries(
+                    Map.entry("dashboard","files&section=files"),Map.entry("content","files&section=files"),
+                    Map.entry("publish","changes&section=changes"),Map.entry("project","settings&section=project"),
+                    Map.entry("personalization","appearance&section=branding"),Map.entry("player","delivery&section=programs"),
+                    Map.entry("distribution","delivery&section=hosting"),Map.entry("instance","delivery&section=deployment"),
+                    Map.entry("settings","settings&section=service"));
+            for(var entry:views.entrySet()) {
+                var redirect=send(base,"/legacy/?project=demo&view="+entry.getKey()+"&interface=legacy","GET",null,null);
+                assertEquals("/workbench/?project=demo&view="+entry.getValue(),redirect.headers().firstValue("Location").orElseThrow());
+            }
+            var modern=send(base,"/index.html?project=demo&view=appearance&section=home","GET",null,null);
+            assertEquals("/workbench/?project=demo&view=appearance&section=home",modern.headers().firstValue("Location").orElseThrow());
+            var encoded=send(base,"/legacy/?project=%E6%B5%8B%E8%AF%95%26x%3D1%0D%0AInjected%3Atrue&view=__proto__&section=a%26b","GET",null,null);
+            URI destination=base.resolve(encoded.headers().firstValue("Location").orElseThrow());
+            assertEquals(base.getAuthority(),destination.getAuthority());
+            assertEquals("/workbench/",destination.getPath());
+            assertEquals("测试&x=1\r\nInjected:true",AdminWebServer.query(destination,"project"));
+            assertEquals("files",AdminWebServer.query(destination,"view"));
+            assertTrue(encoded.headers().firstValue("Injected").isEmpty());
+            assertEquals(405,send(base,"/legacy/","POST",null,null).statusCode());
+            assertEquals(404,send(base,"/legacy/missing.html","GET",null,null).statusCode());
+            for(String asset:List.of("index.html","app.js","app.css","desktop.css","workspace.css","interface-mode.js",
+                    "file-workspace.js","file-transfer.js","admin-workflow.js","operation-history.js","icons/folder.svg","icons/file.svg")) {
+                assertNull(AdminWebServer.class.getResource("web/"+asset),"Removed resource remains; run Maven clean: "+asset);
+                if(!asset.equals("index.html"))assertEquals(404,send(base,"/"+asset,"GET",null,null).statusCode(),asset);
+            }
+            var page=send(base,"/workbench/","GET",null,null);
+            assertEquals(200,page.statusCode(),page.body());assertTrue(page.body().contains("workbench-app"));
+            assertFalse(page.body().contains("__DFS_DESKTOP_TOKEN__"));
+            assertTrue(page.headers().firstValue("Content-Security-Policy").orElseThrow().contains("script-src 'self'"));
+            assertFalse(page.headers().firstValue("Content-Security-Policy").orElseThrow().contains("unsafe-eval"));
+            var matcher=java.util.regex.Pattern.compile("src=\"(/workbench/assets/[^\"]+[.]js)\"").matcher(page.body());
+            assertTrue(matcher.find());assertEquals(200,send(base,matcher.group(1),"GET",null,null).statusCode());
+            assertEquals(404,send(base,"/workbench/%2e%2e/pom.xml","GET",null,null).statusCode());
+            try(var following=HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()) {
+                var reached=following.send(HttpRequest.newBuilder(base.resolve("/legacy/?project=demo&view=player")).GET().build(),HttpResponse.BodyHandlers.ofString());
+                assertEquals(200,reached.statusCode());assertEquals("/workbench/",reached.uri().getPath());
+                assertEquals("programs",AdminWebServer.query(reached.uri(),"section"));
+            }
         }
     }
 
@@ -156,9 +178,6 @@ class AdminWebServerTest {
             HttpResponse<String> restored = send(base, "/api/projects/ops/operations/undo", "POST", json.writeString(Map.of("id", id, "stamp", plan.get("stamp"))), token);
             assertEquals(200, restored.statusCode(), restored.body());
             assertEquals(cn.dreamingfish.updater.protocol.MaintenancePreset.SYNC, root.services().database().requireProject("ops").rules().presetFor("a.txt"));
-            assertEquals(200, send(base, "/operation-history.js", "GET", null, null).statusCode());
-            assertEquals(200, send(base, "/icons/folder.svg", "GET", null, null).statusCode());
-            assertEquals(200, send(base, "/icons/file.svg", "GET", null, null).statusCode());
         }
     }
 
@@ -181,84 +200,12 @@ class AdminWebServerTest {
             server.start();
             URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
 
-            HttpResponse<String> page = send(base, "/", "GET", null, null);
-            assertEquals(200, page.statusCode());
-            assertTrue(page.body().contains("梦鱼更新管理"));
-            assertTrue(page.body().contains("data-view=\"content\""));
-            assertTrue(page.body().contains("管理内容"));
-            assertTrue(page.body().contains("检查并发布"));
-            assertTrue(page.body().contains("data-view=\"personalization\""));
-            assertTrue(page.body().contains("玩家端预览"));
-            assertTrue(page.body().contains("id=\"personalization-form\""));
-            assertTrue(page.body().contains("id=\"player-preview-stage\""));
-            assertTrue(page.body().contains("player-pages-toolbar"));
-            assertTrue(page.body().contains("id=\"cover-upload-input\""));
-            assertTrue(page.body().contains("从当前电脑上传背景图"));
-            assertTrue(page.body().contains("从管理端所在电脑 / 服务器导入"));
-            assertTrue(page.body().contains("name=\"welcomeText\""));
-            assertTrue(page.body().contains("name=\"titleColor\""));
-            assertTrue(page.body().contains("name=\"topBarColor\""));
-            assertTrue(page.body().contains("name=\"topBarOpacity\""));
-            assertTrue(page.body().contains("name=\"topBarOpacityNumber\""));
-            assertTrue(page.body().contains("name=\"cardColor\""));
-            assertTrue(page.body().contains("id=\"reset-theme-colors\""));
-            assertTrue(page.body().contains("恢复默认配色"));
-            assertTrue(page.body().contains("id=\"import-player-pages-server\""));
-            assertTrue(page.body().contains("id=\"create-source-folder\""));
-            assertTrue(page.body().contains("id=\"service-restart\""));
-            assertTrue(page.body().contains("id=\"download-deployment-button\""));
-            assertTrue(page.body().contains("清理多余文件"));
-            assertTrue(page.body().contains("id=\"group-pick-dialog\""));
-            assertTrue(page.body().contains("撤回问题版本"));
-            assertTrue(page.body().contains("处理问题文件"));
-            assertTrue(page.body().contains("按发布版本管理"));
-            assertTrue(page.body().contains("id=\"file-history-dialog\""));
-            assertTrue(page.body().contains("id=\"correct-release\""));
-            assertTrue(page.body().contains("后来发现 B 1.0 会崩溃"));
-            assertFalse(page.body().contains("改为可选（让玩家自己决定）"));
-            assertFalse(page.body().contains("删除，但保留自行管理玩家的副本"));
-            assertTrue(page.body().contains("强制同步"));
-            assertFalse(page.body().contains("<option value=\"DEFAULT_CONFIG\">"));
-            assertTrue(page.body().contains("name=\"minimumPlayerVersion\" value=\"0.2.0\""));
-            assertFalse(page.body().contains("至少需要 0.3.0"));
-            assertTrue(page.body().contains("id=\"error-dialog\""));
-            assertTrue(page.body().contains("操作失败"));
-            assertTrue(page.body().contains("id=\"path-browser-dialog\""));
-            assertTrue(page.body().contains("管理端所在服务器中的文件"));
-            assertTrue(page.body().contains("data-path-kind=\"directory\""));
-            assertTrue(page.body().contains("id=\"source-target-tree\""));
-            assertTrue(page.body().contains("选择文件保存位置"));
-            assertTrue(page.body().contains("从服务器导入"));
-            assertTrue(page.body().contains("name=\"brandName\""));
-            assertTrue(page.body().contains("name=\"brandEnglishName\""));
-            assertTrue(page.body().contains("name=\"productName\""));
-            assertTrue(page.body().contains("name=\"subtitle\""));
-            assertTrue(page.body().contains("创建必备设置"));
-            assertTrue(page.body().contains("玩家端个性化"));
-            assertTrue(page.body().contains("data-view=\"distribution\""));
-            assertTrue(page.body().contains("id=\"distribution-form\""));
-            assertTrue(page.body().contains("id=\"webdav-upload-form\""));
-            assertTrue(page.body().contains("id=\"s3-upload-form\""));
-            assertTrue(page.body().contains("Secret Access Key"));
-            assertTrue(page.body().contains("普通 HTTP、对象存储（OSS）和 CDN"));
-            assertTrue(page.body().contains("显示在玩家端首页左侧的大号标题区域"));
-            assertTrue(page.body().contains("显示在玩家端首页主标题下方"));
-            assertTrue(!page.body().contains("name=\"targetDirectory\""));
-            assertTrue(!page.body().contains("data-view=\"files\""));
-            assertTrue(page.body().contains("整合包文件"));
-            assertTrue(page.body().contains("全选当前范围"));
-            assertTrue(page.body().indexOf("整合包文件")
-                    < page.body().indexOf("id=\"cleanup-panel\""));
-            assertTrue(page.body().indexOf("id=\"cleanup-panel\"")
-                    < page.body().indexOf("id=\"directive-panel\""));
-            assertTrue(page.body().indexOf("id=\"directive-panel\"")
-                    < page.body().indexOf("发布前检查"));
-            assertEquals("text/html; charset=utf-8", page.headers()
-                    .firstValue("Content-Type").orElseThrow());
-            assertEquals("DENY", page.headers()
-                    .firstValue("X-Frame-Options").orElseThrow());
-            assertTrue(page.headers().firstValue("Content-Security-Policy")
-                    .orElseThrow().contains("frame-ancestors 'none'"));
+            HttpResponse<String> page = send(base,"/workbench/","GET",null,null);
+            assertEquals(200,page.statusCode(),page.body());
+            assertTrue(page.body().contains("workbench-app"));
+            assertEquals("text/html; charset=utf-8",page.headers().firstValue("Content-Type").orElseThrow());
+            assertEquals("DENY",page.headers().firstValue("X-Frame-Options").orElseThrow());
+            assertTrue(page.headers().firstValue("Content-Security-Policy").orElseThrow().contains("frame-ancestors 'none'"));
 
             HttpResponse<String> playerPreview = send(
                     base, "/player-preview/index.html?adminPreview=1",
@@ -505,6 +452,60 @@ class AdminWebServerTest {
             assertEquals(400, insecureS3.statusCode(), insecureS3.body());
             assertTrue(insecureS3.body().contains("HTTPS"));
             assertTrue(!insecureS3.body().contains("do-not-leak-this-secret"));
+
+            HttpResponse<String> temporaryToken = send(
+                    base, "/api/projects/web-demo/distribution-s3", "POST",
+                    json.writeString(Map.ofEntries(
+                            Map.entry("outputDirectory", staticOutput.toString()),
+                            Map.entry("endpoint", "https://oss-cn-hangzhou.aliyuncs.com"),
+                            Map.entry("region", "oss-cn-hangzhou"),
+                            Map.entry("bucket", "demo-bucket"),
+                            Map.entry("accessKeyId", "access"),
+                            Map.entry("secretAccessKey", "do-not-leak-this-secret"),
+                            Map.entry("sessionToken", "sts-do-not-keep"),
+                            Map.entry("addressingStyle", "VIRTUAL_HOST"),
+                            Map.entry("exportFirst", false),
+                            Map.entry("remember", true))), token);
+            assertEquals(400, temporaryToken.statusCode(), temporaryToken.body());
+            assertTrue(temporaryToken.body().contains("临时会话令牌"), temporaryToken.body());
+            assertTrue(!temporaryToken.body().contains("do-not-leak-this-secret"));
+            assertEquals(400, send(base, "/api/projects/web-demo/distribution-saved", "POST", "{}", token).statusCode());
+
+            var dav = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            dav.createContext("/", exchange -> {
+                exchange.getRequestBody().readAllBytes();
+                exchange.sendResponseHeaders(switch (exchange.getRequestMethod()) {
+                    case "PUT", "MKCOL" -> 201; case "DELETE" -> 204; default -> 404; }, -1);
+                exchange.close();
+            });
+            dav.start();
+            try {
+                HttpResponse<String> remembered = send(
+                        base, "/api/projects/web-demo/distribution-webdav", "POST",
+                        json.writeString(Map.of(
+                                "outputDirectory", staticOutput.toString(),
+                                "baseUrl", "http://127.0.0.1:" + dav.getAddress().getPort() + "/dav/",
+                                "username", "admin",
+                                "password", "kept-dav-password",
+                                "remember", true)), token);
+                assertEquals(200, remembered.statusCode(), remembered.body());
+                HttpResponse<String> withSaved = send(base, "/api/projects/web-demo", "GET", null, null);
+                assertTrue(withSaved.body().contains("\"savedHosting\""), withSaved.body());
+                assertTrue(withSaved.body().contains("\"autoUpload\":true"), withSaved.body());
+                assertTrue(!withSaved.body().contains("kept-dav-password"), "saved secrets never return to the browser");
+                HttpResponse<String> autoOff = send(base, "/api/projects/web-demo/hosting-saved", "POST",
+                        json.writeString(Map.of("action", "auto", "enabled", false)), token);
+                assertEquals(200, autoOff.statusCode(), autoOff.body());
+                assertTrue(autoOff.body().contains("\"autoUpload\":false"), autoOff.body());
+                assertTrue(!autoOff.body().contains("kept-dav-password"));
+                HttpResponse<String> again = send(base, "/api/projects/web-demo/distribution-saved", "POST", "{}", token);
+                assertEquals(200, again.statusCode(), again.body());
+                assertEquals(200, send(base, "/api/projects/web-demo/hosting-saved", "POST",
+                        json.writeString(Map.of("action", "forget")), token).statusCode());
+                assertTrue(!send(base, "/api/projects/web-demo", "GET", null, null).body().contains("\"autoUpload\""));
+            } finally {
+                dav.stop(0);
+            }
 
             HttpResponse<String> details = send(
                     base, "/api/projects/web-demo", "GET", null, null);
@@ -835,27 +836,7 @@ class AdminWebServerTest {
             assertEquals("server-import", Files.readString(
                     source.resolve("server-added.jar")));
 
-            HttpResponse<String> script = send(base, "/app.js", "GET", null, null);
-            assertTrue(script.body().contains("applyPresets"));
-            assertTrue(script.body().contains("maintenance/${action}"));
-            assertTrue(script.body().contains("acknowledgePlayerUpgrade"));
-            assertTrue(!script.body().contains("forced-files"));
-            assertTrue(script.body().contains("bindSourceFiles"));
-            assertTrue(script.body().contains("app.sourceFiles?.files"));
-            assertTrue(script.body().contains("fileTreeRows"));
-            assertTrue(script.body().contains("uploadTargetDirectory"));
-            assertTrue(script.body().contains("beforeunload"));
-            assertTrue(script.body().contains("captureContentPosition"));
-            assertTrue(script.body().contains("remove-batch"));
-            assertTrue(script.body().contains("本次没有修改"));
-            assertTrue(script.body().contains("expandedPlayerPages"));
-            assertTrue(script.body().contains("player-editor-card-actions"));
-            assertTrue(script.body().contains("deployment/download"));
 
-            HttpResponse<String> stylesheet = send(
-                    base, "/app.css", "GET", null, null);
-            assertTrue(stylesheet.body().contains(".player-page-card.collapsed"));
-            assertTrue(stylesheet.body().contains(".player-editor-card-heading"));
         }
     }
 
@@ -1209,8 +1190,6 @@ class AdminWebServerTest {
             assertEquals(1, json.read(history.body().getBytes(StandardCharsets.UTF_8), List.class).size());
             var undo = send(base, "/api/projects/transfer-demo/files/undo-import", "POST", json.writeString(Map.of("id", plan.get("id"))), token);
             assertEquals(200, undo.statusCode(), undo.body()); assertEquals("old", Files.readString(source.resolve("client.txt")));
-            for (String asset : List.of("/file-workspace.js", "/file-transfer.js", "/admin-workflow.js", "/workspace.css"))
-                assertEquals(200, send(base, asset, "GET", null, null).statusCode(), asset);
         }
     }
 
@@ -1226,6 +1205,54 @@ class AdminWebServerTest {
         bound.put("previewId", preview.get("previewId"));
         bound.put("previewDigest", preview.get("previewDigest"));
         return json.writeString(bound);
+    }
+
+    @Test
+    void programApprovalAndConfigPatchEndpointsShareProjectIdentityAndPreviewRules() throws Exception {
+        var root = new ManagementCli(temporary.resolve("program-policy/settings.json"), new StringReader(""));
+        Path source = Files.createDirectories(temporary.resolve("policy-source"));
+        root.services().projects().create("policy", "Policy", source, "http://127.0.0.1:8080",
+                cn.dreamingfish.updater.protocol.Branding.empty(), cn.dreamingfish.updater.management.ProjectRules.defaults());
+        new WebAuthStore(root.settingsFile().getParent().resolve("management-web-auth.json"))
+                .register("policy-admin", "isolated-test-password".toCharArray(), true);
+        try (var server = new AdminWebServer(root, new InetSocketAddress("127.0.0.1", 0))) {
+            server.start(); URI base = URI.create("http://127.0.0.1:" + server.address().getPort());
+            String token = json.read(send(base,"/api/session","GET",null,null).body().getBytes(StandardCharsets.UTF_8),Map.class).get("token").toString();
+            String api = "/api/projects/policy/";
+            var configured = send(base,api+"pack-root","POST",json.writeString(Map.of("relativeRoot","../../..","expectedId","")),token);
+            assertEquals(200,configured.statusCode(),configured.body());
+            var view = json.read(configured.body().getBytes(StandardCharsets.UTF_8), com.fasterxml.jackson.databind.JsonNode.class);
+            String rootId = view.path("packRoot").path("id").asText(); assertFalse(rootId.isBlank());
+            String patch = "{\"schemaVersion\":1,\"format\":\"ini\",\"set\":{\"UiCustomType\":\"2\"}}";
+            var staged = send(base,api+"config-patch","POST",json.writeString(Map.of("id",java.util.UUID.randomUUID().toString(),"scope","pack","target","PCL/Setup.ini","patch",patch)),token);
+            assertEquals(200,staged.statusCode(),staged.body());
+            var plan=json.read(staged.body().getBytes(StandardCharsets.UTF_8),com.fasterxml.jackson.databind.JsonNode.class);
+            assertFalse(Files.exists(source.resolve("@pack/"+rootId+"/PCL/Setup.ini.dfs-patch.json")));
+            var saved=send(base,api+"files/commit","POST",json.writeString(Map.of("id",plan.path("id").asText(),"stamp",plan.path("stamp").asText(),"action","ADD")),token);
+            assertEquals(200,saved.statusCode(),saved.body());
+            assertTrue(Files.exists(source.resolve("@pack/"+rootId+"/PCL/Setup.ini.dfs-patch.json")));
+            var preview=send(base,api+"scan","POST","{}",token);
+            assertEquals(200,preview.statusCode(),preview.body());assertTrue(preview.body().contains("0.3.3"));
+            Path program=Files.createDirectories(temporary.resolve("policy-program"));Files.writeString(program.resolve("player.exe"),"program");
+            var candidate=root.services().playerPrograms().prepare("policy","windows-x64","0.3.3",program,"player.exe","0.1.2");
+            var approval=send(base,api+"program-approval","POST",json.writeString(Map.of("platform","windows-x64","version","0.3.3","manifestSha256",candidate.manifestSha256(),"expectedRevision",0)),token);
+            assertEquals(200,approval.statusCode(),approval.body());
+            assertEquals(200,send(base,api+"scan","POST","{}",token).statusCode());
+            var published=send(base,api+"publish","POST",publication(base,"policy",Map.of("displayVersion","1.0","changelog","outer"),token),token);
+            assertEquals(201,published.statusCode(),published.body());
+            // Existing players adopt the outer directory from the signed release, without a new deployment.
+            var release=root.services().database().latestRelease("policy").orElseThrow();
+            var manifest=json.read(Files.readAllBytes(release.manifestPath()),cn.dreamingfish.updater.protocol.ReleaseManifest.class);
+            assertEquals(rootId,manifest.packRoot().id());
+            assertEquals(List.of(".minecraft","versions","*"),manifest.packRoot().layout());
+            var automatic=send(base,api+"official-auto-publish","POST","{\"enabled\":false}",token);
+            assertEquals(200,automatic.statusCode(),automatic.body());
+            assertTrue(send(base,api.substring(0,api.length()-1),"GET",null,token).body().contains("\"officialAutoPublish\""));
+            assertEquals(400,send(base,api+"official-player-publish","POST","{\"platform\":\"windows-x64\",\"version\":\"0.3.4\",\"archiveSha256\":\"00\"}",token).statusCode());
+            assertEquals(400,send(base,api+"program-update-policy","POST","{\"enabled\":false,\"expectedRevision\":0}",token).statusCode());
+            assertEquals(200,send(base,api+"program-update-policy","POST","{\"enabled\":false,\"expectedRevision\":1}",token).statusCode());
+            assertEquals(400,send(base,api+"pack-root","POST","{\"relativeRoot\":\"../..\",\"expectedId\":\"stale\"}",token).statusCode());
+        } finally { root.closeServices(); }
     }
 
     private HttpResponse<String> send(

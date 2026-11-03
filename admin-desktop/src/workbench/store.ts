@@ -25,7 +25,10 @@ export const desk = reactive({
 // Shared by the project sidebar, the command bar and the file view.
 export const fileIndex=computed(()=>buildFileIndex(desk.files,desk.directories));
 export const pendingCounts=computed(()=>{const changes=new Set((desk.project?.preview?.changes||[]).map((change:Data)=>change.path));return directoryCounts(desk.files,file=>!file.published||changes.has(file.path));});
-export const places=computed(()=>[...fileIndex.value.folders.values()].filter(entry=>!entry.path.includes('/')).map(entry=>({path:entry.path,count:entry.count||0})).sort((a,b)=>a.path.localeCompare(b.path,'zh-CN',{numeric:true})));
+// The outer pack folder (@pack/<identity>) has its own entry on the files page, not a top-level chip.
+export const packPath=computed(()=>desk.project?.packRoot?.id?`@pack/${desk.project.packRoot.id}`:'');
+export function openPack(){if(packPath.value){desk.filter='all';desk.group='';navigate(packPath.value);}else{desk.dialog='pack-root';desk.dialogData={};}}
+export const places=computed(()=>[...fileIndex.value.folders.values()].filter(entry=>!entry.path.includes('/')&&entry.path!=='@pack').map(entry=>({path:entry.path,count:entry.count||0})).sort((a,b)=>a.path.localeCompare(b.path,'zh-CN',{numeric:true})));
 export const groups = computed(() => (desk.project?.maintenance?.optionalGroups || []).map((g: Data) => ({ ...g, count: desk.files.filter(f => f.optionalGroup === g.id).length })));
 export const publishState = computed(() => !desk.project?.releases?.length ? '未发布' : desk.project?.previewStale || !desk.project.preview ? '待检查' : desk.project.preview.changes?.length || desk.project.preview.policyChanges?.length || desk.project.preview.presentationChanges?.length ? '待发布' : desk.files.some(f => !f.published) ? '待检查' : '已发布');
 export const latestVersion = computed(() => newestReleases(desk.project?.releases)[0]?.displayVersion || '');
@@ -54,8 +57,9 @@ const desktopHeaders = () => ({ 'X-DFS-Desktop': window.__DFS_DESKTOP_TOKEN__ ||
 const jobsKey='dfs-admin-backend-tasks-v1';
 watch(()=>desk.jobs,()=>{try{localStorage.setItem(jobsKey,JSON.stringify(desk.jobs.map(({result,...task})=>task)));}catch{desk.error='管理任务标识无法保存，请在刷新前完成结果复查';}},{deep:true});
 function rememberJob(task:BackendTask){const index=desk.jobs.findIndex(t=>t.id===task.id);if(index<0)desk.jobs.push(task);else desk.jobs[index]={...desk.jobs[index],...task};}
+// A task that keeps reporting progress (a slow official download may take hours) is waited for; one silent for an hour is not.
 export async function queryJob(id:string,wait=false):Promise<unknown>{
- const deadline=Date.now()+60*60*1000;let pause=50;
+ const started=Date.now();let deadline=started+60*60*1000,pause=50,seen='';
  do {
   let task:BackendTask;
   try{const response=await fetch(`/api/tasks/${encodeURIComponent(id)}`,{headers:desktopHeaders(),cache:'no-store'});const body=await response.json();if(!response.ok)throw new ApiError(body.message||'无法读取任务',response.status);task=parseBackendTask(body);rememberJob(task);}
@@ -64,7 +68,8 @@ export async function queryJob(id:string,wait=false):Promise<unknown>{
   if(backendTaskFinished(task))throw new ApiError(task.error||'任务没有执行完成',task.status,'task_failed');
   if(backendTaskNeedsReview(task))throw new ApiError(task.error||'实际结果待核对，不能自动重做',409,'result_unknown');
   if(!wait)return task;
-  await new Promise(resolve=>setTimeout(resolve,pause));pause=Math.min(300,pause*2);
+  const progress=`${task.phase}|${task.completed}`;if(progress!==seen){seen=progress;deadline=Date.now()+60*60*1000;}
+  await new Promise(resolve=>setTimeout(resolve,pause));pause=Math.min(Date.now()-started>60_000?2000:300,pause*2);
  }while(Date.now()<deadline);
  throw new ApiError('任务仍在执行，已保留标识；请稍后复查',408,'result_unknown');
 }
@@ -86,7 +91,7 @@ export function dismissJob(task:BackendTask){if(confirm('请先在原项目或�
 export async function cancelJob(task:BackendTask){rememberJob(parseBackendTask(await request(`/api/tasks/${encodeURIComponent(task.id)}`,'DELETE')));}
 export async function request(path:string,method='GET',body?:unknown,background=false):Promise<any>{
  const owner=path.match(/^\/api\/projects\/([^/?]+)/)?.[1],generation=projectGeneration;
- const asynchronous=method==='POST'&&body!==undefined&&desk.state.capabilities?.includes('application-tasks')&&(/^\/api\/projects\/[^/]+\/(scan|publish|rollback|programs|program-package|instance|deployment|distribution-export|distribution-webdav|distribution-s3|files\/(commit|stage-server|check-imports|undo-import))$/.test(path)||path==='/api/storage/clean');
+ const asynchronous=method==='POST'&&body!==undefined&&desk.state.capabilities?.includes('application-tasks')&&(/^\/api\/projects\/[^/]+\/(scan|publish|rollback|programs|program-package|official-player-check|official-player-prepare|official-player-publish|program-approval|program-update-policy|instance|deployment|distribution-export|distribution-webdav|distribution-s3|distribution-saved|files\/(commit|stage-server|check-imports|undo-import))$/.test(path)||path==='/api/storage/clean');
  const id=asynchronous?crypto.randomUUID():'';
  if(id)rememberJob({id,projectId:owner?decodeURIComponent(owner):'',kind:path.replace(/^\/api\/projects\/[^/]+\//,'').replace(/^\/api\//,''),state:'QUEUED',phase:'等待服务端确认',completed:0,total:1,status:202,error:''});
  let response:Response;
@@ -188,7 +193,7 @@ export async function switchProject(id: string) {
     await loadProject();
 }
 export function resetProjectNavigation() { desk.directory = ''; desk.group = ''; desk.search = ''; desk.filter = 'all'; desk.selection = []; desk.historyPaths = ['']; desk.historyIndex = 0; desk.releaseNotes = ''; desk.releaseVersion = ''; desk.operations = []; desk.releaseFiles = []; desk.operationPlan = null; desk.dialog = ''; desk.dialogData = {}; desk.browseValues = {}; desk.browse = {}; desk.sourceError = ''; }
-export function navigate(path: string, record = true) { desk.directory = path; desk.selection = []; desk.search = ''; desk.group = ''; if (record) {
+export function navigate(path: string, record = true) { if (path === '@pack') path = ''; desk.directory = path; desk.selection = []; desk.search = ''; desk.group = ''; if (record) {
     desk.historyPaths = desk.historyPaths.slice(0, desk.historyIndex + 1);
     desk.historyPaths.push(path);
     desk.historyIndex = desk.historyPaths.length - 1;
@@ -498,7 +503,7 @@ export function restoreTasks() {
     }
 }
 export function openBrowse(kind: string, action: string, path = '') { if (desk.dialog !== 'project-create')
-    desk.dialogData = {}; desk.browseKind = kind; desk.browseAction = action; desk.browsePath = path; desk.browseSelected = ''; desk.dialog = 'browse'; safely(() => browse(path)); }
+    desk.dialogData = {}; delete desk.browseValues[action]; desk.browseKind = kind; desk.browseAction = action; desk.browsePath = path; desk.browseSelected = ''; desk.dialog = 'browse'; safely(() => browse(path)); }
 let browseGeneration = 0;
 export async function browse(path: string) { const generation = ++browseGeneration, owner = desk.projectId, epoch = projectGeneration; const result = await request('/api/system/browse-path', 'POST', { kind: desk.browseKind, path }); if (generation !== browseGeneration || owner !== desk.projectId || epoch !== projectGeneration)
     return; desk.browse = result; desk.browsePath = desk.browse.currentPath || path; desk.browseSelected = desk.browse.selectedPath || ''; }

@@ -48,12 +48,25 @@ public final class ManifestValidator {
         }
         validateForcedSyncDirectories(manifest);
         validateBranding(manifest.branding());
+        if (manifest.packRoot() != null) {
+            if (!manifest.requiredCapabilities().contains(ProtocolConstants.CAPABILITY_PACK_ROOT))
+                throw new ProtocolException("外层目录授权缺少 pack-root-v1 能力要求");
+            if (manifest.packRoot().layout() == null) throw new ProtocolException("外层目录授权缺少目录结构");
+        }
 
         List<String> paths = new ArrayList<>();
         Map<String, ManifestFile> filesByFoldedPath = new HashMap<>();
         String previous = null;
         for (ManifestFile file : manifest.files()) {
             String path = PathSafety.normalizeManifestPath(file.path());
+            if (ConfigPatches.isPatch(path)) {
+                if (!manifest.requiredCapabilities().contains(ProtocolConstants.CAPABILITY_CONFIG_PATCH))
+                    throw new ProtocolException("配置合并规则缺少 config-patch-v1 能力要求");
+                if (manifest.cleanupDirectories().stream().anyMatch(dir -> ManagedPaths.isBelow(path, dir))
+                        || manifest.forcedSyncDirectories().stream().anyMatch(dir -> ManagedPaths.isBelow(path, dir)))
+                    throw new ProtocolException("配置合并规则不能位于清理多余文件的目录中");
+            }
+            validateScopedPath(manifest, path);
             if (previous != null && Comparator.<String>naturalOrder().compare(previous, path) >= 0) {
                 throw new ProtocolException("Manifest files must be sorted by path and unique: " + path);
             }
@@ -81,9 +94,42 @@ public final class ManifestValidator {
             }
         }
         PathSafety.validateDistinctPaths(paths);
+        PathSafety.validateDistinctPaths(paths.stream().map(ConfigPatches::targetPath).toList());
         validateForcedSyncFiles(manifest, filesByFoldedPath);
         validateMaintenancePolicy(manifest, filesByFoldedPath);
         validateReleasedPaths(manifest, paths);
+        var directivePaths = new ArrayList<String>();
+        directivePaths.addAll(manifest.forcedSyncDirectories());
+        directivePaths.addAll(manifest.cleanupDirectories());
+        directivePaths.addAll(manifest.forcedSyncFiles());
+        directivePaths.addAll(manifest.releasedPaths());
+        directivePaths.addAll(manifest.retainedSelfManagedPaths());
+        manifest.withdrawals().forEach(w -> w.items().forEach(i -> directivePaths.add(i.path())));
+        manifest.corrections().forEach(c -> directivePaths.add(c.path()));
+        for (String path : directivePaths) validateScopedPath(manifest, path);
+
+        for (var patch : manifest.files()) if (ConfigPatches.isPatch(patch.path())) {
+            String target = ConfigPatches.targetPath(patch.path());
+            for (var withdrawal : manifest.withdrawals()) for (var item : withdrawal.items())
+                if (!item.modScoped() && (item.path().equalsIgnoreCase(patch.path()) || item.path().equalsIgnoreCase(target)))
+                    throw new ProtocolException("配置合并目标不能同时撤回或删除，请改用新的字段合并规则");
+            if (manifest.corrections().stream().anyMatch(c -> c.path().equalsIgnoreCase(patch.path())))
+                throw new ProtocolException("配置合并目标不能使用整文件修正规则");
+        }
+    }
+
+    private static void validateScopedPath(ReleaseManifest manifest, String raw) {
+        String path = PathSafety.normalizeManifestPath(raw);
+        if (path.equalsIgnoreCase("@pack")) throw new ProtocolException("外层目录路径缺少身份与文件名");
+        if (!ContentRoots.isPackPath(path)) return;
+        if (!manifest.requiredCapabilities().contains(ProtocolConstants.CAPABILITY_PACK_ROOT))
+            throw new ProtocolException("外层文件缺少 pack-root-v1 能力要求");
+        String[] scoped = path.split("/", 3);
+        if (scoped.length != 3 || !scoped[0].equals("@pack")) throw new ProtocolException("外层目录路径格式无效");
+        new PackRootSpec(scoped[1], "..");
+        if (manifest.packRoot() != null && !path.startsWith(manifest.packRoot().prefix()))
+            throw new ProtocolException("外层文件的目录身份与发布中的授权不一致");
+        ContentRoots.validatePackPath(ConfigPatches.targetPath(scoped[2]));
     }
 
     private static final Pattern GROUP_ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");

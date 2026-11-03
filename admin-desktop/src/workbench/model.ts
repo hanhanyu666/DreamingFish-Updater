@@ -27,7 +27,11 @@ export function parseImportPlan(value:unknown):ImportPlan {
 export const presets:Record<string,{label:string;description:string}>={SYNC:{label:'普通同步',description:'跟随服主更新，玩家可以停用或自行管理。'},REQUIRED:{label:'强制同步',description:'必须与发布内容一致；强制目录会处理额外文件。'},INITIAL:{label:'首次提供',description:'缺少时提供一次，之后归玩家自己维护。'},DEFAULT_CONFIG:{label:'旧版配置',description:'尚未修改的配置跟随更新。'}};
 export function bytes(value=0){if(value<1024)return `${value} B`;const units=['KiB','MiB','GiB','TiB'];let n=value/1024,i=0;while(n>=1024&&i<units.length-1){n/=1024;i++;}return `${n>=10?n.toFixed(1):n.toFixed(2)} ${units[i]}`;}
 export function when(value:any){if(!value)return '—';return new Date(typeof value==='number'?value:value).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}
-export function nameOf(path:string){return path.split('/').filter(Boolean).at(-1)||'整合包';}
+export function nameOf(path:string){if(path==='@pack'||/^@pack\/[^/]+$/.test(path))return '外层目录';const name=path.split('/').filter(Boolean).at(-1)||'整合包';return name.endsWith('.dfs-patch.json')?name.slice(0,-'.dfs-patch.json'.length)+'（合并规则）':name;}
+/** Owners see the outer pack folder by name; the @pack/<identity> prefix is an internal address. */
+export function displayPath(path:string){return path.startsWith('@pack/')?path.replace(/^@pack\/[^/]+/,'外层目录'):path;}
+/** The same for free text such as operation titles that quote one or more paths. */
+export function displayPaths(text:string){return String(text).replace(/@pack\/[^/\s]+/g,'外层目录');}
 export function parentOf(path:string){return path.split('/').slice(0,-1).join('/');}
 export function newestReleases(releases:Data[]=[]):Data[]{return [...releases].sort((a,b)=>Number(b.sequence)-Number(a.sequence));}
 export function authRequiresForm(status:Data){return status.registered===false||status.authenticated===false;}

@@ -45,6 +45,7 @@ final class TaskHttpHandler {
             try {
                 dispatch.handle(captured);
                 JsonNode result=json.read(captured.output.toByteArray(),JsonNode.class);
+                if(captured.status>=400&&result.path("error").asText().equals("distribution_retirement_failed"))throw new DistributionRetirementException();
                 if(captured.status>=400)throw new ApplicationTasks.Failure(captured.status,result.path("message").asText("管理任务失败"));
                 return result;
             }finally{DETACHED.remove();}
@@ -53,7 +54,7 @@ final class TaskHttpHandler {
     }
     private static boolean eligible(String path,String method){
         if(!method.equals("POST"))return false;
-        return path.matches("/api/projects/[^/]+/(scan|publish|rollback|programs|program-package|instance|deployment|distribution-export|distribution-webdav|distribution-s3|files/(commit|stage-server|check-imports|undo-import))")
+        return path.matches("/api/projects/[^/]+/(scan|publish|rollback|programs|program-package|official-player-check|official-player-prepare|official-player-publish|program-approval|program-update-policy|instance|deployment|distribution-export|distribution-webdav|distribution-s3|distribution-saved|files/(commit|stage-server|check-imports|undo-import))")
                 ||path.equals("/api/storage/clean");
     }
     private static void send(HttpExchange exchange,int status,Object result,JsonCodec json)throws IOException {

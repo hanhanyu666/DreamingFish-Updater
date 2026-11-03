@@ -487,13 +487,19 @@ export function parseShowcase(text: string): { document: ShowcaseDocument | null
   return { document: issues.length === 0 ? (parsed as ShowcaseDocument) : null, issues };
 }
 
+// Showcase fields are JSON data. JSON copying also accepts the Vue proxies used by the editor;
+// structuredClone rejects those proxies, including nested lists and theme/server-card objects.
+function copyShowcaseValue<T>(value: T): T {
+  return value === undefined ? value : JSON.parse(JSON.stringify(value));
+}
+
 /** The owner-editable part of a branding, ready to export or hand to an AI tool. */
 export function showcaseFromBranding(branding: Branding): ShowcaseDocument {
   const document: ShowcaseDocument = { format: SHOWCASE_FORMAT, version: SHOWCASE_VERSION };
   const target = document as Record<string, unknown>;
   for (const key of SHOWCASE_FIELDS) {
     const value = branding[key];
-    if (value !== undefined && value !== null) target[key] = structuredClone(value);
+    if (value !== undefined && value !== null) target[key] = copyShowcaseValue(value);
   }
   return document;
 }
@@ -503,7 +509,7 @@ export function applyShowcase(branding: Branding, document: ShowcaseDocument): B
   const result: Branding = { ...branding };
   const target = result as unknown as Record<string, unknown>;
   for (const key of SHOWCASE_FIELDS) {
-    if (key in document) target[key] = structuredClone((document as Record<string, unknown>)[key]);
+    if (key in document) target[key] = copyShowcaseValue((document as Record<string, unknown>)[key]);
   }
   return result;
 }

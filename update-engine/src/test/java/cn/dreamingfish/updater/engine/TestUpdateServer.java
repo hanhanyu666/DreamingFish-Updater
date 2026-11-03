@@ -42,6 +42,7 @@ final class TestUpdateServer implements AutoCloseable {
     private volatile String signature;
     private volatile byte[] playerManifestBytes;
     private volatile String playerSignature;
+    volatile byte[] playerPolicyBytes;
     volatile boolean invalidSignature;
     volatile boolean signatureSidecarsOnly;
     volatile boolean unavailable;
@@ -115,6 +116,12 @@ final class TestUpdateServer implements AutoCloseable {
                 sequence, Instant.now(), "1.0." + sequence, "0.1.0", "release " + sequence,
                 capabilities, forcedSyncDirectories, forcedSyncFiles, releasedPaths,
                 Branding.empty(), files);
+    }
+
+    void servePolicy(cn.dreamingfish.updater.protocol.PlayerUpdatePolicy policy) {
+        byte[] bytes = json.write(policy);
+        playerPolicyBytes = new cn.dreamingfish.updater.protocol.SignedDocument(bytes,
+                Base64.getEncoder().encodeToString(CryptoSupport.sign(bytes, keys.getPrivate()))).encode();
     }
 
     void serve(ReleaseManifest manifest) {
@@ -225,6 +232,9 @@ final class TestUpdateServer implements AutoCloseable {
                         ? Base64.getEncoder().encodeToString(new byte[64]) : playerSignature) + "\n")
                         .getBytes(StandardCharsets.US_ASCII));
                 return;
+            }
+            if (path.equals("/v1/projects/demo/player/policy.signed") && playerPolicyBytes != null) {
+                send(exchange, 200, playerPolicyBytes); return;
             }
             String prefix = "/v1/objects/sha256/";
             if (path.startsWith(prefix)) {

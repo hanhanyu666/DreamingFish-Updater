@@ -23,7 +23,8 @@ public record ReleaseManifest(
         List<OptionalGroup> optionalGroups,
         List<String> retainedSelfManagedPaths,
         List<Withdrawal> withdrawals,
-        List<Correction> corrections
+        List<Correction> corrections,
+        PackRootSpec packRoot
 ) {
     public ReleaseManifest {
         requiredCapabilities = requiredCapabilities == null ? Set.of() : Set.copyOf(requiredCapabilities);
@@ -45,12 +46,37 @@ public record ReleaseManifest(
                            Instant createdAt, String displayVersion, String minimumPlayerVersion,
                            String changelog, Set<String> requiredCapabilities,
                            List<String> forcedSyncDirectories, List<String> forcedSyncFiles,
+                           List<String> releasedPaths, Branding branding, List<ManifestFile> files,
+                           List<String> cleanupDirectories, List<OptionalGroup> optionalGroups,
+                           List<String> retainedSelfManagedPaths, List<Withdrawal> withdrawals,
+                           List<Correction> corrections) {
+        this(schemaVersion, projectId, releaseId, sequence, createdAt, displayVersion,
+                minimumPlayerVersion, changelog, requiredCapabilities, forcedSyncDirectories,
+                forcedSyncFiles, releasedPaths, branding, files, cleanupDirectories, optionalGroups,
+                retainedSelfManagedPaths, withdrawals, corrections, null);
+    }
+
+    /** The same signed content with a different view of files; used to set outer content aside. */
+    public ReleaseManifest withContent(List<String> forcedSyncDirectories, List<String> forcedSyncFiles,
+                                       List<String> releasedPaths, List<ManifestFile> files,
+                                       List<String> cleanupDirectories, List<String> retainedSelfManagedPaths,
+                                       List<Withdrawal> withdrawals, List<Correction> corrections) {
+        return new ReleaseManifest(schemaVersion, projectId, releaseId, sequence, createdAt, displayVersion,
+                minimumPlayerVersion, changelog, requiredCapabilities, forcedSyncDirectories, forcedSyncFiles,
+                releasedPaths, branding, files, cleanupDirectories, optionalGroups, retainedSelfManagedPaths,
+                withdrawals, corrections, packRoot);
+    }
+
+    public ReleaseManifest(int schemaVersion, String projectId, String releaseId, long sequence,
+                           Instant createdAt, String displayVersion, String minimumPlayerVersion,
+                           String changelog, Set<String> requiredCapabilities,
+                           List<String> forcedSyncDirectories, List<String> forcedSyncFiles,
                            List<String> releasedPaths, Branding branding,
                            List<ManifestFile> files) {
         this(schemaVersion, projectId, releaseId, sequence, createdAt, displayVersion,
                 minimumPlayerVersion, changelog, requiredCapabilities, forcedSyncDirectories,
                 forcedSyncFiles, releasedPaths, branding, files,
-                List.of(), List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of(), null);
     }
 
     public ReleaseManifest(int schemaVersion, String projectId, String releaseId, long sequence,

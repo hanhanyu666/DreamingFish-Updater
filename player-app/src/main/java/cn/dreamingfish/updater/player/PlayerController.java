@@ -398,13 +398,19 @@ public final class PlayerController {
                 UpdateRequest startupRequest = updateRequest(snapshot, cancellation);
                 PlayerProgramUpdateResult programResult = new PlayerProgramUpdater()
                         .checkAndInstall(startupRequest,
-                                PlayerRuntime.BOOTSTRAP_AGENT_VERSION, null,
+                                PlayerRuntime.installedBootstrapVersion(arguments.instanceRoot()), null,
                                 playerProgramProgress(progress));
                 if (programResult.outcome() == PlayerProgramUpdateOutcome.CHECK_UNAVAILABLE) {
                     log.warn("玩家端更新", "暂时无法检查玩家端程序版本，继续检查整合包内容");
                 } else if (programResult.outcome() == PlayerProgramUpdateOutcome.NOT_PUBLISHED) {
                     log.info("玩家端更新", "此项目还没有发布玩家端程序，继续检查整合包内容");
                 }
+                if (programResult.outcome() == PlayerProgramUpdateOutcome.PAUSED)
+                    log.info("玩家端更新", "服主暂停了程序更新或更新授权已变化，继续检查整合包");
+                if (programResult.outcome() == PlayerProgramUpdateOutcome.INCOMPATIBLE)
+                    log.warn("玩家端更新", "新程序需要更新的 Bootstrap Agent，保留当前程序；请服主重新制作实例");
+                if (programResult.outcome() == PlayerProgramUpdateOutcome.FAILED_VERSION)
+                    log.warn("玩家端更新", "此程序版本启动失败，已恢复已验证的旧程序，等待服主发布修正版");
                 if (programResult.restartRequired()) {
                     working = false;
                     log.info("玩家端更新", "玩家端 " + programResult.manifest().version()
@@ -564,7 +570,7 @@ public final class PlayerController {
                         ? current.archiveDirectory() : previous.archiveDirectory(),
                 installed, deleted, released, archivedEntries,
                 current.keptModifiedPaths(), current.skippedSelfManagedPaths(),
-                combinePaths(previous.resetPaths(), current.resetPaths()));
+                combinePaths(previous.resetPaths(), current.resetPaths()), current.packNotice());
     }
 
     private static List<Path> combinePaths(List<Path> first, List<Path> second) {
@@ -586,7 +592,7 @@ public final class PlayerController {
                 result.downloadedBytes(), result.unmanagedMods(), paths,
                 result.archiveDirectory() == null ? stored.getLast().directory() : result.archiveDirectory(),
                 result.installedPaths(), result.deletedPaths(), result.releasedPaths(), files,
-                result.keptModifiedPaths(), result.skippedSelfManagedPaths(), result.resetPaths());
+                result.keptModifiedPaths(), result.skippedSelfManagedPaths(), result.resetPaths(), result.packNotice());
     }
 
     private void refreshLocalManagementAsync() {
@@ -710,6 +716,7 @@ public final class PlayerController {
 
     private void finishSuccessfully(UpdateResult result) {
         lastArchiveDirectory = result.archiveDirectory();
+        if (result.packNotice() != null) log.warn("整合包外层文件暂未更新，游戏实例内的文件已正常处理：" + result.packNotice());
         viewport.showResult(result);
         startAutoCloseCountdown();
     }

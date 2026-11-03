@@ -76,6 +76,7 @@ public final class PlayerPackageService {
                 }
                 try(var files=Files.walk(root)){for(Path file:files.filter(p->Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)).toList())if(!expected.contains(root.relativize(file).toString().replace('\\','/')))throw new ManagementException("暂存有未发布的额外内容，请人工核对");}
             }else result=programs.publish(projectId,view.platform(),view.version(),root,view.launcher(),minimum);
+            new PlayerUpdatePolicyService(paths,database,json).approve(projectId,result.platform(),result.version(),result.manifestSha256(),-1);
             AtomicFiles.write(published,json.write(result));
             releaseCopies(directory);
             return result;
@@ -96,7 +97,7 @@ public final class PlayerPackageService {
     }
 
     static void extract(Path zip, Path root) throws IOException {extract(zip,root,null);}
-    private static void extract(Path zip,Path root,StorageService.Lease budget)throws IOException {
+    static void extract(Path zip,Path root,StorageService.Lease budget)throws IOException {
         PathSafety.createSafeDirectories(root);
         Set<String> names = new HashSet<>();
         long expanded = 0;

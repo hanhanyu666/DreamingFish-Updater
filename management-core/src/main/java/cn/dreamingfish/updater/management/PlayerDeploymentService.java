@@ -89,8 +89,10 @@ public final class PlayerDeploymentService {
                     .prepare(projectId, platform, playerHome);
             writeBindingAndCover(project, temporary);
             AtomicFiles.write(temporary.resolve("minecraft-jvm-argument.txt"),
-                    "-javaagent:\"{verpath}.dreamingfish-bootstrap/bootstrap-agent.jar\"\r\n"
+                    "-javaagent:.dreamingfish-bootstrap/bootstrap-agent.jar\r\n"
                             .getBytes(StandardCharsets.UTF_8));
+            AtomicFiles.write(temporary.resolve("minecraft-jvm-argument-pcl.txt"),
+                    "-javaagent:\"{verpath}.dreamingfish-bootstrap/bootstrap-agent.jar\"\r\n".getBytes(StandardCharsets.UTF_8));
             AtomicFiles.write(temporary.resolve("README.txt"), readme(
                     project, release, program).getBytes(StandardCharsets.UTF_8));
 
@@ -203,12 +205,19 @@ public final class PlayerDeploymentService {
                 玩家端程序：%s
 
                 1. 把本目录中的全部内容合并到开启版本隔离的 Minecraft 实例根目录。
-                2. 在 PCL 对应版本的 JVM 参数中加入 minecraft-jvm-argument.txt 里的整行参数。
-                3. 正常从 PCL 启动游戏。缺失或变更的托管文件会在启动前下载。
+                2. 先备份版本 JSON，在 arguments.jvm 数组中追加字符串 "-javaagent:.dreamingfish-bootstrap/bootstrap-agent.jar"，保留其他参数且不要重复添加。
+                3. 从 PCL、HMCL 或美西螈正常启动该实例。相对参数要求启动时工作目录能定位实例内的 Agent，实际游戏目录也应指向该实例。
+                4. 若启动器覆盖版本 JSON 或工作目录不同，改用它支持的版本级 JVM 参数。minecraft-jvm-argument-pcl.txt 只适用于 PCL，不要把 {verpath} 填给其他启动器。
+                5. 完成一次真实启动测试，再分发整合包。配置文件或参数的修改可能需要下一次启动游戏或重开启动器才生效。
 
                 本包不包含 Minecraft 本体。签名基线必须与原整合包版本对应，不能随意换成其它历史版本。
                 """.formatted(project.displayName(), project.id(),
-                release.displayVersion(), release.releaseId(), program.version());
+                release.displayVersion(), release.releaseId(), program.version())
+                + (project.rules().packRoot() == null ? "" : "\n外层更新目录已启用：从实例目录按 "
+                    + project.rules().packRoot().relativeRoot() + " 定位整合包根目录。\n"
+                    + "必须把实例放在专属整合包目录下，首次启动会建立目录身份；不要放到整个桌面或用户根目录。\n"
+                    + "玩家端会核对从整合包根目录到实例的文件夹为 " + String.join("/", project.rules().packRoot().withDefaultLayout().layout())
+                    + "（* 表示任意名称），一致才在在线检查时更新外层教程、背景等所选文件；不一致时只跳过外层文件。\n");
     }
 
     public record PreparedDeployment(

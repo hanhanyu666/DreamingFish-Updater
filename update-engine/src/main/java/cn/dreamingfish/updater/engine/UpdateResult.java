@@ -12,6 +12,7 @@ import java.util.List;
  * @param keptModifiedPaths      default configurations kept because the player changed them
  * @param skippedSelfManagedPaths published updates not applied because the player manages the file
  * @param resetPaths             default configurations restored at the player's request
+ * @param packNotice             why outer pack files were set aside on this computer, if they were
  */
 public record UpdateResult(
         UpdateOutcome outcome,
@@ -28,7 +29,8 @@ public record UpdateResult(
         List<ArchivedFile> archived,
         List<Path> keptModifiedPaths,
         List<Path> skippedSelfManagedPaths,
-        List<Path> resetPaths
+        List<Path> resetPaths,
+        String packNotice
 ) {
     public UpdateResult {
         unmanagedMods = copy(unmanagedMods);
@@ -40,6 +42,16 @@ public record UpdateResult(
         keptModifiedPaths = copy(keptModifiedPaths);
         skippedSelfManagedPaths = copy(skippedSelfManagedPaths);
         resetPaths = copy(resetPaths);
+    }
+
+    public UpdateResult(UpdateOutcome outcome, ReleaseManifest release, int installedFiles,
+                        int deletedFiles, long downloadedBytes, List<Path> unmanagedMods,
+                        List<Path> archivedFiles, Path archiveDirectory, List<Path> installedPaths,
+                        List<Path> deletedPaths, List<Path> releasedPaths, List<ArchivedFile> archived,
+                        List<Path> keptModifiedPaths, List<Path> skippedSelfManagedPaths, List<Path> resetPaths) {
+        this(outcome, release, installedFiles, deletedFiles, downloadedBytes, unmanagedMods, archivedFiles,
+                archiveDirectory, installedPaths, deletedPaths, releasedPaths, archived, keptModifiedPaths,
+                skippedSelfManagedPaths, resetPaths, null);
     }
 
     public UpdateResult(UpdateOutcome outcome, ReleaseManifest release, int installedFiles,

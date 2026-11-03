@@ -20,6 +20,16 @@ async function store(){
 }
 function task(extra={}){return {id:crypto.randomUUID(),requestId:crypto.randomUUID(),projectId:'a',name:'a',path:'config/a',size:4,progress:100,state:'review',action:'ADD',plan:plan(),...extra};}
 
+test('reopening a directory picker clears its prior result and browses the management host',async()=>{
+ const {desk,openBrowse}=await store();desk.browseValues['hosting-output']='D:/exports';
+ const calls=[];globalThis.fetch=async(path,options)=>{calls.push([path,JSON.parse(options.body)]);return ok({currentPath:'D:/exports',parentPath:'D:/',entries:[{name:'updates',path:'D:/exports/updates',directory:true}]});};
+ openBrowse('directory','hosting-output','D:/exports');
+ assert.equal(desk.browseValues['hosting-output'],undefined);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(calls,[['/api/system/browse-path',{kind:'directory',path:'D:/exports'}]]);
+ assert.equal(desk.dialog,'browse');assert.equal(desk.browsePath,'D:/exports');assert.equal(desk.browse.entries[0].path,'D:/exports/updates');
+});
+
 test('A/B/A reverse responses commit one coherent project snapshot and clear dialogs',async()=>{
  const {desk,switchProject}=await store();const pending=[];
  globalThis.fetch=async path=>await new Promise(resolve=>pending.push({path,resolve}));

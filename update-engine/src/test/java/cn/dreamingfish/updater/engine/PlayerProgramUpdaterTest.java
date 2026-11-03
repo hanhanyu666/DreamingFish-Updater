@@ -81,6 +81,27 @@ class PlayerProgramUpdaterTest {
     }
 
     @Test
+    void verifiedButFailedCandidateIsNotRetriedAndCannotLowerTheTrustWatermark() throws Exception {
+        try (var server = new TestUpdateServer()) {
+            Path instance=Files.createDirectories(temporary.resolve("failed-candidate"));
+            Path home=instance.resolve("DreamingFishUpdater");
+            Files.createDirectories(home.resolve("app/0.1.0"));
+            Files.writeString(home.resolve("app/0.1.0/player.cmd"),"old");
+            ActivePlayerState.activate(home,new ActivePlayerState("0.1.0","app/0.1.0/player.cmd","app/0.1.0",List.of(),90),null);
+            var updater=new PlayerProgramUpdater();
+            var candidate=server.playerProgram("0.3.0","player.cmd",server.playerFile("player.cmd","broken-at-runtime",true));
+            server.servePlayerProgram(candidate);
+            assertEquals(PlayerProgramUpdateOutcome.INSTALLED_RESTART_REQUIRED,updater.checkAndInstall(request(instance,home,server),"0.1.0","windows-x64",null).outcome());
+            // Agent has run the verified candidate, which exited before permission, then started its fallback.
+            assertEquals(PlayerProgramUpdateOutcome.FAILED_VERSION,updater.checkAndInstall(request(instance,home,server),"0.1.0","windows-x64",null).outcome());
+            assertEquals("0.1.0",ActivePlayerState.load(home).orElseThrow().version());
+            assertEquals(PlayerProgramUpdateOutcome.FAILED_VERSION,updater.checkAndInstall(request(instance,home,server),"0.1.0","windows-x64",null).outcome());
+            server.servePlayerProgram(server.playerProgram("0.2.0","player.cmd",server.playerFile("player.cmd","older-candidate",true)));
+            assertEquals(UpdateErrorCode.REPLAY_DETECTED,assertThrows(UpdateException.class,()->updater.checkAndInstall(request(instance,home,server),"0.1.0","windows-x64",null)).code());
+        }
+    }
+
+    @Test
     void aRunningFallbackRemainsTheFallbackAfterRepairingTheActiveVersion() throws Exception {
         try (TestUpdateServer server = new TestUpdateServer()) {
             Path instance = Files.createDirectories(temporary.resolve("fallback-repair-instance"));

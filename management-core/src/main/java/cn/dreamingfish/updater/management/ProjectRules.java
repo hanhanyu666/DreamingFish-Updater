@@ -39,7 +39,8 @@ public record ProjectRules(
         List<OptionalGroupRule> optionalGroups,
         List<Withdrawal> withdrawals,
         List<Correction> corrections,
-        boolean simplified
+        boolean simplified,
+        cn.dreamingfish.updater.protocol.PackRootSpec packRoot
 ) {
     private static final String GROUP_ID = "[a-z0-9][a-z0-9._-]{0,63}";
     private static final String MOD_ID = "[A-Za-z0-9_.-]{1,128}";
@@ -94,9 +95,20 @@ public record ProjectRules(
                 optionalGroups, withdrawals, corrections, true);
     }
 
+    public ProjectRules(List<FileRule> rules, List<String> legacyDirectories, List<String> legacyFiles,
+                        List<PresetRule> presets, List<String> cleanup, List<OptionalGroupRule> groups,
+                        List<Withdrawal> withdrawals, List<Correction> corrections, boolean simplified) {
+        this(rules, legacyDirectories, legacyFiles, presets, cleanup, groups, withdrawals, corrections, simplified, null);
+    }
+
+    public ProjectRules withPackRoot(cn.dreamingfish.updater.protocol.PackRootSpec root) {
+        return new ProjectRules(rules, List.of(), List.of(), presets, cleanupDirectories, optionalGroups,
+                withdrawals, corrections, simplified, root);
+    }
+
     public ProjectRules asSimplified() {
         return new ProjectRules(rules, List.of(), List.of(), presets, cleanupDirectories,
-                optionalGroups, withdrawals, corrections, true);
+                optionalGroups, withdrawals, corrections, true, packRoot);
     }
 
     public ProjectRules(List<FileRule> rules, List<String> forcedSyncDirectories) {
@@ -255,7 +267,7 @@ public record ProjectRules(
 
     public ProjectRules withRules(List<FileRule> replacement) {
         return new ProjectRules(replacement, List.of(), List.of(), presets, cleanupDirectories,
-                optionalGroups, withdrawals, corrections, simplified);
+                optionalGroups, withdrawals, corrections, simplified, packRoot);
     }
 
     /** Sets or clears ({@code preset == null}) the rule for one file or directory. */
@@ -272,27 +284,27 @@ public record ProjectRules(
 
     public ProjectRules withPresets(Collection<PresetRule> replacement) {
         return new ProjectRules(rules, List.of(), List.of(), List.copyOf(replacement),
-                cleanupDirectories, optionalGroups, withdrawals, corrections, simplified);
+                cleanupDirectories, optionalGroups, withdrawals, corrections, simplified, packRoot);
     }
 
     public ProjectRules withCleanupDirectories(List<String> directories) {
         return new ProjectRules(rules, List.of(), List.of(), presets, directories,
-                optionalGroups, withdrawals, corrections, simplified);
+                optionalGroups, withdrawals, corrections, simplified, packRoot);
     }
 
     public ProjectRules withOptionalGroups(List<OptionalGroupRule> groups) {
         return new ProjectRules(rules, List.of(), List.of(), presets, cleanupDirectories,
-                groups, withdrawals, corrections, simplified);
+                groups, withdrawals, corrections, simplified, packRoot);
     }
 
     public ProjectRules withWithdrawals(List<Withdrawal> replacement) {
         return new ProjectRules(rules, List.of(), List.of(), presets, cleanupDirectories,
-                optionalGroups, replacement, corrections, simplified);
+                optionalGroups, replacement, corrections, simplified, packRoot);
     }
 
     public ProjectRules withCorrections(List<Correction> replacement) {
         return new ProjectRules(rules, List.of(), List.of(), presets, cleanupDirectories,
-                optionalGroups, withdrawals, replacement, simplified);
+                optionalGroups, withdrawals, replacement, simplified, packRoot);
     }
 
     /**
@@ -328,7 +340,7 @@ public record ProjectRules(
             if (cleanup.stream().noneMatch(dir -> dir.equalsIgnoreCase(directory))) cleanup.add(directory);
         }
         return new ProjectRules(rules, List.of(), List.of(), updated, cleanup, optionalGroups,
-                withdrawals, corrections, simplified);
+                withdrawals, corrections, simplified, packRoot);
     }
 
     /** Historical "forced sync files" setting: exactly these files are required. */

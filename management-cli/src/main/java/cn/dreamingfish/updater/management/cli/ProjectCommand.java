@@ -10,6 +10,7 @@ import picocli.CommandLine;
                 ProjectListCommand.class,
                 ProjectShowCommand.class,
                 ProjectConfigureCommand.class,
+                ProjectPackRootCommand.class,
                 ProjectFilesCommand.class,
                 ProjectOperationsCommand.class,
                 ProjectPolicyCommand.class,

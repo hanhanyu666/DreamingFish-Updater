@@ -2,6 +2,7 @@
 
 mod frame;
 mod downloads;
+mod hosting_history;
 mod job;
 mod migrate;
 mod profiles;
@@ -49,6 +50,7 @@ struct Desktop {
     disconnecting: AtomicBool,
     rebuilds: Mutex<recovery::Budget>,
     downloads: downloads::Downloads,
+    hosting_history_gate: Mutex<()>,
 }
 
 struct Active {
@@ -162,6 +164,28 @@ fn reveal_deployment_download(window: WebviewWindow, app: tauri::AppHandle, rece
     open::that_detached(folder).map_err(|e| format!("无法打开部署包所在文件夹：{e}"))
 }
 
+fn hosting_history_connection(window: &WebviewWindow, state: &Desktop, desktop_token: &str) -> Result<String, String> {
+    let url = window.url().map_err(|e| e.to_string())?;
+    let active = state.active.lock().map_err(|e| e.to_string())?;
+    let active = active.as_ref().ok_or("管理连接已断开，无法访问填写历史")?;
+    hosting_history::authorize(window.label(), &url, &active.origin, desktop_token, &active.workbench.token)?;
+    serde_json::to_string(&(&active.profile.id, &active.profile.connection)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_hosting_history(window: WebviewWindow, state: State<Desktop>, project_key: String, desktop_token: String) -> Result<Vec<hosting_history::Entry>, String> {
+    let connection = hosting_history_connection(&window, &state, &desktop_token)?;
+    let _gate = state.hosting_history_gate.lock().map_err(|e| e.to_string())?;
+    hosting_history::load(&state.root, &connection, &project_key)
+}
+
+#[tauri::command]
+fn save_hosting_history(window: WebviewWindow, state: State<Desktop>, project_key: String, desktop_token: String, entries: Vec<hosting_history::Entry>) -> Result<(), String> {
+    let connection = hosting_history_connection(&window, &state, &desktop_token)?;
+    let _gate = state.hosting_history_gate.lock().map_err(|e| e.to_string())?;
+    hosting_history::save(&state.root, &connection, &project_key, entries)
+}
+
 #[tauri::command]
 fn desktop_window_action(
     window: WebviewWindow,
@@ -232,7 +256,7 @@ fn desktop_snapshot(state:&Desktop)->Result<Snapshot,String> {
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_default(),
         active,
-        version: "0.3.1",
+        version: env!("CARGO_PKG_VERSION"),
         notice: state.notice.lock().map_err(|e| e.to_string())?.clone(),
     })
 }
@@ -947,7 +971,7 @@ fn run_background_check(app: tauri::AppHandle) {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            Ok::<_, String>(serde_json::json!({"version":"0.3.1", "buildId":option_env!("DFS_BUILD_ID").unwrap_or("development"),"success":true,
+            Ok::<_, String>(serde_json::json!({"version":env!("CARGO_PKG_VERSION"), "buildId":option_env!("DFS_BUILD_ID").unwrap_or("development"),"success":true,
                 "bundledLauncherIpc":frames.0, "workspaceFrameIpc":frames.1,
                 "desktopFrontendReady":true,
                 "workspaceManagementCommandsDenied":true, "windowsKeptHidden":true,
@@ -1029,6 +1053,8 @@ fn main() {
             desktop_window_action,
             save_deployment_download,
             reveal_deployment_download,
+            load_hosting_history,
+            save_hosting_history,
             open_data_dir,
             dismiss_notice,
             check_update,
@@ -1060,6 +1086,7 @@ fn main() {
                 disconnecting: AtomicBool::new(false),
                 rebuilds: Mutex::new(recovery::Budget::default()),
                 downloads: downloads::Downloads::default(),
+                hosting_history_gate: Mutex::new(()),
             });
             let main = build_main(app.handle(), &main_root)?;
             let monitor = app.handle().clone();
@@ -1171,7 +1198,7 @@ mod tests {
         let state=Desktop {root:root.clone(),installed:false,beside_program:true,update:Mutex::new(None),updating:AtomicBool::new(false),
             config:Mutex::new(Config::load(&root).unwrap()),active:Mutex::new(None),connecting:Mutex::new(false),generation:AtomicU64::new(0),
             exiting:AtomicBool::new(false),notice:Mutex::new(None),background_check:true,frame_checks:Mutex::new((false,false)),
-            workbench_ready:AtomicBool::new(false),background_started:AtomicBool::new(false),disconnecting:AtomicBool::new(false),rebuilds:Mutex::new(recovery::Budget::default()),downloads:downloads::Downloads::default()};
+            workbench_ready:AtomicBool::new(false),background_started:AtomicBool::new(false),disconnecting:AtomicBool::new(false),rebuilds:Mutex::new(recovery::Budget::default()),downloads:downloads::Downloads::default(),hosting_history_gate:Mutex::new(())};
         let (sender,receiver)=std::sync::mpsc::channel();
         let worker=std::thread::spawn(move||{let snapshot=desktop_snapshot(&state);let released=state.active.try_lock().is_ok();sender.send((snapshot,released)).unwrap();});
         let (snapshot,released)=receiver.recv_timeout(Duration::from_secs(2)).expect("launcher snapshot must finish without waiting for its own active mutex");

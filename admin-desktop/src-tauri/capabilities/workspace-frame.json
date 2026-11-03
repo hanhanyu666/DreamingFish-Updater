@@ -4,5 +4,5 @@
   "windows": ["workspace"],
   "local": false,
   "remote": {"urls": ["http://*:*/*", "https://*:*/*"]},
-  "permissions": ["window-frame", "deployment-downloads"]
+  "permissions": ["window-frame", "deployment-downloads", "hosting-history"]
 }

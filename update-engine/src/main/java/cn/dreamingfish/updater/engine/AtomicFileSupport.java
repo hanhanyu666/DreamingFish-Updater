@@ -42,6 +42,26 @@ final class AtomicFileSupport {
         }
     }
 
+    /** Launcher configuration can contain accounts: retain its access restrictions. */
+    static void writePreservingAccess(Path target, byte[] bytes) throws IOException {
+        cn.dreamingfish.updater.protocol.PathSafety.createSafeDirectories(target.toAbsolutePath().normalize().getParent());
+        cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(target);
+        Path temporary = Files.createTempFile(target.getParent(), ".dfs-config-", ".tmp");
+        try {
+            if (Files.exists(target)) {
+                var posix = Files.getFileAttributeView(target, java.nio.file.attribute.PosixFileAttributeView.class);
+                if (posix != null) Files.setPosixFilePermissions(temporary, posix.readAttributes().permissions());
+                var acl = Files.getFileAttributeView(target, java.nio.file.attribute.AclFileAttributeView.class);
+                var temporaryAcl = Files.getFileAttributeView(temporary, java.nio.file.attribute.AclFileAttributeView.class);
+                if (acl != null && temporaryAcl != null) temporaryAcl.setAcl(acl.getAcl());
+            }
+            Files.write(temporary, bytes, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+            force(temporary);
+            moveReplace(temporary, target);
+            forceDirectory(target.getParent());
+        } finally { Files.deleteIfExists(temporary); }
+    }
+
     static void moveReplace(Path source, Path target) throws IOException {
         cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(source);
         cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(target);

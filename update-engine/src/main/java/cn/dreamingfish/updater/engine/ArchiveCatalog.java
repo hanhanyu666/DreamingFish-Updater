@@ -91,7 +91,7 @@ public final class ArchiveCatalog {
         Path destination;
         try {
             stored = PathSafety.resolveInside(archive.directory(), file.storedPath());
-            destination = PathSafety.resolveInside(instanceRoot, file.originalPath());
+            destination = cn.dreamingfish.updater.protocol.ContentRoots.resolve(instanceRoot, file.originalPath());
             ProtectedPathPolicy.validate(paths, file.originalPath());
         } catch (IOException | ProtocolException | UpdateException e) {
             return RestoreCheck.refused("备份中的路径不安全");
@@ -142,12 +142,21 @@ public final class ArchiveCatalog {
     /** Copies a backed-up file back into the game and records the restore in the archive index. */
     public void restore(String archiveId, String originalPath, ReleaseManifest installed,
                         LocalFileOverrides choices) throws IOException {
+        try (PackUpdateLock pack = cn.dreamingfish.updater.protocol.ContentRoots.isPackPath(originalPath)
+                ? PackUpdateLock.acquire(instanceRoot, cn.dreamingfish.updater.protocol.ContentRoots.binding(instanceRoot)) : null) {
+            if (pack != null) pack.requireWritable();
+            restoreLocked(archiveId, originalPath, installed, choices);
+        }
+    }
+
+    private void restoreLocked(String archiveId, String originalPath, ReleaseManifest installed,
+                               LocalFileOverrides choices) throws IOException {
         RestoreCheck check = check(archiveId, originalPath, installed, choices);
         if (!check.allowed()) throw new IOException(check.reason());
         Archive archive = find(archiveId).orElseThrow(() -> new IOException("这份备份已不存在"));
         ArchivedFile file = entry(archive, originalPath).orElseThrow(() -> new IOException("备份中没有这个文件"));
         Path stored = PathSafety.resolveInside(archive.directory(), file.storedPath());
-        Path destination = PathSafety.resolveInside(instanceRoot, file.originalPath());
+        Path destination = cn.dreamingfish.updater.protocol.ContentRoots.resolve(instanceRoot, file.originalPath());
         AtomicFileSupport.copyReplace(stored, destination);
         if (!archive.legacy()) {
             List<ArchivedFile> updated = archive.files().stream()

@@ -201,7 +201,7 @@ final class TransactionInstaller {
                                                Path backupRoot) throws IOException {
         List<TransactionEntry> entries = new ArrayList<>();
         for (FileOperation operation : operations) {
-            Path target = resolve(paths.instanceRoot(), operation.path());
+            Path target = contentTarget(paths, operation.path());
             boolean existed = Files.exists(target, LinkOption.NOFOLLOW_LINKS);
             if (existed) {
                 if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
@@ -237,7 +237,7 @@ final class TransactionInstaller {
 
     private ArchivedFile apply(EnginePaths paths, FileOperation operation, Path pendingArchiveRoot)
             throws IOException {
-        Path target = resolve(paths.instanceRoot(), operation.path());
+        Path target = contentTarget(paths, operation.path());
         if (operation.kind() == OperationKind.DELETE) {
             Files.deleteIfExists(target);
             AtomicFileSupport.forceDirectory(target.getParent());
@@ -267,7 +267,15 @@ final class TransactionInstaller {
             }
             entry = archiveCopy(target, operation, pendingArchiveRoot);
         }
-        AtomicFileSupport.copyReplace(source, target);
+        if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(operation.path())) {
+            if (Files.size(source) > 256 * 1024 || Files.exists(target) && Files.size(target) > cn.dreamingfish.updater.protocol.ConfigPatches.MAX_BYTES)
+                throw new IOException("启动器配置或合并规则超过大小限制");
+            byte[] original = Files.exists(target) ? Files.readAllBytes(target) : new byte[0];
+            byte[] patch = Files.readAllBytes(source);
+            byte[] merged = cn.dreamingfish.updater.protocol.ConfigPatches.apply(target.toString(), patch, original);
+            ConfigPatchObjects.retain(paths, operation.sha256(), patch);
+            AtomicFileSupport.writePreservingAccess(target, merged);
+        } else AtomicFileSupport.copyReplace(source, target);
         setExecutable(target, operation.executable());
         return entry;
     }
@@ -296,7 +304,7 @@ final class TransactionInstaller {
         long complete = 0;
         for (ManifestFile file : checked) {
             cancellationToken.throwIfCancelled();
-            Path target = resolve(paths.instanceRoot(), file.path());
+            Path target = contentTarget(paths, file.path());
             if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
                 throw new UpdateException(UpdateErrorCode.TRANSACTION_FAILED,
                         "Installed file is missing: " + file.path());
@@ -304,7 +312,11 @@ final class TransactionInstaller {
             if (verification(model, overrides, file) == Verification.CONTENT) {
                 boolean valid;
                 try {
-                    valid = index.matches(target, file.path(), file.sha256(), file.size());
+                    if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path())) {
+                        byte[] patch = ConfigPatchObjects.load(paths, file.sha256(), file.size());
+                        valid = patch != null && Files.size(target) <= cn.dreamingfish.updater.protocol.ConfigPatches.MAX_BYTES
+                                && cn.dreamingfish.updater.protocol.ConfigPatches.satisfied(target.toString(), patch, Files.readAllBytes(target));
+                    } else valid = index.matches(target, file.path(), file.sha256(), file.size());
                 } catch (IOException e) {
                     valid = false;
                 }
@@ -342,7 +354,7 @@ final class TransactionInstaller {
         requireSafeDirectory(backupRoot, "Unsafe transaction backup directory");
         requireSafeDirectory(metadataRoot, "Unsafe transaction metadata directory");
         for (TransactionEntry entry : journal.entries()) {
-            Path target = resolve(paths.instanceRoot(), entry.path());
+            Path target = contentTarget(paths, entry.path());
             if (entry.originalExisted()) {
                 Path backup = resolve(backupRoot, entry.path());
                 if (!Files.isRegularFile(backup, LinkOption.NOFOLLOW_LINKS)) {
@@ -451,6 +463,11 @@ final class TransactionInstaller {
         } catch (IOException e) {
             return false;
         }
+    }
+
+    private Path contentTarget(EnginePaths paths, String path) {
+        try { return cn.dreamingfish.updater.protocol.ContentRoots.resolve(paths.instanceRoot(), path); }
+        catch (IOException | ProtocolException error) { throw new UpdateException(UpdateErrorCode.PATH_UNSAFE, "更新目录身份或文件路径无效：" + path, error); }
     }
 
     private Path resolve(Path root, String path) {

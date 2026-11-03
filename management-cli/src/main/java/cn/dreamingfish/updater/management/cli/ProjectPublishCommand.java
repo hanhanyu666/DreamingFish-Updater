@@ -73,7 +73,7 @@ final class ProjectPublishCommand implements Runnable {
                 : ChangelogInput.utf8File(changelogFile);
         if (preview.requiresPlayerProgramAcknowledgement() && !confirmPlayerUpgrade) {
             throw new cn.dreamingfish.updater.management.ManagementException(
-                    "玩家端需要先升级到 " + cn.dreamingfish.updater.management.ScanService.POLICY_PLAYER_VERSION
+                    "玩家端需要先升级到 " + preview.minimumPlayerVersion()
                             + " 或更新版本才能使用这次发布。请先发布新版玩家端；"
                             + "如果已确认玩家会通过其他方式获得新版玩家端，请加上 --confirm-player-upgrade。");
         }

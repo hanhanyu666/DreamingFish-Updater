@@ -9,6 +9,7 @@ import java.nio.file.StandardOpenOption;
 
 final class ProjectLock implements Closeable {
     private static final ThreadLocal<java.util.Map<Path, Held>> HELD = ThreadLocal.withInitial(java.util.HashMap::new);
+    private static final String BUSY = "Another operation is already changing this project";
     private final Path path;
     private final Held held;
     private final Thread owner;
@@ -38,18 +39,25 @@ final class ProjectLock implements Closeable {
             FileLock lock = channel.tryLock();
             if (lock == null) {
                 channel.close();
-                throw new ManagementException("Another operation is already changing this project");
+                throw new ManagementException(BUSY);
             }
             Held held = new Held(channel, lock,access);
             HELD.get().put(lockFile, held);
             return new ProjectLock(lockFile, held);
         } catch (java.nio.channels.OverlappingFileLockException e) {
             channel.close();if(access!=null)access.close();
-            throw new ManagementException("Another operation is already changing this project", e);
+            throw new ManagementException(BUSY, e);
         } catch (IOException | RuntimeException failure) {
             channel.close();if(access!=null)access.close();
             throw failure;
         }
+    }
+
+    /** True when an operation failed only because another one held a lock: background work retries instead of reporting it. */
+    static boolean busy(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause())
+            if (BUSY.equals(cause.getMessage())) return true;
+        return false;
     }
 
     @Override

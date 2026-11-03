@@ -28,6 +28,11 @@ public record PublishPreview(
         presentationChanges = presentationChanges == null ? List.of() : List.copyOf(presentationChanges);
     }
 
+    public String minimumPlayerVersion() {
+        return rules != null && rules.packRoot() != null || files.stream().anyMatch(file -> cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path()))
+                ? "0.3.3" : ScanService.POLICY_PLAYER_VERSION;
+    }
+
     public String confirmationDigest() {
         return cn.dreamingfish.updater.protocol.CryptoSupport.sha256(
                 new cn.dreamingfish.updater.protocol.JsonCodec().write(this));

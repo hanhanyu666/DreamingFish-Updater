@@ -12,7 +12,7 @@ import { chrome } from "../lib/updateStatus";
 
 const store = usePlayerStore();
 const bridge = getBridge();
-const VERSION = "0.3.2";
+const VERSION = "0.3.3";
 const REPOSITORY_URL = "https://github.com/hanhanyu666/DreamingFish-Updater";
 const currentPage = computed(() => {
   const id = store.state.page === "NEWS" ? "news"

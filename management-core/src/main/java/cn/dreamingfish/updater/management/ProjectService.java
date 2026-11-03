@@ -119,7 +119,7 @@ public final class ProjectService {
                 project.publicKey(),
                 playerHome,
                 bundledCoverPath,
-                project.branding()
+                project.branding(), project.rules().packRoot() == null ? null : project.rules().packRoot().withDefaultLayout()
         );
     }
 

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "hosting-history"
+description = "Read and save non-secret hosting form history for the active connection; Rust validates the workspace origin and connection token."
+commands.allow = ["load_hosting_history", "save_hosting_history"]

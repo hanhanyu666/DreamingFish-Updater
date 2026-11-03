@@ -27,6 +27,26 @@ class PublishServiceTest {
     Path temporary;
 
     @Test
+    void refusingAConfigPatchWithoutAnApprovedPlayerIsAFailureNotAnUnknownCommit() throws Exception {
+        var fixture = new ManagementFixture(temporary.resolve("management"));
+        fixture.createProject();
+        Files.createDirectories(fixture.source.resolve("config"));
+        Files.writeString(fixture.source.resolve("config/demo.json.dfs-patch.json"),
+                "{\"schemaVersion\":1,\"format\":\"json\",\"set\":{\"theme\":\"blue\"}}");
+        fixture.scanner.createPreview("demo");
+        try (var tasks = new ApplicationTasks(fixture.paths, fixture.json)) {
+            String id = java.util.UUID.randomUUID().toString();
+            tasks.submit(id, "demo", "publish", null, "refused", false,
+                    () -> fixture.publisher.publish("demo", "1.0.0", "0.3.3", "patch"));
+            var refused = assertThrows(Exception.class, () -> tasks.await(id));
+            assertTrue(refused.getMessage().contains("需要先批准玩家端"), refused.getMessage());
+            assertEquals(ApplicationTasks.State.FAILED, tasks.require(id).state(),
+                    "nothing was written, so the owner must not be asked to reconcile the result");
+        }
+        assertTrue(fixture.database.listReleases("demo").isEmpty());
+    }
+
+    @Test
     void manySequentialObjectsUseOnePeakReservationAndReleaseTemporaryOwnership()throws Exception {
         var fixture=new ManagementFixture(temporary);fixture.createProject();
         for(int i=0;i<100;i++)Files.writeString(fixture.source.resolve("file-"+i+".txt"),"payload-"+i+"x".repeat(64));

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {reactive} from 'vue';
 import {newId,move,toLocalInput,fromLocalInput,aiBrief,formatBytes,blockFields,BLOCK_KINDS,SHOWCASE_AI_PROMPT,parseShowcase,applyShowcase,showcaseFromBranding,validateShowcase} from '../src/workbench/showcase.ts';
 
 const example=readFileSync(new URL('../../docs/showcase/example-whalesong.json',import.meta.url),'utf8');
@@ -34,6 +35,19 @@ test('importing the example and exporting it again gives the same content',()=>{
  assert.equal(branding.coverObject,'cover');assert.equal(branding.musicTracks.length,1);
  const again=showcaseFromBranding(branding);
  assert.deepEqual(again.spotlights,parsed.document.spotlights);assert.deepEqual(again.contentPages,parsed.document.contentPages);
+});
+
+test('showcase export and import accept editor proxies and keep detached JSON copies',()=>{
+ const editor=reactive(JSON.parse(example));
+ const exported=showcaseFromBranding(editor);
+ assert.deepEqual(exported.spotlights,JSON.parse(example).spotlights);
+ exported.spotlights[0].title='导出副本';
+ assert.notEqual(editor.spotlights[0].title,'导出副本');
+ const imported=reactive(parseShowcase(example).document);
+ const applied=applyShowcase(editor,imported);
+ applied.contentPages[0].title='合并副本';
+ assert.notEqual(imported.contentPages[0].title,'合并副本');
+ assert.notEqual(editor.contentPages[0].title,'合并副本');
 });
 test('import errors name the JSON path for the owner',()=>{
  const broken=JSON.parse(example);broken.contentPages[1].blocks[0].kind='HERO';

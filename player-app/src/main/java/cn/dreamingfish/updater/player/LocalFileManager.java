@@ -228,7 +228,7 @@ final class LocalFileManager {
     private Boolean modified(ManifestFile file, LocalFileIndex index) {
         if (index == null || instanceRoot == null) return null;
         try {
-            Path local = PathSafety.resolveInside(instanceRoot, file.path());
+            Path local = cn.dreamingfish.updater.protocol.ContentRoots.resolve(instanceRoot, file.path());
             if (!Files.isRegularFile(local, LinkOption.NOFOLLOW_LINKS)) return null;
             return !index.matches(local, file.path(), file.sha256(), file.size());
         } catch (IOException | ProtocolException e) {

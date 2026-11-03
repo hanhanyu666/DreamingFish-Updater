@@ -1,4 +1,4 @@
-<#
+﻿<#
 Publishes a GitHub release from dist/ and always attaches latest.json.
 
 Installed desktop copies look for updates in releases/latest/download/latest.json, so every
@@ -39,6 +39,13 @@ if (-not (Test-Path -LiteralPath $NotesFile -PathType Leaf)) { throw "Release no
 # Resolve user paths before any work-directory change; planning never rewrites dist.
 . (Join-Path $PSScriptRoot 'lib\release-plan.ps1')
 $plan = Get-ReleasePlan -Dist $dist -NotesFile $NotesFile -Tag $Tag -Repository $Repository -AdminVersion $AdminVersion -PlayerVersion $PlayerVersion
+if ($plan.PlayerCatalog) {
+    $verifyJava = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java' }
+    $verifyJar = Join-Path $repoRoot 'management-cli/target/dfs-admin.jar'
+    $verifyKey = Join-Path $repoRoot 'management-core/src/main/resources/cn/dreamingfish/updater/management/official-player-public-key.txt'
+    & $verifyJava -cp $verifyJar cn.dreamingfish.updater.management.OfficialPlayerReleaseTool verify $plan.PlayerCatalog $verifyKey $dist $PlayerVersion "https://github.com/$Repository/releases/download/$Tag/"
+    if ($LASTEXITCODE -ne 0) { throw 'Official player catalogue signature or release artifacts are invalid' }
+}
 Write-Host "Release $Tag (admin $AdminVersion, player $PlayerVersion):"
 $plan.Assets | ForEach-Object { Write-Host "  $([IO.Path]::GetFileName($_))" }
 Write-Host '  latest.json'
@@ -68,6 +75,16 @@ try {
         if (-not $carried.signature -or $carried.url -notlike "https://github.com/$Repository/releases/download/*") { throw 'Carried latest.json has an unexpected signature or artifact URL' }
     }
     $assets = @($plan.Assets) + @($latest)
+    if (-not $plan.PlayerCatalog) {
+        & $gh release download --repo $Repository --pattern player-catalog.signed --dir $staging
+        if ($LASTEXITCODE -ne 0) { throw 'An admin-only release must retain the previous official player catalogue' }
+        $carriedCatalog = Join-Path $staging 'player-catalog.signed'
+        $catalogJava = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java' }
+        $catalogKey = Join-Path $repoRoot 'management-core/src/main/resources/cn/dreamingfish/updater/management/official-player-public-key.txt'
+        & $catalogJava -cp (Join-Path $repoRoot 'management-cli/target/dfs-admin.jar') cn.dreamingfish.updater.management.OfficialPlayerReleaseTool verify-catalog $carriedCatalog $catalogKey $PlayerVersion
+        if ($LASTEXITCODE -ne 0) { throw 'Carried official player catalogue has an invalid signature or player version' }
+        $assets += $carriedCatalog
+    }
     $sums = foreach ($path in $assets) { "$((Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($path))" }
     $sumsFile = Join-Path $staging 'SHA256SUMS.txt'
     [IO.File]::WriteAllText($sumsFile, (($sums -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))

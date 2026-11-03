@@ -50,7 +50,7 @@ final class ProjectKeyStore {
         }
     }
 
-    private static void restrictPermissions(Path path) {
+    static void restrictPermissions(Path path) {
         try {
             Files.setPosixFilePermissions(path, Set.of(
                     PosixFilePermission.OWNER_READ,

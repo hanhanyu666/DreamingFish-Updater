@@ -1,6 +1,10 @@
 package cn.dreamingfish.updater.management.cli;
 
 import cn.dreamingfish.updater.management.ManagementException;
+import cn.dreamingfish.updater.management.ExternalDeliveryStatusService;
+import cn.dreamingfish.updater.management.DistributionRetirementException;
+import cn.dreamingfish.updater.management.PlayerUpdatePolicyService;
+import cn.dreamingfish.updater.management.OfficialPlayerPublisher;
 import cn.dreamingfish.updater.management.OptionalGroupRule;
 import cn.dreamingfish.updater.management.PreviewChange;
 import cn.dreamingfish.updater.management.ProjectPolicyService;
@@ -60,6 +64,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -76,8 +81,6 @@ final class AdminWebServer implements AutoCloseable {
     private static final String TOKEN_HEADER = "X-DFS-Token";
     static final String SESSION_COOKIE = "DFS_ADMIN_SESSION";
     private static final String LOGGED_OUT_COOKIE = "DFS_ADMIN_LOGGED_OUT";
-    private static final Map<String, StaticAsset> STATIC_ASSETS = loadAssets();
-    private static final boolean WORKBENCH_AVAILABLE = AdminWebServer.class.getResource("web/workbench/index.html") != null;
 
     private final ManagementCli root;
     private final JsonCodec json = new JsonCodec();
@@ -94,6 +97,8 @@ final class AdminWebServer implements AutoCloseable {
     private final AuthHttpHandler authentication;
     private final StorageHttpHandler storage;
     private final ProjectHttpHandler projects;
+    private final AutomaticPlayerPublishing automaticPlayerPublishing;
+    private final AutomaticHostingUpload automaticHostingUpload;
     private final AtomicBoolean closed = new AtomicBoolean();
     private final String sessionToken;
     private final WebAuthStore auth;
@@ -131,13 +136,20 @@ final class AdminWebServer implements AutoCloseable {
         sessionToken = Base64.getUrlEncoder().withoutPadding().encodeToString(token);
         server.setExecutor(executor);
         tasks=new TaskHttpHandler(root,this::handle);transfers=new TransferHttpHandler(this,root);publications=new PublicationHttpHandler(this,root);distribution=new DistributionHttpHandler(this,root);authentication=new AuthHttpHandler(this,auth);storage=new StorageHttpHandler(this,root);projects=new ProjectHttpHandler(this);
+        automaticHostingUpload = new AutomaticHostingUpload(root, mutationGate.readLock());
+        automaticPlayerPublishing = new AutomaticPlayerPublishing(root, mutationGate.readLock(), automaticHostingUpload::runSoon);
         server.createContext("/", this::handle).getFilters().add(
                 cn.dreamingfish.updater.management.HttpServerResources.connectionLifecycle());
     }
 
     void start() {
         server.start();
+        automaticPlayerPublishing.start();
+        automaticHostingUpload.start();
     }
+
+    AutomaticPlayerPublishing automaticPlayerPublishing() { return automaticPlayerPublishing; }
+    AutomaticHostingUpload automaticHostingUpload() { return automaticHostingUpload; }
 
     InetSocketAddress address() {
         return server.getAddress();
@@ -161,6 +173,8 @@ final class AdminWebServer implements AutoCloseable {
                     "error", e.code,
                     "message", e.getMessage()
             ));
+        } catch (DistributionRetirementException e) {
+            sendJson(exchange,400,Map.of("error","distribution_retirement_failed","message",DistributionRetirementException.MESSAGE));
         } catch (ManagementException | IllegalArgumentException | ProtocolException e) {
             sendJson(exchange, 400, Map.of(
                     "error", "invalid_request",
@@ -208,37 +222,56 @@ final class AdminWebServer implements AutoCloseable {
                 && !exchange.getRequestMethod().equals("HEAD")) {
             throw new WebApiException(405, "method_not_allowed", "此资源只允许读取");
         }
-        String resourcePath = path.equals("/") || path.equals("/legacy") || path.equals("/legacy/") ? "/index.html" : path;
-        if (resourcePath.equals("/workbench") || resourcePath.startsWith("/workbench/")) {
-            sendWorkbenchAsset(exchange, resourcePath);
+        if (Set.of("/", "/index.html", "/legacy", "/legacy/", "/legacy/index.html").contains(path)) {
+            securityHeaders(exchange.getResponseHeaders());
+            exchange.getResponseHeaders().set("Location", workbenchDestination(exchange.getRequestURI()));
+            exchange.getResponseHeaders().set("Cache-Control", "no-store");
+            exchange.sendResponseHeaders(302, -1);
             return;
         }
-        if (resourcePath.startsWith("/player-preview/")) {
-            sendPlayerPreviewAsset(exchange, resourcePath);
+        if (path.equals("/workbench") || path.startsWith("/workbench/")) {
+            sendWorkbenchAsset(exchange, path);
             return;
         }
-        StaticAsset asset = STATIC_ASSETS.get(resourcePath);
-        if (asset == null) throw new WebApiException(404, "not_found", "页面不存在");
-        securityHeaders(exchange.getResponseHeaders());
-        exchange.getResponseHeaders().set("Content-Type", asset.contentType);
-        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-        byte[] bytes = asset.bytes;
-        if (resourcePath.equals("/index.html")) {
-            bytes = new String(bytes, StandardCharsets.UTF_8)
-                    .replace("<html lang=", "<html data-workbench-available=\"" + WORKBENCH_AVAILABLE + "\" lang=")
-                    .getBytes(StandardCharsets.UTF_8);
+        if (path.startsWith("/player-preview/")) {
+            sendPlayerPreviewAsset(exchange, path);
+            return;
         }
-        sendBytes(exchange, 200, bytes);
+        throw new WebApiException(404, "not_found", "页面不存在");
+    }
+
+    private static String workbenchDestination(URI uri) {
+        String requested = defaultValue(query(uri, "view"), "");
+        String[] route = switch (requested) {
+            case "publish", "changes" -> new String[]{"changes", "changes"};
+            case "project" -> new String[]{"settings", "project"};
+            case "personalization", "appearance" -> new String[]{"appearance", "branding"};
+            case "player" -> new String[]{"delivery", "programs"};
+            case "distribution" -> new String[]{"delivery", "hosting"};
+            case "instance", "delivery" -> new String[]{"delivery", "deployment"};
+            case "settings" -> new String[]{"settings", "service"};
+            default -> new String[]{"files", "files"};
+        };
+        List<String> parameters = new ArrayList<>();
+        String project = query(uri, "project");
+        if (present(project)) parameters.add("project=" + java.net.URLEncoder.encode(project, StandardCharsets.UTF_8));
+        // Sections are validated against the actual navigation catalogue by the workbench.
+        String section = defaultValue(query(uri, "section"), route[1]);
+        if (present(query(uri, "view")) || present(query(uri, "section"))) {
+            parameters.add("view=" + route[0]);
+            parameters.add("section=" + java.net.URLEncoder.encode(section, StandardCharsets.UTF_8));
+        }
+        return "/workbench/" + (parameters.isEmpty() ? "" : "?" + String.join("&", parameters));
     }
 
     private void sendWorkbenchAsset(HttpExchange exchange, String path) throws IOException {
         String resource = path.equals("/workbench") || path.equals("/workbench/") ? "/workbench/index.html" : path;
         if (resource.contains("..") || resource.contains("\\")
                 || !resource.matches("/workbench/[A-Za-z0-9_./-]+")) {
-            throw new WebApiException(404, "not_found", "新版界面资源不存在");
+            throw new WebApiException(404, "not_found", "管理工作区资源不存在");
         }
         try (InputStream input = AdminWebServer.class.getResourceAsStream("web" + resource)) {
-            if (input == null) throw new WebApiException(404, "not_found", "新版界面资源不存在");
+            if (input == null) throw new WebApiException(404, "not_found", "管理工作区资源不存在");
             securityHeaders(exchange.getResponseHeaders());
             exchange.getResponseHeaders().set("Content-Security-Policy",
                     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
@@ -737,6 +770,15 @@ final class AdminWebServer implements AutoCloseable {
         result.put("releases", services.database().listReleases(projectId).stream()
                 .map(AdminWebServer::releaseView).toList());
         result.put("platform", platform);
+        if (project.rules().packRoot() != null) {
+            result.put("packRoot", project.rules().packRoot());
+            result.put("packRootSourceDirectory", project.sourceDirectory().resolve(project.rules().packRoot().prefix()).toString());
+        }
+        result.put("externalDelivery", new ExternalDeliveryStatusService(services.paths(),services.database(),services.json()).read(projectId));
+        result.put("playerUpdatePolicy", new PlayerUpdatePolicyService(services.paths(), services.database(), services.json()).read(projectId));
+        result.put("officialAutoPublish", new OfficialPlayerPublisher(services.paths(), services.database(), services.json()).auto(projectId));
+        result.put("savedHosting", new cn.dreamingfish.updater.management.ExternalHostingService(services.paths(), services.database(), services.json(),
+                services.staticDistribution(), services.distributionUploader()).view(projectId));
         result.put("currentProgramVersion", services.playerPrograms().latest(projectId, platform).map(StoredPlayerProgram::version).orElse(""));
         result.put("playerPrograms",
                 reverse(services.playerPrograms().list(projectId, platform)).stream()
@@ -1665,7 +1707,7 @@ final class AdminWebServer implements AutoCloseable {
         result.put("presentationChanges", preview.presentationChanges());
         result.put("warnings", preview.warnings());
         result.put("requiresPlayerUpgrade", preview.requiresPlayerProgramAcknowledgement());
-        result.put("policyPlayerVersion", ScanService.POLICY_PLAYER_VERSION);
+        result.put("policyPlayerVersion", preview.minimumPlayerVersion());
         result.put("rules", preview.rules());
         result.put("baseReleaseId", preview.baseReleaseId());
         result.put("createdAt", preview.createdAt());
@@ -1745,7 +1787,8 @@ final class AdminWebServer implements AutoCloseable {
     Object mutate(Callable<Object> operation)throws Exception {
         java.util.concurrent.locks.Lock lock=projectRequest.get()?mutationGate.readLock():mutationGate.writeLock();
         if(!lock.tryLock())throw new WebApiException(409,"operation_in_progress","全局维护或目录切换正在执行，请稍后重试");
-        try{return operation.call();}finally{lock.unlock();}
+        // Anything published may need to reach the saved OSS / WebDAV destination; unchanged projects are skipped.
+        try{var result=operation.call();automaticHostingUpload.runSoon();return result;}finally{lock.unlock();}
     }
 
     /**
@@ -2003,39 +2046,6 @@ final class AdminWebServer implements AutoCloseable {
         return List.copyOf(result);
     }
 
-    private static Map<String, StaticAsset> loadAssets() {
-        Map<String, StaticAsset> assets = new java.util.HashMap<>(Map.of(
-                "/index.html", loadAsset(
-                        "web/index.html", "text/html; charset=utf-8"),
-                "/app.css", loadAsset(
-                        "web/app.css", "text/css; charset=utf-8"),
-                "/app.js", loadAsset(
-                        "web/app.js", "text/javascript; charset=utf-8"),
-                "/file-workspace.js", loadAsset("web/file-workspace.js", "text/javascript; charset=utf-8"),
-                "/file-transfer.js", loadAsset("web/file-transfer.js", "text/javascript; charset=utf-8"),
-                "/admin-workflow.js", loadAsset("web/admin-workflow.js", "text/javascript; charset=utf-8"),
-                "/workspace.css", loadAsset("web/workspace.css", "text/css; charset=utf-8"),
-                "/icons/folder.svg", loadAsset("web/icons/folder.svg", "image/svg+xml"),
-                "/icons/file.svg", loadAsset("web/icons/file.svg", "image/svg+xml"),
-                "/operation-history.js", loadAsset("web/operation-history.js", "text/javascript; charset=utf-8")
-        ));
-        assets.put("/interface-mode.js", loadAsset("web/interface-mode.js", "text/javascript; charset=utf-8"));
-        return Map.copyOf(assets);
-    }
-
-    private static StaticAsset loadAsset(
-            String path, String contentType) {
-        try (InputStream input = AdminWebServer.class.getResourceAsStream(path)) {
-            if (input == null) {
-                throw new ExceptionInInitializerError(
-                        "Missing admin web asset: " + path);
-            }
-            return new StaticAsset(input.readAllBytes(), contentType);
-        } catch (IOException e) {
-            throw new ExceptionInInitializerError(e);
-        }
-    }
-
     private record StorageRequest(String stamp,Boolean forgetUndo) {}
     private record OperationRequest(String id, String stamp) {}
 
@@ -2043,6 +2053,8 @@ final class AdminWebServer implements AutoCloseable {
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
         publicService.close();
+        automaticPlayerPublishing.close();
+        automaticHostingUpload.close();
         server.stop(0);
         executor.shutdownNow();
         requestDeadlines.shutdownNow();
@@ -2061,8 +2073,6 @@ final class AdminWebServer implements AutoCloseable {
         }
     }
 
-    private record StaticAsset(byte[] bytes, String contentType) {
-    }
 
     record ProjectRequest(
             String id,

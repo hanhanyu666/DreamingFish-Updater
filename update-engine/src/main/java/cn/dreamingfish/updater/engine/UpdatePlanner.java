@@ -255,6 +255,10 @@ final class UpdatePlanner {
                     continue;
                 }
 
+                if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path())) {
+                    planPatch(file, destination, exists);
+                    continue;
+                }
                 switch (behavior) {
                     case REQUIRED, SYNC -> planConverging(file, destination, exists);
                     case LEGACY_MISSING_ONLY -> {
@@ -264,6 +268,18 @@ final class UpdatePlanner {
                     case DEFAULT_CONFIG -> planDefaultConfig(file, destination, exists);
                 }
                 progress("正在扫描受管理文件", file.path());
+            }
+        }
+
+        private void planPatch(ManifestFile file, Path destination, boolean exists) {
+            try {
+                byte[] patch = ConfigPatchObjects.load(paths, file.sha256(), file.size());
+                if (exists && patch != null && Files.size(destination) <= cn.dreamingfish.updater.protocol.ConfigPatches.MAX_BYTES
+                        && cn.dreamingfish.updater.protocol.ConfigPatches.satisfied(destination.toString(), patch, Files.readAllBytes(destination))) return;
+                if (exists) replace(file, ArchiveReason.REPLACED_MODIFIED, "合并服主指定字段，保留其他启动器设置", inspect(destination, file.path(), false));
+                else install(file);
+            } catch (IOException | ProtocolException error) {
+                throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID, "启动器配置无法安全合并，原文件已保留：" + destination.getFileName(), error);
             }
         }
 
@@ -362,6 +378,7 @@ final class UpdatePlanner {
             if (model.simplified()) return;
             for (InstalledFileState previous : baseline.values()) {
                 cancellation.throwIfCancelled();
+                if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(previous.path())) continue;
                 String key = ManagedPaths.fold(previous.path());
                 if (model.contains(previous.path()) || operations.containsKey(key)
                         || withdrawn.containsKey(key)) {
@@ -584,12 +601,13 @@ final class UpdatePlanner {
         }
 
         private String relative(Path file) {
-            return paths.instanceRoot().relativize(file).toString().replace('\\', '/');
+            try { return cn.dreamingfish.updater.protocol.ContentRoots.relative(paths.instanceRoot(), file); }
+            catch (IOException error) { throw new UpdateException(UpdateErrorCode.PATH_UNSAFE, "无法识别文件所属更新目录", error); }
         }
 
         private Path resolve(String manifestPath) {
             try {
-                return PathSafety.resolveInside(paths.instanceRoot(), manifestPath);
+                return cn.dreamingfish.updater.protocol.ContentRoots.resolve(paths.instanceRoot(), manifestPath);
             } catch (IOException | ProtocolException e) {
                 throw new UpdateException(UpdateErrorCode.PATH_UNSAFE,
                         "Unsafe managed path: " + manifestPath, e);

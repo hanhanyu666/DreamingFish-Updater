@@ -98,6 +98,32 @@ class StaticDistributionUploaderTest {
                         "", "access", "secret", "", S3AddressingStyle.PATH)));
     }
 
+    @Test
+    void pausingRemovesOnlyProjectPlayerPointersFromWebDavAndS3() throws Exception {
+        for (boolean s3 : java.util.List.of(false, true)) {
+            var exported=exportFixture("pause-"+s3); var f=exported.fixture();
+            Path program=Files.createDirectories(temporary.resolve("program-"+s3)); Files.writeString(program.resolve("player.exe"),"program");
+            new PlayerProgramService(f.paths,f.database,f.json).publish("demo","windows-x64","0.3.3",program,"player.exe","0.1.2");
+            var exporter=new StaticDistributionService(f.paths,f.database,f.json); exporter.exportProject("demo",exported.output());
+            String prefix=s3?"/bucket/updates/":"/dav/";
+            String auth="Basic "+Base64.getEncoder().encodeToString("admin:secret".getBytes(StandardCharsets.UTF_8));
+            try(var remote=new UploadServer(prefix,auth,s3)) {
+                var uploader=new StaticDistributionUploader(f.json);
+                var dav=new WebDavUploadConfiguration(remote.uri(prefix),"admin","secret");
+                var object=new S3UploadConfiguration(remote.uri("/"),"auto","bucket","updates","access","secret","",S3AddressingStyle.PATH);
+                if(s3)uploader.uploadS3(exported.output(),object);else uploader.uploadWebDav(exported.output(),dav);
+                String player=prefix+"v1/projects/demo/player/windows-x64/latest";
+                assertTrue(remote.files.containsKey(player));
+                remote.files.put(prefix+"unrelated.txt","keep".getBytes(StandardCharsets.UTF_8));
+                var policies=new PlayerUpdatePolicyService(f.paths,f.database,f.json);policies.setEnabled("demo",false,policies.read("demo").revision());
+                exporter.exportProject("demo",exported.output());
+                if(s3)uploader.uploadS3(exported.output(),object);else uploader.uploadWebDav(exported.output(),dav);
+                assertTrue(!remote.files.containsKey(player)); assertTrue(!remote.files.containsKey(player+".sig")); assertTrue(!remote.files.containsKey(player+".signed"));
+                assertTrue(remote.files.containsKey(prefix+"unrelated.txt"));assertTrue(remote.files.containsKey(prefix+"v1/projects/demo/latest"));
+            }
+        }
+    }
+
     private ExportFixture exportFixture(String name) throws Exception {
         ManagementFixture fixture = new ManagementFixture(
                 temporary.resolve(name + "-management"));
@@ -170,6 +196,7 @@ class StaticDistributionUploaderTest {
                 }
 
                 switch (exchange.getRequestMethod()) {
+                    case "DELETE" -> { files.remove(path); hashes.remove(path); exchange.sendResponseHeaders(204,-1); }
                     case "MKCOL" -> exchange.sendResponseHeaders(201, -1);
                     case "PUT" -> {
                         byte[] bytes = exchange.getRequestBody().readAllBytes();

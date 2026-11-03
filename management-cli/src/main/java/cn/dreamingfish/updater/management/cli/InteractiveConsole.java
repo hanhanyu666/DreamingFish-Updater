@@ -805,6 +805,7 @@ final class InteractiveConsole {
         root.out().println("  内容对象：" + result.objectCount()
                 + "（本次复制 " + result.copiedObjectCount()
                 + "，复用 " + result.reusedObjectCount() + "）");
+        root.out().println("暂停程序更新时，还需按 .dreamingfish-player-retirements.json 的 paths 移除旧入口；仅覆盖上传不会删除云端旧文件。新版工作区的内置上传会自动处理并检查。");
         root.out().println("  本次新增数据："
                 + HumanSize.format(result.copiedObjectBytes()));
         root.out().println("下一步请把目录中的全部文件原样上传，并把项目的玩家端更新地址设为托管根地址。");

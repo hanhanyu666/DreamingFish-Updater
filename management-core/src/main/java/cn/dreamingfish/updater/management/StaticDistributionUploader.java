@@ -69,6 +69,15 @@ public final class StaticDistributionUploader {
         Map<String, RemoteIndexEntry> remoteIndex = readWebDavIndex(
                 base, authorization);
 
+        retirePlayerPointers(root, route -> {
+            URI uri = resolve(base, route);
+            var builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).DELETE();
+            addAuthorization(builder, authorization);
+            requireDeleted(uri, send(builder.build()));
+            var check=HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).method("HEAD",HttpRequest.BodyPublishers.noBody());
+            addAuthorization(check, authorization);
+            if(send(check.build()).statusCode()!=404)throw new DistributionRetirementException();
+        });
         UploadStats stats = uploadOrdered(files, file -> {
             RemoteIndexEntry indexed = remoteIndex.get(file.relativePath());
             if (indexed != null && indexed.sha256().equals(file.sha256())
@@ -101,6 +110,21 @@ public final class StaticDistributionUploader {
         Path root = validateExport(exportDirectory);
         List<DistributionFile> files = listFiles(root);
         ApplicationTasks.committing("正在写入对象存储；取消不撤销已上传内容");
+        retirePlayerPointers(root, route -> {
+            URI uri = s3ObjectUri(configuration, route);
+            Map<String, String> headers = new LinkedHashMap<>();
+            headers.put("x-amz-content-sha256", EMPTY_SHA256);
+            addSessionToken(configuration, headers);
+            var signed = AwsV4Signer.sign("DELETE", uri, configuration.region(), configuration.accessKeyId(),
+                    configuration.secretAccessKey(), EMPTY_SHA256, headers, Instant.now());
+            var builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).DELETE();
+            addSignedHeaders(builder, headers, signed);
+            requireDeleted(uri, send(builder.build()));
+            var head=AwsV4Signer.sign("HEAD",uri,configuration.region(),configuration.accessKeyId(),configuration.secretAccessKey(),EMPTY_SHA256,headers,Instant.now());
+            var check=HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).method("HEAD",HttpRequest.BodyPublishers.noBody());
+            addSignedHeaders(check,headers,head);
+            if(send(check.build()).statusCode()!=404)throw new DistributionRetirementException();
+        });
         UploadStats stats = uploadOrdered(files, file -> {
             URI destination = s3ObjectUri(configuration, file.relativePath());
             if (!file.mutable() && s3ObjectMatches(
@@ -112,6 +136,33 @@ public final class StaticDistributionUploader {
         });
         String destination = s3ObjectUri(configuration, "").toString();
         return result("S3 compatible", destination, files, stats);
+    }
+
+    @FunctionalInterface private interface RetireOperation { void delete(String route); }
+
+    private void retirePlayerPointers(Path root, RetireOperation operation) {
+        Path record = root.resolve(".dreamingfish-player-retirements.json");
+        if (!Files.exists(record, LinkOption.NOFOLLOW_LINKS)) return; // Legacy exports.
+        try {
+            cn.dreamingfish.updater.protocol.PathSafety.assertSafePathTree(record);
+            if (Files.size(record) > 64 * 1024) throw new ManagementException("程序入口清理计划过大");
+            var marker = json.read(root.resolve(".dreamingfish-static-export.json"), StaticDistributionService.ExportMarker.class);
+            var plan = json.read(record, StaticDistributionService.PlayerRetirements.class);
+            if (plan.schemaVersion() != 1 || !marker.projectId().equals(plan.projectId())
+                    || plan.paths() == null || plan.paths().size() > 48) throw new ManagementException("程序入口清理计划身份无效");
+            String prefix = "v1/projects/" + plan.projectId() + "/player/";
+            for (String route : plan.paths()) {
+                if (!route.startsWith(prefix) || !route.substring(prefix.length()).matches("[a-z0-9][a-z0-9._-]{0,63}/latest(\\.sig|\\.signed)?")
+                        || Files.exists(root.resolve(route), LinkOption.NOFOLLOW_LINKS))
+                    throw new ManagementException("清理计划只能移除本项目已停用的玩家程序入口");
+            }
+            for (String route : plan.paths()) operation.delete(route);
+        } catch (IOException error) { throw new ManagementException("无法读取程序入口清理计划", error); }
+    }
+
+    private void requireDeleted(URI uri, RemoteResponse response) {
+        if (response.statusCode() != 200 && response.statusCode() != 204 && response.statusCode() != 404)
+            throw new DistributionRetirementException();
     }
 
     private DistributionUploadResult result(String provider, String destination,
@@ -618,7 +669,8 @@ public final class StaticDistributionUploader {
         return path.endsWith("/latest") || path.endsWith("/latest.sig") || path.endsWith("/latest.signed")
                 || path.endsWith("/presentation")
                 || path.endsWith("/presentation.sig") || path.endsWith("/presentation.signed")
-                || path.endsWith("/history");
+                || path.endsWith("/history") || path.endsWith("/policy.signed")
+                || path.equals(".dreamingfish-player-retirements.json");
     }
 
     private static String cacheControl(String path) {

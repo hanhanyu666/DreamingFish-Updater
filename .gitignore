@@ -6,6 +6,7 @@
 /data/
 /management-settings.json
 /management-web-auth.json
+hosting-history.json
 /**/target/
 /.idea/
 /.vscode/

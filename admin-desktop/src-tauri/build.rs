@@ -25,6 +25,8 @@ fn main() {
             "desktop_window_action",
             "save_deployment_download",
             "reveal_deployment_download",
+            "load_hosting_history",
+            "save_hosting_history",
             "open_data_dir",
             "dismiss_notice",
             "check_update",

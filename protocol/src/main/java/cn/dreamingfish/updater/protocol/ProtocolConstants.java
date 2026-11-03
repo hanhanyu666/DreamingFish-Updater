@@ -17,13 +17,17 @@ public final class ProtocolConstants {
     public static final String CAPABILITY_MAINTENANCE_POLICY = "maintenance-policy-v2";
     /** Three maintenance choices and persistent, recoverable owner removals. */
     public static final String CAPABILITY_SIMPLIFIED_MAINTENANCE = "simplified-maintenance-v1";
+    public static final String CAPABILITY_CONFIG_PATCH = "config-patch-v1";
+    public static final String CAPABILITY_PACK_ROOT = "pack-root-v1";
     /** Every release capability this code base can interpret. */
     public static final java.util.Set<String> RELEASE_CAPABILITIES = java.util.Set.of(
             CAPABILITY_FORCED_DIRECTORY_SYNC,
             CAPABILITY_FORCED_FILE_SYNC,
             CAPABILITY_RELEASED_PATHS,
             CAPABILITY_MAINTENANCE_POLICY,
-            CAPABILITY_SIMPLIFIED_MAINTENANCE);
+            CAPABILITY_SIMPLIFIED_MAINTENANCE,
+            CAPABILITY_PACK_ROOT,
+            CAPABILITY_CONFIG_PATCH);
     public static final String SIGNATURE_HEADER = "X-Dfs-Signature";
     public static final String HASH_ALGORITHM = "SHA-256";
     public static final String SIGNATURE_ALGORITHM = "Ed25519";

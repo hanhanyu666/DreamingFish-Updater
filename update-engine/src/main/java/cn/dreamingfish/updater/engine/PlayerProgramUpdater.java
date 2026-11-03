@@ -41,95 +41,119 @@ public final class PlayerProgramUpdater {
                                                      String platform, ProgressListener listener) {
         ProgressListener progress = listener == null ? ProgressListener.NONE : listener;
         PublicKey publicKey;
-        try {
-            publicKey = ManifestValidator.validateBinding(request.binding());
-        } catch (ProtocolException e) {
-            throw new UpdateException(UpdateErrorCode.INVALID_BINDING, "Project binding is invalid", e);
-        }
+        try { publicKey = ManifestValidator.validateBinding(request.binding()); }
+        catch (ProtocolException error) { throw new UpdateException(UpdateErrorCode.INVALID_BINDING, "Project binding is invalid", error); }
         String normalizedPlatform = platform == null ? currentPlatform() : platform;
-        SignedPlayerProgram latest;
-        try {
-            latest = fetch(request, publicKey, normalizedPlatform);
-        } catch (PlayerProgramNotPublished e) {
-            return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.NOT_PUBLISHED, null, 0);
-        } catch (UpdateException e) {
-            if (e.code() == UpdateErrorCode.NETWORK_UNAVAILABLE) {
-                return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.CHECK_UNAVAILABLE, null, 0);
-            }
-            throw e;
-        }
-
-        requireCompatibleVersions(request.playerVersion(), bootstrapVersion, latest.manifest());
-        SemanticVersion current = SemanticVersion.parse(request.playerVersion());
-        SemanticVersion target = SemanticVersion.parse(latest.manifest().version());
-
         EnginePaths paths = EnginePaths.of(request.instanceRoot(), request.playerHome());
-        try {
-            paths.createDirectories();
-        } catch (IOException e) {
-            throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID,
-                    "Unable to create player program directories", e);
-        }
+        try { paths.createDirectories(); }
+        catch (IOException error) { throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID, "Unable to create player program directories", error); }
         try (InstanceUpdateLock ignored = InstanceUpdateLock.acquire(paths.instanceLock())) {
+            var policies = new PlayerPolicyClient();
+            var policy = policies.fetch(request, publicKey);
+            policies.accept(request, policy);
+            if (policy != null && (!policy.enabled() || !policy.targets().containsKey(normalizedPlatform)))
+                return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.PAUSED, null, 0);
+            SignedPlayerProgram latest = fetch(request, publicKey, normalizedPlatform);
+            if (policy != null) {
+                var target = policy.targets().get(normalizedPlatform);
+                if (!target.version().equals(latest.manifest().version()) || !target.manifestSha256().equals(latest.sha256()))
+                    throw new UpdateException(UpdateErrorCode.INVALID_MANIFEST, "程序版本与服主批准的目标不一致，请稍后重试");
+                if (SemanticVersion.parse(request.playerVersion()).compareTo(SemanticVersion.parse(target.version())) > 0)
+                    return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.CURRENT, latest.manifest(), 0);
+            }
+            if (SemanticVersion.parse(bootstrapVersion).compareTo(SemanticVersion.parse(latest.manifest().minimumBootstrapVersion())) < 0)
+                return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.INCOMPATIBLE, latest.manifest(), 0);
+            requireCompatibleVersions(request.playerVersion(), bootstrapVersion, latest.manifest());
+            SemanticVersion current = SemanticVersion.parse(request.playerVersion());
+            SemanticVersion target = SemanticVersion.parse(latest.manifest().version());
             storageMaintenance.cleanExpiredStaging(paths);
             ActivePlayerState accepted = ActivePlayerState.load(paths.playerHome()).orElse(null);
+            ActivePlayerState previous = ActivePlayerState.loadForRunningVersion(paths.playerHome(), request.playerVersion()).orElse(null);
+            ProgramTrust trusted = loadProgramTrust(paths);
+            if (trusted != null && (target.compareTo(SemanticVersion.parse(trusted.version())) < 0
+                    || latest.manifest().version().equals(trusted.version()) && !latest.sha256().equals(trusted.sha256())))
+                throw new UpdateException(UpdateErrorCode.REPLAY_DETECTED, "玩家程序比本机已经验证并接受的程序更旧或同版本内容已改变");
+            Path failed = paths.state().resolve("failed-player-program.txt");
+            if (accepted != null && previous != null && !accepted.version().equals(request.playerVersion())
+                    && previous.version().equals(request.playerVersion()) && accepted.manifestSha256().equals(latest.sha256())
+                    && verifyActive(paths.playerHome(), accepted, latest.manifest())) {
+                // A legacy Agent started the known-good fallback: quarantine this exact candidate.
+                acceptProgramTrust(paths, latest);
+                AtomicFileSupport.write(failed, latest.sha256().getBytes(StandardCharsets.US_ASCII));
+                ActivePlayerState.activate(paths.playerHome(), previous, null);
+            }
+            if (Files.exists(failed, LinkOption.NOFOLLOW_LINKS)) {
+                PathSafety.assertSafePathTree(failed);
+                if (Files.size(failed) > 128) throw new IOException("Invalid failed-player marker");
+                if (Files.readString(failed, StandardCharsets.US_ASCII).trim().equals(latest.sha256()))
+                    return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.FAILED_VERSION, latest.manifest(), 0);
+            }
             if (accepted != null) {
                 SemanticVersion acceptedVersion = SemanticVersion.parse(accepted.version());
-                if (target.compareTo(acceptedVersion) < 0) {
-                    throw new UpdateException(UpdateErrorCode.REPLAY_DETECTED,
-                            "Update service returned a player program older than the accepted version");
-                }
-                if (target.compareTo(acceptedVersion) == 0
-                        && !accepted.manifestSha256().isBlank()
-                        && !accepted.manifestSha256().equals(latest.sha256())) {
-                    throw new UpdateException(UpdateErrorCode.REPLAY_DETECTED,
-                            "Update service changed a previously accepted player program version");
-                }
+                if (target.compareTo(acceptedVersion) < 0 || target.compareTo(acceptedVersion) == 0
+                        && !accepted.manifestSha256().isBlank() && !accepted.manifestSha256().equals(latest.sha256()))
+                    throw new UpdateException(UpdateErrorCode.REPLAY_DETECTED, "Update service changed or downgraded the accepted player program");
             }
-            ActivePlayerState previous = ActivePlayerState.loadForRunningVersion(
-                    paths.playerHome(), request.playerVersion()).orElse(null);
-            if (target.compareTo(current) == 0 && previous != null
-                    && verifyActive(paths.playerHome(), previous, latest.manifest())) {
+            if (target.compareTo(current) == 0 && previous != null && verifyActive(paths.playerHome(), previous, latest.manifest())) {
                 if (!latest.sha256().equals(previous.manifestSha256())) {
-                    ActivePlayerState verified = new ActivePlayerState(previous.version(), previous.launcher(),
-                            previous.programRoot(), latest.sha256(), previous.arguments(),
-                            previous.timeoutSeconds());
-                    try {
-                        storeSignedManifest(paths, latest);
-                        ActivePlayerState.activate(paths.playerHome(), verified, null);
-                    } catch (IOException e) {
-                        throw new UpdateException(UpdateErrorCode.TRANSACTION_FAILED,
-                                "Unable to record the verified player program", e);
-                    }
+                    var verified = new ActivePlayerState(previous.version(), previous.launcher(), previous.programRoot(),
+                            latest.sha256(), previous.arguments(), previous.timeoutSeconds());
+                    storeSignedManifest(paths, latest);
+                    ActivePlayerState.activate(paths.playerHome(), verified, null);
                 }
+                acceptProgramTrust(paths, latest);
                 storageMaintenance.cleanSupersededPrograms(paths);
                 storageMaintenance.cleanObjectCache(paths);
-                return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.CURRENT,
-                        latest.manifest(), 0);
+                return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.CURRENT, latest.manifest(), 0);
             }
-
-            progress.onProgress(new ProgressEvent(UpdateStage.DOWNLOADING,
-                    "正在下载玩家端更新", null, 0, 0));
-            Map<String, Long> objects = objectMap(latest.manifest());
-            long downloaded = new ObjectDownloader().download(request, paths, objects, progress);
+            progress.onProgress(new ProgressEvent(UpdateStage.DOWNLOADING, "正在下载玩家端更新", null, 0, 0));
+            long downloaded = new ObjectDownloader().download(request, paths, objectMap(latest.manifest()), progress);
             Path programRoot = installVersion(paths, latest);
-            String relativeRoot = paths.playerHome().relativize(programRoot).toString().replace('\\', '/');
-            String launcher = relativeRoot + "/" + latest.manifest().launchPath();
-            ActivePlayerState next = new ActivePlayerState(latest.manifest().version(), launcher,
-                    relativeRoot, latest.sha256(), List.of(),
-                    previous == null ? 3600 : previous.timeoutSeconds());
-            try {
-                storeSignedManifest(paths, latest);
-                ActivePlayerState.activate(paths.playerHome(), next, previous);
-            } catch (IOException e) {
-                throw new UpdateException(UpdateErrorCode.TRANSACTION_FAILED,
-                        "Unable to activate the new player program", e);
+            var confirmed = policies.fetch(request, publicKey);
+            policies.accept(request, confirmed);
+            if (!java.util.Objects.equals(policy, confirmed)) {
+                storageMaintenance.cleanSupersededPrograms(paths);
+                storageMaintenance.cleanObjectCache(paths);
+                return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.PAUSED, latest.manifest(), downloaded);
             }
+            String relativeRoot = paths.playerHome().relativize(programRoot).toString().replace('\\', '/');
+            var next = new ActivePlayerState(latest.manifest().version(), relativeRoot + "/" + latest.manifest().launchPath(),
+                    relativeRoot, latest.sha256(), List.of(), previous == null ? 3600 : previous.timeoutSeconds());
+            storeSignedManifest(paths, latest);
+            acceptProgramTrust(paths, latest);
+            ActivePlayerState.activate(paths.playerHome(), next, previous);
             storageMaintenance.cleanSupersededPrograms(paths);
             storageMaintenance.cleanObjectCache(paths);
-            return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.INSTALLED_RESTART_REQUIRED,
-                    latest.manifest(), downloaded);
+            return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.INSTALLED_RESTART_REQUIRED, latest.manifest(), downloaded);
+        } catch (PlayerProgramNotPublished error) {
+            return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.NOT_PUBLISHED, null, 0);
+        } catch (UpdateException error) {
+            if (error.code() == UpdateErrorCode.NETWORK_UNAVAILABLE)
+                return new PlayerProgramUpdateResult(PlayerProgramUpdateOutcome.CHECK_UNAVAILABLE, null, 0);
+            throw error;
+        } catch (IOException error) {
+            throw new UpdateException(UpdateErrorCode.TRANSACTION_FAILED, "Unable to record the player program update", error);
         }
+    }
+
+    private record ProgramTrust(String version, String sha256) {}
+    private ProgramTrust loadProgramTrust(EnginePaths paths) throws IOException {
+        Path file = paths.state().resolve("player-program-trust.json");
+        PathSafety.assertSafePathTree(file);
+        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return null;
+        if (Files.size(file) > 4096) throw new IOException("Program trust state is too large");
+        try {
+            var trust = json.read(file, ProgramTrust.class);
+            SemanticVersion.parse(trust.version());
+            if (trust.sha256() == null || !trust.sha256().matches("[0-9a-f]{64}")) throw new IOException("Invalid program trust hash");
+            return trust;
+        } catch (ProtocolException | NullPointerException error) {
+            throw new IOException("Invalid program trust state; retain it for recovery", error);
+        }
+    }
+    private void acceptProgramTrust(EnginePaths paths, SignedPlayerProgram program) throws IOException {
+        AtomicFileSupport.write(paths.state().resolve("player-program-trust.json"),
+                json.writePretty(new ProgramTrust(program.manifest().version(), program.sha256())));
     }
 
     public static String currentPlatform() {

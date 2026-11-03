@@ -39,6 +39,12 @@ public final class UpdateEngine {
     }
 
     public UpdateResult update(UpdateRequest request, ProgressListener listener) {
+        UpdateResult result = updateOnce(request, listener, true);
+        // A newly accepted outer-pack grant changes lock ownership, so the check runs again with it.
+        return result != null ? result : updateOnce(request, listener, false);
+    }
+
+    private UpdateResult updateOnce(UpdateRequest request, ProgressListener listener, boolean acceptGrant) {
         ProgressListener progress = listener == null ? ProgressListener.NONE : listener;
         PublicKey publicKey = validateRequest(request);
         EnginePaths paths = EnginePaths.of(request.instanceRoot(), request.playerHome());
@@ -49,13 +55,22 @@ public final class UpdateEngine {
                     "Unable to create player updater directories", e);
         }
 
-        try (InstanceUpdateLock ignored = InstanceUpdateLock.acquire(paths.instanceLock());
+        ProjectBinding effective;
+        try { effective = cn.dreamingfish.updater.protocol.ContentRoots.withGrant(request.instanceRoot(), request.binding()); }
+        catch (IOException e) { throw new UpdateException(UpdateErrorCode.LOCAL_STATE_INVALID, e.getMessage(), e); }
+        // An unusable grant only sets outer files aside; it never blocks the game-instance update.
+        ProjectBinding lockBinding = effective.packRoot() != null
+                && cn.dreamingfish.updater.protocol.ContentRoots.unusable(request.instanceRoot(), effective) != null
+                ? effective.withPackRoot(null) : effective;
+        try (PackUpdateLock packLock = PackUpdateLock.acquire(request.instanceRoot(), lockBinding);
+             InstanceUpdateLock ignored = InstanceUpdateLock.acquire(paths.instanceLock());
              GameUpdateLock gameUpdateLock = GameUpdateLock.tryAcquire(paths.gameLock())) {
             // Lock order is instance -> game. Every engine path, including offline fallback,
             // recovery, maintenance state and music commits, runs inside this ownership scope.
             if (gameUpdateLock == null && installer.hasPendingTransactions(paths)) throw gameRunning();
             if (gameUpdateLock != null) {
                 storageMaintenance.cleanExpiredStaging(paths);
+                if (installer.hasPendingTransactions(paths)) packLock.requireWritable();
                 installer.recover(paths, progress);
             }
             Optional<LocalInstallation> optionalLocal = localStore.loadMetadata(paths,
@@ -72,6 +87,17 @@ public final class UpdateEngine {
             } catch (UpdateException e) {
                 if (e.code() != UpdateErrorCode.NETWORK_UNAVAILABLE) throw e;
                 return allowOfflineOrFail(paths, local, request, progress, e, gameUpdateLock != null);
+            }
+            var offered = target.manifest().packRoot();
+            if (acceptGrant && offered != null && effective.packRoot() == null
+                    && cn.dreamingfish.updater.protocol.ContentRoots.unusable(request.instanceRoot(), effective.withPackRoot(offered)) == null) {
+                PackContent.accept(request.instanceRoot(), effective.projectId(), offered);
+                return null;
+            }
+            String packNotice = PackContent.unavailableReason(request.instanceRoot(), target.manifest());
+            if (packNotice != null) {
+                target = new SignedRelease(PackContent.withoutPack(target.manifest()), target.bytes(), target.signature(), target.sha256());
+                progress.onProgress(new ProgressEvent(UpdateStage.CHECKING, "外层文件暂不更新：" + packNotice, null, 0, 0));
             }
             if (local != null && cn.dreamingfish.updater.protocol.MaintenanceModel.of(local.release().manifest()).simplified()
                     && !cn.dreamingfish.updater.protocol.MaintenanceModel.of(target.manifest()).simplified()) {
@@ -97,10 +123,12 @@ public final class UpdateEngine {
                 return new UpdateResult(UpdateOutcome.UP_TO_DATE, target.manifest(),
                         0, 0, 0, plan.unmanagedMods(), List.of(), null,
                         List.of(), List.of(), plan.releasedPaths(), List.of(),
-                        plan.keptModifiedPaths(), plan.skippedSelfManagedPaths(), List.of());
+                        plan.keptModifiedPaths(), plan.skippedSelfManagedPaths(), List.of(), packNotice);
             }
 
             if (gameUpdateLock == null) throw gameRunning();
+            if (plan.operations().stream().anyMatch(operation -> cn.dreamingfish.updater.protocol.ContentRoots.isPackPath(operation.path())))
+                packLock.requireWritable();
 
             long downloaded = downloader.download(request, paths, plan.requiredObjects(), progress);
             syncMusicTracks(request, paths, target.manifest().branding().musicTracks(),
@@ -119,7 +147,7 @@ public final class UpdateEngine {
                     installResult.archivedFiles(), installResult.archiveDirectory(),
                     plan.paths(OperationKind.INSTALL), plan.paths(OperationKind.DELETE),
                     plan.releasedPaths(), installResult.archived(),
-                    plan.keptModifiedPaths(), plan.skippedSelfManagedPaths(), plan.resetPaths());
+                    plan.keptModifiedPaths(), plan.skippedSelfManagedPaths(), plan.resetPaths(), packNotice);
         }
     }
 

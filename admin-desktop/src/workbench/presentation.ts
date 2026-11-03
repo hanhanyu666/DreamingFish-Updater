@@ -12,7 +12,7 @@ export function policyPresentation(change:Data,maintenance:Data={}):PolicyPresen
   case 'CLEANUP_DIRECTORY':return {label:'文件夹额外文件',subject:subject.replace(/\/$/,'')+'/',detail:current?'开始清理：玩家额外添加的文件会先备份，再移出':'不再移出玩家额外添加的文件'};
   case 'OPTIONAL_GROUP':return {label:'可选内容',subject:String(current||previous||groupName(subject)),detail:previous==null?'新增可选内容':current==null?'停止提供这组可选内容':`${previous} → ${current}`};
   case 'OPTIONAL_MEMBERSHIP':return {label:'可选内容归属',subject,detail:`${groupName(previous)} → ${groupName(current)}`};
-  case 'WITHDRAWAL':{const rule=maintenance.withdrawals?.find((r:Data)=>r.id===subject);return {label:current?(rule?.kind==='REMOVAL'?'移除玩家副本':'处理问题版本'):'结束移除要求',subject:rule?.items?.map((i:Data)=>i.path).join('、')||'历史文件版本',detail:current?rule?.reason||'匹配的玩家副本将先备份，再移出':'后续发布不再要求移出这些副本'};}
+  case 'WITHDRAWAL':{const rule=maintenance.withdrawals?.find((r:Data)=>r.id===subject);return {label:current?(rule?.kind==='REMOVAL'?'移除玩家副本':'删除历史问题副本'):'结束删除要求',subject:rule?.items?.map((i:Data)=>i.path).join('、')||'历史文件版本',detail:current?rule?.reason||'匹配的玩家副本将先备份，再删除':'后续发布不再要求删除这些副本'};}
   case 'CORRECTION':{const rule=maintenance.corrections?.find((r:Data)=>r.id===subject);return {label:current?'修复玩家文件':'结束修复要求',subject:rule?.path||'玩家文件',detail:current?rule?.reason||'用发布版本修复匹配的玩家副本':'后续发布不再执行这项修复'};}
   case 'CORRECTION_DROPPED':return {label:'文件修复未生效',subject:String(previous||subject),detail:'文件已不在标准目录中，本次发布不会执行这项修复'};
   default:return {label:'其他维护设置',subject,detail:change.description||'维护设置发生变化'};

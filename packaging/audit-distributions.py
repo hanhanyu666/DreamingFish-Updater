@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import zipfile
 
-PRIVATE_NAMES = {"management-settings.json", "management-web-auth.json", "management.db", "project-binding.json", "connections.json", "connections.json.previous"}
+PRIVATE_NAMES = {"management-settings.json", "management-web-auth.json", "management.db", "project-binding.json", "connections.json", "connections.json.previous", "hosting-history.json"}
 
 def inspect(archive: zipfile.ZipFile, prefix: str, issues: list[dict], marker_bytes: list, depth: int = 0) -> int:
     count = 0
@@ -21,7 +21,7 @@ def inspect(archive: zipfile.ZipFile, prefix: str, issues: list[dict], marker_by
         count += 1
         name = entry.filename.replace("\\", "/")
         location = prefix + "!" + name
-        if depth == 0 and (Path(name).name in PRIVATE_NAMES or name.startswith("data/")):
+        if (depth == 0 and (Path(name).name in PRIVATE_NAMES or name.startswith("data/"))) or Path(name).name == "hosting-history.json":
             issues.append({"entry": location, "reason": "project-specific state in generic archive"})
         parts=set(name.lower().split('/'))
         if parts & {"source-imports","source-transactions","source-archive","source-operations","application-tasks","storage-leases"}:
@@ -43,8 +43,8 @@ def inspect(archive: zipfile.ZipFile, prefix: str, issues: list[dict], marker_by
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="0.3.2", help="Player version")
-    parser.add_argument("--admin-version", default="0.3.1")
+    parser.add_argument("--version", default="0.3.3", help="Player version")
+    parser.add_argument("--admin-version", default="0.3.2")
     parser.add_argument("--include-desktop",action="store_true",help="Require and audit the desktop portable ZIP too")
     parser.add_argument("--dist", type=Path, default=Path(__file__).resolve().parent.parent / "dist")
     parser.add_argument("--report", type=Path)

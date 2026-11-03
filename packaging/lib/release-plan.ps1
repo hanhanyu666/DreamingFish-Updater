@@ -34,6 +34,12 @@ function Get-ReleasePlan {
     $names = @("dfs-admin-desktop-windows-x64-$AdminVersion.zip", $installer, "dfs-admin-linux-x64-$AdminVersion.zip", "dfs-admin-windows-x64-$AdminVersion.zip", "dreamingfish-player-windows-x64-$PlayerVersion.zip")
     $assets = @($names | Where-Object { Test-Path -LiteralPath (Join-Path $Dist $_) -PathType Leaf } | ForEach-Object { (Resolve-Path -LiteralPath (Join-Path $Dist $_)).Path })
     if (-not $assets.Count) { throw "No release files for admin $AdminVersion / player $PlayerVersion in $Dist" }
+    $playerArchive = Join-Path $Dist "dreamingfish-player-windows-x64-$PlayerVersion.zip"
+    $playerCatalog = Join-Path $Dist 'player-catalog.signed'
+    if (Test-Path -LiteralPath $playerArchive -PathType Leaf) {
+        if (-not (Test-Path -LiteralPath $playerCatalog -PathType Leaf)) { throw 'A player release requires its signed player-catalog.signed; run packaging/build-player-catalog.ps1 first.' }
+        $assets += (Resolve-Path -LiteralPath $playerCatalog).Path
+    }
     $latest = $null
     if ($assets | Where-Object { [IO.Path]::GetFileName($_) -eq $installer }) {
         $manifestPath = Join-Path $Dist 'latest.json'
@@ -47,5 +53,5 @@ function Get-ReleasePlan {
         if (-not $signature -or $platform.signature -ne $signature) { throw 'latest.json signature does not match the installer .sig artifact' }
         $latest = (Resolve-Path -LiteralPath $manifestPath).Path
     }
-    [pscustomobject]@{ Tag=$Tag; Repository=$Repository; Notes=$notes; Assets=$assets; Latest=$latest; CarryLatest=($null -eq $latest) }
+    [pscustomobject]@{ Tag=$Tag; Repository=$Repository; Notes=$notes; Assets=$assets; Latest=$latest; CarryLatest=($null -eq $latest); PlayerCatalog=$(if(Test-Path -LiteralPath $playerArchive -PathType Leaf){(Resolve-Path -LiteralPath $playerCatalog).Path}else{$null}) }
 }

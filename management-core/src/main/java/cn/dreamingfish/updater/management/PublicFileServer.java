@@ -214,10 +214,19 @@ public final class PublicFileServer implements AutoCloseable {
                 sendSignature(exchange, release.get().signature(), true);
                 return;
             }
+            if (segments.length == 3 && validProjectId(segments[0])
+                    && segments[1].equals("player") && segments[2].equals("policy.signed")) {
+                byte[] bytes = new PlayerUpdatePolicyService(objects.paths(), database, json).signed(segments[0]);
+                exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+                exchange.getResponseHeaders().set("Cache-Control", "no-store");
+                exchange.sendResponseHeaders(200, bytes.length);
+                try (var output = exchange.getResponseBody()) { output.write(bytes); }
+                return;
+            }
             if (segments.length == 4 && validProjectId(segments[0])
                     && segments[1].equals("player") && validProjectId(segments[2])
                     && segments[3].equals("latest")) {
-                Optional<StoredPlayerProgram> latest = playerPrograms.latest(segments[0], segments[2]);
+                Optional<StoredPlayerProgram> latest = playerPrograms.availableUpdate(segments[0], segments[2]);
                 if (latest.isEmpty()) {
                     sendError(exchange, 404, "player_program_not_found");
                     return;
@@ -228,7 +237,7 @@ public final class PublicFileServer implements AutoCloseable {
             if (segments.length == 4 && validProjectId(segments[0])
                     && segments[1].equals("player") && validProjectId(segments[2])
                     && segments[3].equals("latest.sig")) {
-                Optional<StoredPlayerProgram> latest = playerPrograms.latest(segments[0], segments[2]);
+                Optional<StoredPlayerProgram> latest = playerPrograms.availableUpdate(segments[0], segments[2]);
                 if (latest.isEmpty()) {
                     sendError(exchange, 404, "player_program_not_found");
                     return;

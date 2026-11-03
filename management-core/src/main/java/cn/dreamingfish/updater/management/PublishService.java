@@ -72,6 +72,12 @@ public final class PublishService {
         try (ProjectLock ignored = ProjectLock.acquire(PathSafety.resolveInside(paths.locks(), projectId + ".lock"))) {
             ProjectRecord project = database.requireProject(projectId);
             ProjectService.requirePublicBaseUrl(project, "发布版本");
+            var programPolicy = new PlayerUpdatePolicyService(paths, database, json).read(projectId);
+            if (programPolicy.revision() > 0 && !programPolicy.enabled()
+                    && !programPolicy.targets().isEmpty()
+                    && programPolicy.targets().values().stream().anyMatch(target ->
+                            SemanticVersion.parse(target.version()).compareTo(SemanticVersion.parse(atLeastPolicyPlayer(minimumPlayerVersion))) < 0))
+                throw new ManagementException("程序自动更新已暂停，而本次整合包要求更高的玩家程序版本；请先批准并启用兼容程序");
             PublishPreview preview = scanner.requireConfirmation(projectId, previewId, previewDigest);
             ensurePreviewBaseIsCurrent(preview);
             ensureRemovalDecisions(preview, project.rules());
@@ -98,6 +104,10 @@ public final class PublishService {
                 throw new ManagementException("The standard modpack directory changed after the preview; scan again");
             }
             scanner.requireConfirmation(projectId, previewId, previewDigest);
+            // Checked before committing: refusing here changes nothing, so the task is "failed", never "unknown".
+            if (project.rules().packRoot() != null || finalScan.stream()
+                    .anyMatch(file -> cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path())))
+                requireApprovedPlayer(projectId, minimumForFeatures(minimumPlayerVersion, true));
 
             ApplicationTasks.committing("正在签名并提交不可变发布");
             Instant now = Instant.now();
@@ -129,9 +139,9 @@ public final class PublishService {
                     sequence,
                     now,
                     displayVersion,
-                    atLeastPolicyPlayer(minimumPlayerVersion),
+                    minimumForFeatures(minimumPlayerVersion, project.rules().packRoot() != null || targetFiles.stream().anyMatch(file -> cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path()))),
                     changelog == null ? "" : changelog,
-                    requiredCapabilities(releasedPaths),
+                    requiredCapabilities(releasedPaths, project.rules().packRoot() != null, targetFiles.stream().anyMatch(file -> cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path()))),
                     List.of(),
                     List.of(),
                     releasedPaths,
@@ -141,7 +151,8 @@ public final class PublishService {
                     ScanService.publishedGroups(finalScan, rules),
                     retainedPaths,
                     withdrawals,
-                    corrections
+                    corrections,
+                    releasedPackRoot(project)
             );
             validate(manifest);
             StoredRelease release = persistSignedManifest(project, manifest, rules.withWithdrawals(withdrawals));
@@ -213,7 +224,7 @@ public final class PublishService {
                     .filter(file -> !published.contains(fold(file.path())))
                     .map(file -> new PreviewChange(ChangeKind.REMOVED, file.path(), file.sha256(), null, 0)
                             .withRemovalAction(releasedPaths.stream().anyMatch(path -> path.equalsIgnoreCase(file.path()))
-                                    ? RemovalAction.RELEASE : RemovalAction.DELETE))
+                                    ? RemovalAction.RELEASE : cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path()) ? RemovalAction.RELEASE : RemovalAction.DELETE))
                     .toList();
             List<Withdrawal> rollbackWithdrawals = enrichRemovals(projectId,
                     RemovalPolicies.compile(rules, current, files, rollbackChanges, now));
@@ -227,9 +238,9 @@ public final class PublishService {
                     sequence,
                     now,
                     displayVersion,
-                    atLeastPolicyPlayer(old.minimumPlayerVersion()),
+                    minimumForFeatures(old.minimumPlayerVersion(), project.rules().packRoot() != null || files.stream().anyMatch(file -> cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path()))),
                     changelog == null ? "Rollback to " + target.displayVersion() : changelog,
-                    requiredCapabilities(releasedPaths),
+                    requiredCapabilities(releasedPaths, project.rules().packRoot() != null, files.stream().anyMatch(file -> cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path()))),
                     List.of(),
                     List.of(),
                     releasedPaths,
@@ -239,13 +250,27 @@ public final class PublishService {
                     old.optionalGroups(),
                     retainedPaths,
                     rollbackWithdrawals,
-                    corrections
+                    corrections,
+                    releasedPackRoot(project)
             );
             validate(rollback);
             return persistSignedManifest(project, rollback, rules.withWithdrawals(rollbackWithdrawals));
         } catch (IOException e) {
             throw new ManagementException("Unable to roll back project " + projectId, e);
         }
+    }
+
+    private void requireApprovedPlayer(String projectId, String minimum) {
+        var authorization = new PlayerUpdatePolicyService(paths, database, json).read(projectId);
+        if (authorization.targets().isEmpty() || authorization.targets().values().stream().anyMatch(target ->
+                SemanticVersion.parse(target.version()).compareTo(SemanticVersion.parse(minimum)) < 0))
+            throw new ManagementException("外层目录或配置合并需要先批准玩家端 " + minimum + " 或更新版本；仅下载候选程序还没有生效");
+    }
+
+    /** The signed grant lets existing players use the outer directory without a new deployment. */
+    private static cn.dreamingfish.updater.protocol.PackRootSpec releasedPackRoot(ProjectRecord project) {
+        var root = project.rules().packRoot();
+        return root == null ? null : root.withDefaultLayout();
     }
 
     private StoredRelease persistSignedManifest(ProjectRecord project, ReleaseManifest manifest) {
@@ -343,6 +368,8 @@ public final class PublishService {
                 throw new ManagementException(
                         "Choose delete or release management for every removed file before publishing");
             }
+            if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(change.path()) && change.removalAction() != RemovalAction.RELEASE)
+                throw new ManagementException("移除配置合并规则请选择“停止维护，玩家保留”，以免删除玩家自己的启动器配置");
             if (change.removalAction() == RemovalAction.DELETE_KEEP_SELF_MANAGED) {
                 throw new ManagementException("请重新选择：移除玩家副本，或停止维护、留给玩家");
             }
@@ -355,10 +382,17 @@ public final class PublishService {
         }
     }
 
-    private static Set<String> requiredCapabilities(List<String> releasedPaths) {
+    private static String minimumForFeatures(String requested, boolean extended) {
+        String minimum = atLeastPolicyPlayer(requested);
+        return extended && SemanticVersion.parse(minimum).compareTo(SemanticVersion.parse("0.3.3")) < 0 ? "0.3.3" : minimum;
+    }
+
+    private static Set<String> requiredCapabilities(List<String> releasedPaths, boolean packRoot, boolean configPatch) {
         Set<String> capabilities = new HashSet<>();
         capabilities.add(ProtocolConstants.CAPABILITY_MAINTENANCE_POLICY);
         capabilities.add(ProtocolConstants.CAPABILITY_SIMPLIFIED_MAINTENANCE);
+        if (packRoot) capabilities.add(ProtocolConstants.CAPABILITY_PACK_ROOT);
+        if (configPatch) capabilities.add(ProtocolConstants.CAPABILITY_CONFIG_PATCH);
         if (!releasedPaths.isEmpty()) {
             capabilities.add(ProtocolConstants.CAPABILITY_RELEASED_PATHS);
         }

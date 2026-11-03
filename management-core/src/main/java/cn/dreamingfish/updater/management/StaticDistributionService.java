@@ -105,6 +105,9 @@ public final class StaticDistributionService {
 
             int programCount = 0;
             Map<String, SignedPayload> currentPrograms = new LinkedHashMap<>();
+            var policyService = new PlayerUpdatePolicyService(paths, database, json);
+            var updatePolicy = policyService.read(projectId);
+            var retirements = new java.util.ArrayList<String>();
             for (String platform : playerPrograms.listPlatforms(projectId)) {
                 List<StoredPlayerProgram> programs = playerPrograms.list(projectId, platform);
                 for (StoredPlayerProgram stored : programs) {
@@ -126,12 +129,14 @@ public final class StaticDistributionService {
                     writeSignature(output, route + ".sig", verified.signature(), true);
                     programCount++;
                 }
-                StoredPlayerProgram current = playerPrograms.latest(projectId, platform)
-                        .orElseThrow(() -> new ManagementException(
-                                "玩家端平台没有最新版本指针：" + platform));
-                byte[] currentPayload = Files.readAllBytes(current.manifestPath());
-                currentPrograms.put(platform,
-                        new SignedPayload(currentPayload, current.signature()));
+                var current = playerPrograms.availableUpdate(projectId, platform);
+                if (current.isPresent()) {
+                    currentPrograms.put(platform, new SignedPayload(
+                            Files.readAllBytes(current.get().manifestPath()), current.get().signature()));
+                } else {
+                    String route = projectRoot + "player/" + platform + "/latest";
+                    for (String suffix : List.of("", ".sig", ".signed")) retirements.add(route + suffix);
+                }
             }
 
             CopyStats copyStats = materializeObjects(output, objectSizes);
@@ -155,12 +160,20 @@ public final class StaticDistributionService {
                 writeMutable(output, route + ".signed",
                         new SignedDocument(current.getValue().payload(), current.getValue().signature()).encode());
             }
+            for (String retired : retirements) {
+                Path retiredFile = cn.dreamingfish.updater.protocol.PathSafety.resolveInside(output, retired);
+                Files.deleteIfExists(retiredFile);
+            }
+            writeMutable(output, projectRoot + "player/policy.signed", policyService.signed(projectId));
+            writeJson(output, ".dreamingfish-player-retirements.json",
+                    new PlayerRetirements(1, projectId, retirements));
             writeMutable(output, "healthz",
                     "{\n  \"status\" : \"ok\"\n}\n".getBytes(StandardCharsets.UTF_8));
             writeSupportFiles(output, projectId);
             writeJson(output, MARKER_FILE, new ExportMarker(
                     EXPORT_SCHEMA_VERSION, projectId, createdAt, generatedAt, "COMPLETE"));
 
+            new ExternalDeliveryStatusService(paths, database, json).exported(projectId, updatePolicy.revision());
             return new StaticDistributionExportResult(
                     projectId, output, generatedAt, releases.size(), programCount,
                     objectSizes.size(), copyStats.copiedCount(), copyStats.reusedCount(),
@@ -169,6 +182,37 @@ public final class StaticDistributionService {
             throw new ManagementException("导出外部托管目录失败", e);
         }
     }
+
+    /**
+     * Digest of every input an export publishes, read without hashing stored objects, so automatic
+     * uploads can skip projects whose public content has not changed since the last upload.
+     */
+    public String fingerprint(String projectId) {
+        ProjectRecord project = database.requireProject(projectId);
+        List<StoredRelease> releases = database.listReleases(projectId);
+        StringBuilder text = new StringBuilder("export ").append(EXPORT_SCHEMA_VERSION).append('\n');
+        database.latestRelease(projectId).ifPresent(latest -> text.append("latest ").append(latest.releaseId()).append('\n'));
+        for (StoredRelease release : releases) {
+            text.append("release ").append(release.releaseId()).append(' ').append(release.manifestSha256())
+                    .append(' ').append(release.signature()).append('\n');
+        }
+        text.append(CryptoSupport.sha256(json.write(releaseHistory(projectId, releases)))).append('\n');
+        text.append(CryptoSupport.sha256(json.writePretty(new PlayerPresentation(
+                ProtocolConstants.PLAYER_PRESENTATION_SCHEMA_VERSION, project.id(), project.branding())))).append('\n');
+        for (String platform : playerPrograms.listPlatforms(projectId)) {
+            for (StoredPlayerProgram program : playerPrograms.list(projectId, platform)) {
+                text.append("program ").append(platform).append(' ').append(program.version()).append(' ')
+                        .append(program.manifestSha256()).append('\n');
+            }
+            playerPrograms.availableUpdate(projectId, platform).ifPresent(current -> text.append("current ")
+                    .append(platform).append(' ').append(current.manifestSha256()).append('\n'));
+        }
+        text.append("policy ").append(CryptoSupport.sha256(json.writePretty(
+                new PlayerUpdatePolicyService(paths, database, json).read(projectId)))).append('\n');
+        return CryptoSupport.sha256(text.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    public record PlayerRetirements(int schemaVersion, String projectId, List<String> paths) {}
 
     private Path prepareOutputDirectory(ProjectRecord project, Path selected) {
         if (selected == null) {
@@ -455,6 +499,7 @@ public final class StaticDistributionService {
                   Cache-Control: no-cache, max-age=0
                 """.formatted(projectId, projectId, projectId, projectId,
                 projectId, projectId, projectId, projectId, projectId, projectId, projectId, projectId);
+        headers += "/v1/projects/" + projectId + "/player/policy.signed\n  Cache-Control: no-store\n";
         writeMutable(output, "_headers", headers.getBytes(StandardCharsets.UTF_8));
         String readme = """
                 DreamingFish Updater 静态分发目录
@@ -464,7 +509,9 @@ public final class StaticDistributionService {
                 3. 玩家端地址填写公开根地址，例如：https://update.example.com/
                 4. 对象文件建议长期缓存；latest、presentation 及对应 .sig、.signed 不要长期缓存。
                 5. _headers 是缓存规则示例；托管平台不支持时，请在平台控制台设置等效规则。
-                6. 更新整合包、玩家端程序或个性化内容后，请重新导出并上传。
+                6. 更新整合包、玩家端程序、程序更新策略或个性化内容后，请重新导出并上传。
+                7. 暂停程序更新时，按 .dreamingfish-player-retirements.json 中的 paths 从云端删除旧入口。仅覆盖上传不会移除旧对象；内置上传会自动删除并检查真实 404。
+                8. player/policy.signed 不要缓存。先确认上传和入口清理完成，再核对 CDN；已经升级或在途更新不会瞬间撤回。
 
                 此目录不包含管理端密码、对象存储密码或项目签名私钥。
                 """;

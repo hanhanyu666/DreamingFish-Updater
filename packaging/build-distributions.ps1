@@ -1,7 +1,7 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [string]$Version = "0.3.2",
-    [string]$AdminVersion = "0.3.1",
+    [string]$Version = "0.3.3",
+    [string]$AdminVersion = "0.3.2",
     [string]$JdkHome = "",
     [switch]$SkipTests,
     [switch]$SkipLinux,
@@ -457,7 +457,7 @@ Copy-Item -LiteralPath (Join-Path $templates "dfs-admin.ps1") -Destination (Join
 Copy-Item -LiteralPath (Join-Path $templates "README-management.txt") -Destination (Join-Path $adminWindows "README.txt")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\QUICKSTART.md") -Destination (Join-Path $adminWindows "QUICKSTART.md")
 Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") -Destination (Join-Path $adminWindows "DEPLOYMENT.md")
-foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md','CAPABILITIES.md','STORAGE.md')) {
+foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md','CAPABILITIES.md','STORAGE.md','PLAYER-PROGRAM-UPDATES.md','CONTENT-ROOTS.md')) {
     Copy-Item -LiteralPath (Join-Path $repoRoot "docs\$guide") -Destination (Join-Path $adminWindows $guide)
 }
 $adminVersionOutput = & (Join-Path $adminWindows "DreamingFishAdmin.exe") --version 2>&1
@@ -518,7 +518,7 @@ if (-not $SkipLinux) {
         -Destination (Join-Path $adminLinux "QUICKSTART.md")
     Copy-Item -LiteralPath (Join-Path $repoRoot "docs\DEPLOYMENT.md") `
         -Destination (Join-Path $adminLinux "DEPLOYMENT.md")
-    foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md','CAPABILITIES.md','STORAGE.md')) {
+    foreach ($guide in @('ADMIN-WORKSPACE.md','SIMPLE-MANAGEMENT.md','CAPABILITIES.md','STORAGE.md','PLAYER-PROGRAM-UPDATES.md','CONTENT-ROOTS.md')) {
         Copy-Item -LiteralPath (Join-Path $repoRoot "docs\$guide") -Destination (Join-Path $adminLinux $guide)
     }
     New-Zip $adminLinux (Join-Path $distRoot "dfs-admin-linux-x64-$AdminVersion.zip")

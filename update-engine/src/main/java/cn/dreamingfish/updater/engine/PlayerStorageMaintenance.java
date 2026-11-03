@@ -76,6 +76,15 @@ final class PlayerStorageMaintenance {
 
     void cleanObjectCache(EnginePaths paths) {
         deleteChildrenExcept(paths.cacheObjects(), Set.of());
+        Path rules = paths.state().resolve("config-patches");
+        if (!Files.isDirectory(rules, LinkOption.NOFOLLOW_LINKS) || !Files.isRegularFile(paths.installedManifest(), LinkOption.NOFOLLOW_LINKS)) return;
+        try {
+            PathSafety.assertSafePathTree(rules);
+            var manifest = new cn.dreamingfish.updater.protocol.JsonCodec().read(paths.installedManifest(), cn.dreamingfish.updater.protocol.ReleaseManifest.class);
+            Set<Path> keep = new HashSet<>();
+            for (var file : manifest.files()) if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path())) keep.add(ConfigPatchObjects.retained(paths, file.sha256()));
+            deleteChildrenExcept(rules, keep);
+        } catch (IOException | cn.dreamingfish.updater.protocol.ProtocolException ignored) { /* Preserve rules when the installed state is unreadable. */ }
     }
 
     private Optional<RetainedPrograms> retainedPrograms(Path playerHome) {

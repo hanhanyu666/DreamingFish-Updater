@@ -1,1 +1,1 @@
--javaagent:"{verpath}.dreamingfish-bootstrap/bootstrap-agent.jar"
+-javaagent:.dreamingfish-bootstrap/bootstrap-agent.jar

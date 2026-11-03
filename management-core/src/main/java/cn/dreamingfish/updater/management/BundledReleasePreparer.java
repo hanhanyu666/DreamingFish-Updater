@@ -1,6 +1,7 @@
 package cn.dreamingfish.updater.management;
 
 import cn.dreamingfish.updater.protocol.CryptoSupport;
+import cn.dreamingfish.updater.protocol.ContentRoots;
 import cn.dreamingfish.updater.protocol.JsonCodec;
 import cn.dreamingfish.updater.protocol.MaintenanceModel;
 import cn.dreamingfish.updater.protocol.ManifestFile;
@@ -89,7 +90,7 @@ public final class BundledReleasePreparer {
             }
         }
 
-        List<PreparedFile> files = preflightFiles(instance, signed.manifest());
+        List<PreparedFile> files = preflightFiles(instance, signed.manifest(), materializeManagedFiles);
         MaintenanceModel model = MaintenanceModel.of(signed.manifest());
         if (materializeManagedFiles) {
             rejectFilesManagedByOtherReleases(instance, signed.manifest());
@@ -138,12 +139,19 @@ public final class BundledReleasePreparer {
         }
     }
 
-    private List<PreparedFile> preflightFiles(Path instance, ReleaseManifest manifest) {
+    private List<PreparedFile> preflightFiles(Path instance, ReleaseManifest manifest, boolean materialize) {
         return manifest.files().stream().map(file -> {
             try {
                 Path object = objects.require(file.sha256());
                 objects.verify(object, file.sha256(), file.size());
-                Path target = PathSafety.resolveInside(instance, file.path());
+                Path target = ContentRoots.isPackPath(file.path()) && !materialize
+                        ? PathSafety.resolveInside(instance, file.path()) : ContentRoots.resolve(instance, file.path());
+                if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path())) {
+                    if (Files.size(object) > 256 * 1024) throw new ManagementException("配置合并规则过大");
+                    cn.dreamingfish.updater.protocol.ConfigPatches.validate(Files.readAllBytes(object));
+                    // Apply on the player's next update with a recoverable transaction, not during deployment preparation.
+                    return new PreparedFile(file, object, target, true);
+                }
                 boolean exists = Files.exists(target, LinkOption.NOFOLLOW_LINKS);
                 if (exists && (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
                         || Files.isSymbolicLink(target)
@@ -187,7 +195,7 @@ public final class BundledReleasePreparer {
         }
         for (String managedPath : otherManagedPaths.values()) {
             try {
-                Path target = PathSafety.resolveInside(instance, managedPath);
+                Path target = ContentRoots.resolve(instance, managedPath);
                 if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
                     throw new ManagementException(
                             "Instance contains a file managed by another release but not by selected release "
@@ -208,13 +216,13 @@ public final class BundledReleasePreparer {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         for (String directory : model.cleanupDirectories()) {
             try {
-                Path root = PathSafety.resolveInside(instance, directory);
+                Path root = ContentRoots.resolve(instance, directory);
                 if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) continue;
                 requireSafeDirectory(root, "Forced sync instance directory");
                 try (var stream = Files.walk(root)) {
                     for (Path path : stream.toList()) {
                         if (path.equals(root) || Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) continue;
-                        String relative = instance.relativize(path).toString().replace('\\', '/');
+                        String relative = ContentRoots.relative(instance, path);
                         if (Files.isSymbolicLink(path)
                                 || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
                             throw new ManagementException(
@@ -257,7 +265,7 @@ public final class BundledReleasePreparer {
     private void createForcedDirectories(Path instance, MaintenanceModel model) {
         for (String directory : model.cleanupDirectories()) {
             try {
-                Path target = PathSafety.resolveInside(instance, directory);
+                Path target = ContentRoots.resolve(instance, directory);
                 Files.createDirectories(target);
                 requireSafeDirectory(target, "Forced sync instance directory");
             } catch (IOException e) {

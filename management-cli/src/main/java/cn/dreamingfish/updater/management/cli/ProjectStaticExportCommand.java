@@ -33,6 +33,7 @@ final class ProjectStaticExportCommand implements Runnable {
         root.out().println("  内容对象：" + result.objectCount()
                 + "（本次复制 " + result.copiedObjectCount()
                 + "，复用 " + result.reusedObjectCount() + "）");
+        root.out().println("暂停程序更新时，还需按 .dreamingfish-player-retirements.json 的 paths 移除旧入口；仅覆盖上传不会删除云端旧文件。新版工作区的内置上传会自动处理并检查。");
         root.out().println("  本次新增数据："
                 + HumanSize.format(result.copiedObjectBytes()));
         root.out().println("请把目录内的全部文件原样上传到公开 HTTP、对象存储或 CDN 根目录。");

@@ -66,6 +66,11 @@ public final class PlayerInstanceService {
                 }
                 prepared = new PlayerProgramBootstrapper(paths, database, json)
                         .prepare(projectId, platform, resolvedHome);
+                if (binding.packRoot() != null) {
+                    // --instance explicitly grants this local destination before materialization.
+                    AtomicFiles.write(bootstrapDirectory.resolve("project-binding.json"), json.write(binding));
+                    ContentRoots.initialize(instanceRoot, binding);
+                }
                 bundledRelease = new BundledReleasePreparer(
                         paths, database, json)
                         .prepare(projectId, releaseId, instanceRoot, resolvedHome);

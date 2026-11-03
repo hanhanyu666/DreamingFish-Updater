@@ -7,7 +7,8 @@ import picocli.CommandLine;
         description = "Publish signed player updater programs",
         subcommands = {
                 PlayerProgramPublishCommand.class,
-                PlayerProgramListCommand.class
+                PlayerProgramListCommand.class,
+                PlayerUpdateCommand.class
         }
 )
 final class PlayerProgramCommand implements Runnable {

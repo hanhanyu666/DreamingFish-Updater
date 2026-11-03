@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Plus,FolderOpen,Layers,History,ShieldAlert } from '@lucide/vue';
-import { desk,safely,openView,navigate,places,groups,publishState,latestVersion } from './store';
+import { Plus,FolderOpen,FolderUp,Layers,History,ShieldAlert } from '@lucide/vue';
+import { desk,safely,openView,navigate,places,groups,publishState,latestVersion,packPath,openPack,fileIndex } from './store';
 import { viewSections } from './presentation';
 import FolderTree from './FolderTree.vue';
 import ProjectPicker from './ProjectPicker.vue';
@@ -21,6 +21,7 @@ function chooseGroup(id:string){desk.group=desk.group===id?'':id;desk.selection=
    <template v-if="desk.view==='files'&&desk.project">
     <button class="tree-root" :class="{current:!flat&&!desk.directory}" @click="root"><FolderOpen :size="16"/>整合包文件<small>{{desk.files.length}}</small></button>
     <ul class="folder-tree"><FolderTree v-for="item in places" :key="item.path" :path="item.path"/></ul>
+    <button class="tree-root" :class="{current:Boolean(packPath)&&(desk.directory===packPath||desk.directory.startsWith(packPath+'/'))}" :title="packPath?'启动器旁的教程、背景等外层文件':'启用后可更新游戏实例外层的文件'" @click="openPack"><FolderUp :size="16"/>外层目录<small>{{packPath?(fileIndex.folders.get(packPath)?.count||0):'未启用'}}</small></button>
     <div class="pane-label"><span>可选内容</span><button class="icon-button" aria-label="新建可选内容" title="新建可选内容" @click="desk.dialog='group';desk.dialogData={}"><Plus :size="14"/></button></div>
     <button v-for="item in groups" :key="item.id" class="pane-item" :class="{current:desk.group===item.id}" :title="item.description||item.title" @click="chooseGroup(item.id)"><Layers :size="15"/><span>{{item.title}}</span><small>{{item.count}}</small></button>
     <p v-if="!groups.length" class="pane-empty">把光影、小地图等整理成玩家可选的一组内容。</p>

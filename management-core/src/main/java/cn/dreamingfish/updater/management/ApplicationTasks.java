@@ -23,6 +23,8 @@ public final class ApplicationTasks implements AutoCloseable {
     private final Map<String,ApplicationTaskLease> leases=new ConcurrentHashMap<>();
     private final Map<String,Long> recordBytes=new HashMap<>();
     private final Map<String,Snapshot> states=new ConcurrentHashMap<>();
+    // Running tasks inside a window where stopping loses nothing, such as an official download before it is stored.
+    private final Map<String,Thread> stoppable=new HashMap<>();
     private static final ThreadLocal<Running> CURRENT=new ThreadLocal<>();
     private record Running(ApplicationTasks owner,String id){}
 
@@ -55,10 +57,11 @@ public final class ApplicationTasks implements AutoCloseable {
                 transition(id,State.SUCCEEDED,"已完成",1,1,sanitize(encoded),"",200);return result;
             }catch(CancellationException cancelled){if(require(id).state()==State.CANCELLED)return null;throw cancelled;
             }catch(Exception error){
-                String message=needsCredentials?"外部上传失败，需要重新提供凭据；不会自动重发":Objects.requireNonNullElse(error.getMessage(),error.getClass().getSimpleName());
+                if(require(id).state()==State.CANCELLED)return null;
+                String message=needsCredentials&&!(error instanceof DistributionRetirementException)?"外部上传失败，需要重新提供凭据；不会自动重发":Objects.requireNonNullElse(error.getMessage(),error.getClass().getSimpleName());
                 State outcome=require(id).state()==State.COMMITTING?State.UNKNOWN:State.FAILED;
                 transition(id,outcome,outcome==State.UNKNOWN?"提交结果待核对":"执行失败",0,1,null,message,error instanceof Failure known?known.status():400);throw error;
-            }finally{CURRENT.remove();releaseLease(id);}
+            }finally{leaveStoppable(id);Thread.interrupted();CURRENT.remove();releaseLease(id);}
         }){@Override protected void done(){futures.remove(id);releaseLease(id);}};
         futures.put(id,future);
         try{executor.execute(future);}
@@ -83,7 +86,13 @@ public final class ApplicationTasks implements AutoCloseable {
     public synchronized int cachedRecords(){return states.size();}
     public synchronized long cachedBytes(){return recordBytes.values().stream().mapToLong(Long::longValue).sum();}
     public synchronized Snapshot cancel(String id){
-        Snapshot task=require(id);if(task.state()!=State.QUEUED)throw new ManagementException("只能取消未开始的任务；提交中断开连接不能撤销已完成事实");
+        Snapshot task=require(id);
+        Thread runner=stoppable.get(id);
+        if(task.state()==State.RUNNING&&runner!=null){
+            transition(id,State.CANCELLED,"已终止",0,1,null,"已按要求终止，没有发布任何内容",200);
+            runner.interrupt();return require(id);
+        }
+        if(task.state()!=State.QUEUED)throw new ManagementException("只能取消未开始的任务；提交中断开连接不能撤销已完成事实");
         FutureTask<Object> future=futures.get(id);if(future==null)throw new ManagementException("此任务由另一个管理进程执行，请在原管理端取消排队或查询最终结果");
         transition(id,State.CANCELLED,"已取消排队",0,1,null,"",200);
         if(!future.cancel(false))throw new ManagementException("任务已经开始，请查询最终结果");executor.remove(future);return require(id);
@@ -92,6 +101,17 @@ public final class ApplicationTasks implements AutoCloseable {
     public synchronized Snapshot resolved(String id,Object result){Snapshot old=require(id);if(old.state()!=State.UNKNOWN&&old.state()!=State.WAITING_FOR_INPUT)throw new ManagementException("只有结果待核对的任务可以按持久收据恢复");transition(id,State.SUCCEEDED,"已按持久收据确认",1,1,sanitize(json.read(json.write(result),JsonNode.class)),"",200);return require(id);}
     public boolean isClosed(){return executor.isShutdown();}
     public static void committing(String phase){Running running=CURRENT.get();if(running!=null)running.owner.transition(running.id,State.COMMITTING,phase,0,1,null,"",202);}
+    /**
+     * Opens or closes the window in which {@link #cancel} may stop the running task. Closing it after a stop
+     * request aborts the task there, so work after the window never starts once a stop was accepted.
+     */
+    public static void stoppable(boolean allowed){
+        Running running=CURRENT.get();if(running==null)return;
+        if(allowed)running.owner.enterStoppable(running.id);else if(running.owner.leaveStoppable(running.id))throw new CancellationException("Task stopped");
+    }
+    private synchronized void enterStoppable(String id){if(require(id).state()==State.CANCELLED)throw new CancellationException("Task stopped");stoppable.put(id,Thread.currentThread());}
+    /** Whether a stop was accepted while the window was open. */
+    private synchronized boolean leaveStoppable(String id){return stoppable.remove(id)!=null&&require(id).state()==State.CANCELLED;}
     public static void progress(String phase,long completed,long total){Running running=CURRENT.get();if(running!=null)running.owner.transition(running.id,State.RUNNING,phase,completed,total,null,"",202);}
     private synchronized void transition(String id,State state,String phase,long completed,long total,JsonNode result,String error,int status){
         Snapshot old=require(id);if(old.state()==State.CANCELLED&&state==State.RUNNING)throw new CancellationException("Task cancelled before start");

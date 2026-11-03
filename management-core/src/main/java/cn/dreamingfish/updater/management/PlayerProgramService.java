@@ -45,9 +45,28 @@ public final class PlayerProgramService {
         this.keys = new ProjectKeyStore(paths);
     }
 
+    /** Manual publication is an explicit approval; downloading a candidate is not. */
     public StoredPlayerProgram publish(String projectId, String platform, String version,
                                        Path sourceDirectory, String launchPath,
                                        String minimumBootstrapVersion) {
+        database.requireProject(projectId);
+        try (ProjectLock lock = ProjectLock.acquire(paths.locks().resolve(projectId + ".lock"))) {
+            StoredPlayerProgram program = prepare(projectId, platform, version, sourceDirectory, launchPath, minimumBootstrapVersion);
+            new PlayerUpdatePolicyService(paths, database, json).approve(projectId, platform,
+                    program.version(), program.manifestSha256(), -1);
+            return program;
+        } catch (IOException error) { throw new ManagementException("Unable to approve the player program", error); }
+    }
+
+    public StoredPlayerProgram prepare(String projectId, String platform, String version,
+                                       Path sourceDirectory, String launchPath,
+                                       String minimumBootstrapVersion) {
+        return prepare(projectId, platform, version, sourceDirectory, launchPath, minimumBootstrapVersion, null);
+    }
+
+    StoredPlayerProgram prepare(String projectId, String platform, String version,
+                               Path sourceDirectory, String launchPath, String minimumBootstrapVersion,
+                               List<PlayerProgramFile> officialFiles) {
         validateIdentifier(platform, "platform");
         ResolvedSource resolved = resolveSource(sourceDirectory, version, launchPath);
         String effectiveVersion = resolved.version();
@@ -59,21 +78,35 @@ public final class PlayerProgramService {
         ProjectRecord project = database.requireProject(projectId);
         Path lockPath = paths.locks().resolve(projectId + ".player-" + platform + ".lock");
         try (ProjectLock common=ProjectLock.acquire(paths.locks().resolve(projectId+".lock"));ProjectLock ignored = ProjectLock.acquire(lockPath)) {
-            latest(projectId, platform).ifPresent(current -> {
-                if (targetVersion.compareTo(SemanticVersion.parse(current.version())) <= 0) {
-                    throw new ManagementException("Player program version must be newer than " + current.version());
-                }
-            });
             Path targetDirectory = paths.playerProgramDirectory(projectId, platform, effectiveVersion);
-            if (Files.exists(targetDirectory)) {
-                throw new ManagementException("Player program version already exists: " + effectiveVersion);
-            }
-
             List<SourceFile> sources = scanAndImport(sourceRoot);
+            if (officialFiles != null) {
+                java.util.Map<String, PlayerProgramFile> expected = new java.util.HashMap<>();
+                for (var file : officialFiles) expected.put(file.path(), file);
+                if (sources.size() != expected.size()) throw new ManagementException("官方程序文件范围已变化");
+                sources = sources.stream().map(source -> {
+                    var file = expected.get(source.manifest().path());
+                    if (file == null || !file.sha256().equals(source.manifest().sha256()) || file.size() != source.manifest().size())
+                        throw new ManagementException("官方程序文件在导入时发生变化");
+                    return new SourceFile(source.source(), file);
+                }).toList();
+            }
             if (sources.stream().noneMatch(file -> file.manifest().path().equals(normalizedLauncher))) {
                 throw new ManagementException("Player program launcher is not present in the source directory");
             }
             verifySourcesUnchanged(sources);
+            if (Files.exists(targetDirectory, LinkOption.NOFOLLOW_LINKS)) {
+                var existing = read(projectId, platform, effectiveVersion);
+                var prior = json.read(existing.manifestPath(), PlayerProgramManifest.class);
+                if (!prior.launchPath().equals(normalizedLauncher) || !prior.minimumBootstrapVersion().equals(minimumBootstrapVersion)
+                        || !prior.files().equals(sources.stream().map(SourceFile::manifest).toList()))
+                    throw new ManagementException("同版本玩家程序内容不同，不能覆盖已有签名发布");
+                return existing; // An exact retry may finish the project approval safely.
+            }
+            latest(projectId, platform).ifPresent(current -> {
+                if (targetVersion.compareTo(SemanticVersion.parse(current.version())) <= 0)
+                    throw new ManagementException("Player program version must be newer than " + current.version());
+            });
             PlayerProgramManifest manifest = new PlayerProgramManifest(
                     ProtocolConstants.PLAYER_PROGRAM_SCHEMA_VERSION,
                     projectId,
@@ -285,6 +318,22 @@ public final class PlayerProgramService {
     }
 
     public java.util.Optional<StoredPlayerProgram> latest(String projectId, String platform) {
+        validateIdentifier(platform, "platform");
+        var policy = new PlayerUpdatePolicyService(paths, database, json).read(projectId);
+        var target = policy.targets().get(platform);
+        if (target == null) return java.util.Optional.empty();
+        var program = read(projectId, platform, target.version());
+        if (!program.manifestSha256().equals(target.manifestSha256()))
+            throw new ManagementException("Approved player program identity has changed");
+        return java.util.Optional.of(program);
+    }
+
+    public java.util.Optional<StoredPlayerProgram> availableUpdate(String projectId, String platform) {
+        return new PlayerUpdatePolicyService(paths, database, json).read(projectId).enabled()
+                ? latest(projectId, platform) : java.util.Optional.empty();
+    }
+
+    java.util.Optional<StoredPlayerProgram> legacyLatest(String projectId, String platform) {
         validateIdentifier(projectId, "project ID");
         validateIdentifier(platform, "platform");
         Path pointer = paths.playerProgramLatest(projectId, platform);
@@ -373,8 +422,7 @@ public final class PlayerProgramService {
                             objects.verify(object, file.sha256(), file.size());
                         }
                     }
-                    latest(project.id(), platform).orElseThrow(() ->
-                            new ManagementException("Player program platform has no latest pointer: " + platform));
+                    latest(project.id(), platform); // A platform may contain only prepared candidates.
                 }
             } catch (IOException e) {
                 throw new ManagementException("Unable to verify player programs for " + project.id(), e);
@@ -398,6 +446,12 @@ public final class PlayerProgramService {
         for (Path file : files) {
             String relative = sourceRoot.relativize(file).toString().replace('\\', '/');
             relative = PathSafety.normalizeManifestPath(relative);
+            String folded = relative.toLowerCase(java.util.Locale.ROOT);
+            String top = folded.split("/", 2)[0], name = file.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+            if (Set.of("state", "data", "backups", "logs", ".dreamingfish-bootstrap").contains(top)
+                    || Set.of("credentials.json", "accounts.json", "project-binding.json", "hosting-history.json", "management-settings.json", "management-web-auth.json").contains(name)
+                    || name.endsWith(".pk8") || name.endsWith(".key") || name.endsWith(".ppk"))
+                throw new ManagementException("玩家程序目录含有运行数据或私密文件，不能发布：" + relative);
             pathsToValidate.add(relative);
             ObjectStore.ObjectInfo object = objects.importFile(file);
             result.add(new SourceFile(file, new PlayerProgramFile(relative,
@@ -436,13 +490,6 @@ public final class PlayerProgramService {
             Files.createDirectories(targetDirectory.getParent());
             AtomicFiles.moveReplace(temporary, targetDirectory);
             moved = true;
-            try {
-                AtomicFiles.write(paths.playerProgramLatest(manifest.projectId(), manifest.platform()),
-                        (manifest.version() + "\n").getBytes(StandardCharsets.US_ASCII));
-            } catch (IOException pointerFailure) {
-                AtomicFiles.deleteRecursively(targetDirectory);
-                throw pointerFailure;
-            }
             return new StoredPlayerProgram(manifest.projectId(), manifest.platform(), manifest.version(),
                     manifest.createdAt(), hash, signature, targetDirectory.resolve("manifest.json"));
         } finally {

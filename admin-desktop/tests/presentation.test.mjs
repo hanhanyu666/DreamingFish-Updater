@@ -28,6 +28,8 @@ test('interface links retain project and view but reject unknown sections',()=>{
  assert.deepEqual(interfaceLanding('?project=test&view=changes&section=operations'),{projectId:'test',view:'changes',section:'operations'});
  assert.equal(interfaceLanding('?view=changes&section=unknown').section,'changes');
  assert.equal(interfaceLanding('?view=__proto__').view,'files');
+ for(const [view,sections] of Object.entries(viewSections))for(const section of sections)assert.equal(interfaceLanding(`?view=${view}&section=${section.id}`).section,section.id);
+ assert.equal(interfaceLanding('?project=demo&view=delivery&section=programs&interface=legacy').section,'programs');
 });
 test('rule sources render in Chinese instead of raw service codes',()=>{
  assert.equal(presetSourceLabel('DIRECTORY:config/jei'),'继承自文件夹 config/jei/');

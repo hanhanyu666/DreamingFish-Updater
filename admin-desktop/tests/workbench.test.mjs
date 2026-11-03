@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {profilePayload} from '../src/connections.ts';
-import {entries,buildFileIndex,indexEntries,pageEntries,selectionVisibility,newestReleases,authRequiresForm,changedFileSize} from '../src/workbench/model.ts';
+import {entries,buildFileIndex,indexEntries,pageEntries,selectionVisibility,newestReleases,authRequiresForm,changedFileSize,displayPath,displayPaths,nameOf} from '../src/workbench/model.ts';
 // A form retains values when changing tabs; IPC must still match Rust's strict tagged schema.
 const mixed={id:'fixture',name:'工作区',home:'D:/pack',url:'https://admin.example.com/',target:'my-server',remotePort:18080};
 test('local connection excludes address and SSH fields',()=>assert.deepEqual(profilePayload({...mixed,kind:'local'}),{id:'fixture',name:'工作区',kind:'local',home:'D:/pack'}));
@@ -42,4 +42,11 @@ test('large directory aggregation and page boundaries preserve full selection id
  const shiftSelection=rows.slice(198,202);assert.deepEqual(selectionVisibility(shiftSelection,rows,page),{outsideFilter:0,otherPages:2});
  const filtered=rows.slice(200,202);assert.deepEqual(selectionVisibility(shiftSelection,filtered,filtered),{outsideFilter:2,otherPages:0});
  assert.equal(indexEntries(index,'config/group-0').length,5);assert.equal(indexEntries(index,'config/empty').length,0);
+});
+
+test('the outer pack folder is shown by name everywhere instead of its internal identity',()=>{
+ assert.equal(displayPath('@pack/71f87ecf-1e74-4458-9e84-62256cae4049/PCL/Setup.ini.dfs-patch.json'),'外层目录/PCL/Setup.ini.dfs-patch.json');
+ assert.equal(displayPath('config/demo.json'),'config/demo.json');
+ assert.equal(nameOf('@pack/71f87ecf-1e74-4458-9e84-62256cae4049'),'外层目录');
+ assert.equal(displayPaths('导入 @pack/71f87ecf-1e74-4458-9e84-62256cae4049/PCL/Setup.ini 与 mods/a.jar'),'导入 外层目录/PCL/Setup.ini 与 mods/a.jar');
 });

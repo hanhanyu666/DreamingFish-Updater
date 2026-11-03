@@ -55,6 +55,17 @@ final class LocalInstallationStore {
             VerifiedInstallation installation = json.read(paths.installationState(), VerifiedInstallation.class);
             TrustState trust = json.read(paths.trustState(), TrustState.class);
             String hash = CryptoSupport.sha256(manifestBytes);
+            if (PackContent.present(manifest)) {
+                // Outer files may have been set aside when they were installed, or may be unusable now.
+                ReleaseManifest gameOnly = PackContent.withoutPack(manifest);
+                if (PackContent.unavailableReason(paths.instanceRoot(), manifest) != null) {
+                    manifest = gameOnly;
+                    installation = PackContent.withoutPack(installation);
+                } else if (gameOnly.files().size() != manifest.files().size()
+                        && installation.files().size() == gameOnly.files().size()) {
+                    manifest = gameOnly;
+                }
+            }
             validateMetadata(manifest, hash, installation, trust, binding.projectId());
             return Optional.of(new LocalInstallation(
                     new SignedRelease(manifest, manifestBytes, signature, hash), installation, trust,
@@ -94,8 +105,8 @@ final class LocalInstallationStore {
                 throw invalid("Bundled release baseline belongs to another project", null);
             }
             String hash = CryptoSupport.sha256(manifestBytes);
-            SignedRelease release = new SignedRelease(
-                    manifest, manifestBytes, signature, hash);
+            SignedRelease release = PackContent.view(new SignedRelease(
+                    manifest, manifestBytes, signature, hash), paths.instanceRoot());
             VerifiedInstallation installation = installationFor(release);
             TrustState trust = trustFor(release);
             return new LocalInstallation(release, installation, trust, true);
@@ -124,7 +135,7 @@ final class LocalInstallationStore {
             cancellationToken.throwIfCancelled();
             Path target;
             try {
-                target = cn.dreamingfish.updater.protocol.PathSafety.resolveInside(paths.instanceRoot(), file.path());
+                target = cn.dreamingfish.updater.protocol.ContentRoots.resolve(paths.instanceRoot(), file.path());
             } catch (IOException | ProtocolException e) {
                 return false;
             }
@@ -132,7 +143,11 @@ final class LocalInstallationStore {
             if (TransactionInstaller.verification(model, overrides, file)
                     == TransactionInstaller.Verification.CONTENT) {
                 try {
-                    if (!index.matches(target, file.path(), file.sha256(), file.size())) return false;
+                    if (cn.dreamingfish.updater.protocol.ConfigPatches.isPatch(file.path())) {
+                        byte[] patch = ConfigPatchObjects.load(paths, file.sha256(), file.size());
+                        if (patch == null || Files.size(target) > cn.dreamingfish.updater.protocol.ConfigPatches.MAX_BYTES
+                                || !cn.dreamingfish.updater.protocol.ConfigPatches.satisfied(target.toString(), patch, Files.readAllBytes(target))) return false;
+                    } else if (!index.matches(target, file.path(), file.sha256(), file.size())) return false;
                 } catch (IOException e) {
                     return false;
                 }
