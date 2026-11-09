@@ -2,8 +2,12 @@ package cn.dreamingfish.updater.protocol;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.FileSystems;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.DosFileAttributes;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -88,11 +92,22 @@ public final class PathSafety {
         Path current = absolute.getRoot();
         for (Path segment : absolute) {
             current = current.resolve(segment);
-            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
-                if (Files.isSymbolicLink(current)
-                        || !current.toRealPath(LinkOption.NOFOLLOW_LINKS).equals(current.toRealPath())) {
-                    throw new ProtocolException("Path traverses a symbolic link or directory alias: " + current);
-                }
+            BasicFileAttributes attributes;
+            try {
+                attributes = Files.readAttributes(current, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            } catch (NoSuchFileException missing) {
+                continue;
+            }
+            // The Windows provider reports non-symlink reparse points (including
+            // junctions) as isOther(). Ordinary entries need no real-path expansion.
+            // Read every ancestor on every call so a newly replaced link is detected.
+            boolean ordinaryWindowsEntry = java.io.File.separatorChar == '\\'
+                    && current.getFileSystem().equals(FileSystems.getDefault())
+                    && attributes instanceof DosFileAttributes && !attributes.isOther();
+            if (attributes.isSymbolicLink()
+                    || (!ordinaryWindowsEntry
+                    && !current.toRealPath(LinkOption.NOFOLLOW_LINKS).equals(current.toRealPath()))) {
+                throw new ProtocolException("Path traverses a symbolic link or directory alias: " + current);
             }
         }
     }

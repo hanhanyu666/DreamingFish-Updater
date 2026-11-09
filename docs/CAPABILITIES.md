@@ -1,6 +1,6 @@
 # 当前能力与兼容矩阵
 
-此表描述 v0.3.2 发行：管理端 / 桌面 0.3.2、玩家端 0.3.3、Bootstrap 0.1.2。正式下载以 GitHub Release 为准。已有玩家要取得新能力，服主需要把新玩家程序发布给玩家；外层目录随整合包发布下发，不需要重新分发部署配置。实现说明见[程序自动更新](PLAYER-PROGRAM-UPDATES.md)、[目录与配置合并](CONTENT-ROOTS.md)，验证范围见[本次验证记录](reviews/2026-11-01-implementation-verification.md)。
+此表描述 v0.3.3 发行：管理端 / 桌面 0.3.3、玩家端 0.3.4、Bootstrap 0.1.2。Windows 大量小文件检查已提速，文件哈希与路径安全检查继续执行，详见[性能验证记录](reviews/2026-11-09-small-file-verification.md)。正式下载以 GitHub Release 为准。已有玩家要取得新能力，服主需要把新玩家程序发布给玩家；外层目录随整合包发布下发，不需要重新分发部署配置。实现说明见[程序自动更新](PLAYER-PROGRAM-UPDATES.md)、[目录与配置合并](CONTENT-ROOTS.md)，既有功能验证范围见[验证记录](reviews/2026-11-01-implementation-verification.md)。
 
 网页与桌面统一使用工作区；旧网页地址跳转到相应新页面，旧脚本与样式已移除，管理 API 与数据兼容保留。
 
