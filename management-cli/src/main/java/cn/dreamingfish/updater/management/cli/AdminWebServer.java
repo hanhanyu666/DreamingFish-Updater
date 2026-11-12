@@ -1980,7 +1980,7 @@ final class AdminWebServer implements AutoCloseable {
         headers.set("Cross-Origin-Resource-Policy", "same-origin");
         headers.set("Content-Security-Policy",
                 "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                        + "img-src 'self' data: http: https:; font-src 'self'; "
+                        + "img-src 'self' data: blob: http: https:; font-src 'self'; "
                         + "connect-src 'self'; frame-ancestors 'self'; base-uri 'none'");
     }
 

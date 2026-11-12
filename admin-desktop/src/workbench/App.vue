@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed,onMounted,onUnmounted,ref,watch,nextTick } from 'vue';
-import { Files,GitCompareArrows,Package,Palette,Settings2,Search,Plus,Check,LoaderCircle,History,Upload,X,CornerDownLeft,Server,Sun,Moon,ShieldCheck,LogOut,Info,PanelLeft,PanelLeftClose,ChevronsLeft,ChevronsRight } from '@lucide/vue';
-import { desk,boot,authenticate,safely,openView,navigate,request,setTheme,publishState,latestVersion } from './store';
+import { Files,GitCompareArrows,Package,Palette,Settings2,Search,Plus,Check,LoaderCircle,History,Upload,ListChecks,X,CornerDownLeft,Server,Sun,Moon,ShieldCheck,LogOut,Info,PanelLeft,PanelLeftClose,ChevronsLeft,ChevronsRight } from '@lucide/vue';
+import { desk,boot,authenticate,safely,openView,navigate,request,setTheme,publishState,latestVersion,taskReviewRequired } from './store';
 import { authRequiresForm,bytes,taskFinished } from './model';
 import { useIndicator } from './indicator';
 import Sidebar from './Sidebar.vue';
@@ -13,7 +13,7 @@ import AppearanceView from './AppearanceView.vue';
 import SettingsView from './SettingsView.vue';
 import Forms from './Forms.vue';
 import Tasks from './Tasks.vue';
-import {backendTaskFinished} from './backend-tasks';
+import {backendTaskFinished,backendTaskNeedsReview} from './backend-tasks';
 import Fish from './Fish.vue';
 const isDesktop=Boolean(window.__DFS_DESKTOP_META__?.workspace);
 const nav=[{id:'files',label:'文件',icon:Files},{id:'changes',label:'改动与版本',icon:GitCompareArrows},{id:'delivery',label:'发放',icon:Package},{id:'appearance',label:'玩家端设计',icon:Palette},{id:'settings',label:'设置',icon:Settings2}];
@@ -24,7 +24,7 @@ if(narrow.matches)desk.sidebar=false;
 watch(()=>desk.sidebar,value=>{if(!narrow.matches)localStorage.setItem('dfs-workbench-sidebar',value?'on':'off');});
 const jobs=computed(()=>desk.tasks.filter(t=>!taskFinished(t)).length+desk.jobs.filter(t=>!t.dismissed&&!backendTaskFinished(t)).length);
 // An official player download may run for hours on the service without holding its project, so it does not pin the workspace.
-const locked=computed(()=>desk.busy||desk.uploading||desk.tasks.some(t=>!taskFinished(t))||desk.jobs.some(t=>!t.dismissed&&!backendTaskFinished(t)&&t.kind!=='official-player-publish'));
+const locked=computed(()=>desk.busy||desk.uploading||desk.tasks.some(t=>!taskFinished(t))||desk.jobs.some(t=>!t.dismissed&&!backendTaskFinished(t)&&!backendTaskNeedsReview(t)&&t.kind!=='official-player-publish'));
 const login=ref({username:'',password:'',confirmPassword:'',allowLocalBypass:false});
 const loginBusy=ref(false);
 // The rail shows icons by default; the person can pin labels open, and the choice is remembered.
@@ -68,13 +68,13 @@ watch(()=>[desk.ready,desk.auth.registered,desk.auth.authenticated],()=>{if(wind
    <p v-if="desk.error" class="error-copy">{{desk.error}}</p><button class="accent large full" :disabled="loginBusy">{{loginBusy?'正在连接…':'进入工作区'}}</button>
   </form>
  </main>
- <div v-else class="shell" :class="{'sidebar-on':desk.sidebar,'rail-expanded':railExpanded,'has-selection':desk.view==='files'&&desk.selection.length>0&&!desk.inspector}">
+ <div v-else class="shell" :class="{'tasks-open':desk.tasksOpen,'sidebar-on':desk.sidebar,'rail-expanded':railExpanded,'has-selection':desk.view==='files'&&desk.selection.length>0&&!desk.inspector}">
   <nav ref="rail" class="nav-rail" :class="{expanded:railExpanded}" aria-label="工作区视图">
    <span class="rail-indicator" :style="railIndicator" aria-hidden="true"/>
    <span v-if="!isDesktop" class="rail-brand" title="梦鱼更新管理"><Fish variant="mark" :size="32"/></span>
    <button v-for="(item,i) in nav.slice(0,4)" :key="item.id" class="rail-item" :class="{active:desk.view===item.id}" :data-active="desk.view===item.id" :data-tip="`${item.label} · Ctrl ${i+1}`" :aria-label="item.label" :aria-current="desk.view===item.id?'page':undefined" @click="safely(()=>openView(item.id))"><component :is="item.icon" :size="20"/><span class="rail-label">{{item.label}}</span><i v-if="item.id==='changes'&&desk.project&&publishState!=='已发布'" class="rail-dot" :title="publishState"/></button>
    <span class="rail-spacer"/>
-   <button v-if="desk.tasks.length||desk.jobs.some(t=>!t.dismissed)" class="rail-item rail-tasks" :class="{open:desk.tasksOpen}" :data-tip="desk.tasksOpen?'收起导入清单':'打开导入清单'" aria-label="导入清单" @click="desk.tasksOpen=!desk.tasksOpen"><Upload :size="19"/><span class="rail-label">导入清单<small>{{jobs?`${jobs} 项待处理`:'已全部完成'}}</small></span><b v-if="jobs">{{jobs}}</b></button>
+   <button v-if="desk.tasks.length||desk.jobs.some(t=>!t.dismissed)" class="rail-item rail-tasks" :class="{open:desk.tasksOpen}" :data-tip="desk.tasksOpen?'收起任务清单':'打开任务清单'" aria-label="任务清单" @click="desk.tasksOpen=!desk.tasksOpen"><Upload :size="19"/><span class="rail-label">任务清单<small>{{jobs?`${jobs} 项待处理`:'已全部完成'}}</small></span><b v-if="jobs">{{jobs}}</b></button>
    <button class="rail-item rail-utility" :data-tip="running?'下载服务运行中':'下载服务已停止'" aria-label="下载服务" @click="desk.dialog='service'"><span class="rail-icon"><Server :size="19"/><i class="service-dot" :class="{on:running}"/></span><span class="rail-label">下载服务<small>{{running?'运行中':'已停止'}}</small></span></button>
    <button class="rail-item rail-utility" :data-tip="desk.theme==='light'?'切换到深色':'切换到浅色'" :aria-label="desk.theme==='light'?'切换深色主题':'切换浅色主题'" @click="setTheme(desk.theme==='light'?'dark':'light')"><Moon v-if="desk.theme==='light'" :size="19"/><Sun v-else :size="19"/><span class="rail-label">{{desk.theme==='light'?'深色模式':'浅色模式'}}</span></button>
    <button class="rail-item" :class="{active:desk.view==='settings'}" :data-active="desk.view==='settings'" data-tip="设置 · Ctrl 5" aria-label="设置" :aria-current="desk.view==='settings'?'page':undefined" @click="safely(()=>openView('settings'))"><Settings2 :size="19"/><span class="rail-label">设置</span></button>
@@ -89,6 +89,7 @@ watch(()=>[desk.ready,desk.auth.registered,desk.auth.authenticated],()=>{if(wind
    <strong class="commandbar-title">{{title}}</strong><span class="commandbar-sep"/>
    <span v-if="desk.sidebar" class="commandbar-project">{{desk.project?.displayName||'选择一个项目开始'}}</span><ProjectPicker v-else :locked="locked" compact/>
    <span class="commandbar-spacer"/>
+   <button class="task-toggle" :class="{active:desk.tasksOpen}" :aria-expanded="desk.tasksOpen" aria-controls="workspace-tasks" @click="desk.tasksOpen=!desk.tasksOpen"><ListChecks :size="16"/><span>任务清单</span><b v-if="jobs">{{jobs}}</b></button>
    <button v-if="desk.project" class="commandbar-link" title="操作记录" @click="safely(()=>openView('changes','operations'))"><History :size="15"/><span>操作记录</span></button>
    <button class="commandbar-search" aria-label="搜索命令" title="搜索命令 · Ctrl K" @click="desk.palette=true"><Search :size="14"/><span>搜索命令</span><kbd>Ctrl K</kbd></button>
   </header>
@@ -100,12 +101,12 @@ watch(()=>[desk.ready,desk.auth.registered,desk.auth.authenticated],()=>{if(wind
   <footer class="status-bar" :inert="Boolean(desk.dialog||desk.palette)">
    <template v-if="desk.project"><button v-if="desk.sourceError" class="status-item waiting" title="整合包目录无法读取，前往更换" @click="safely(()=>openView('settings','project'))"><i class="status-dot"/>整合包目录无法读取</button><button v-else class="status-item" :class="{waiting:pendingCount||desk.project.previewStale}" title="打开待发布改动" @click="safely(()=>openView('changes','changes'))"><Fish v-if="!pendingCount&&!desk.project.previewStale" class="status-fish" :size="14"/><i v-else class="status-dot"/>{{pendingCount?`${pendingCount} 项待发布`:desk.project.previewStale?'有改动待检查':'与当前发布一致'}}</button><span class="status-item">{{latestVersion?`当前版本 ${latestVersion}`:'尚未发布'}}</span><span class="status-item">{{desk.files.length}} 个文件 · {{bytes(totalSize)}}</span></template>
    <span class="status-spacer"/>
-   <button v-if="desk.tasks.length||desk.jobs.some(t=>!t.dismissed)" class="status-item" :class="{active:desk.tasksOpen}" :title="desk.tasksOpen?'收起导入清单':'打开导入清单'" @click="desk.tasksOpen=!desk.tasksOpen"><Upload :size="13"/>{{jobs?`导入清单 · ${jobs} 项待处理`:'导入清单 · 已完成'}}</button>
+   <button v-if="desk.tasks.length||desk.jobs.some(t=>!t.dismissed)" class="status-item" :class="{active:desk.tasksOpen}" :title="desk.tasksOpen?'收起任务清单':'打开任务清单'" @click="desk.tasksOpen=!desk.tasksOpen"><Upload :size="13"/>{{jobs?`任务清单 · ${jobs} 项待处理`:'任务清单 · 已完成'}}</button>
    <button class="status-item" title="下载服务" @click="desk.dialog='service'"><i class="status-dot" :class="{off:!running}"/>下载服务{{running?'运行中':'已停止'}}</button>
    <span class="status-item">管理端 {{desk.state.version||'—'}}</span>
   </footer>
   <Tasks v-if="desk.tasksOpen"/>
-  <div class="toast-stack" aria-live="polite"><div v-if="desk.busy" class="toast busy"><Fish class="swim" :size="18"/>{{desk.busyText||'正在处理…'}}</div><div v-if="desk.notice" class="toast"><Check :size="15"/>{{desk.notice}}</div><div v-if="desk.error" class="toast error" role="alert"><span>{{desk.error}}</span><button class="icon-button" aria-label="关闭错误提示" @click="desk.error=''"><X :size="14"/></button></div></div>
+  <div class="toast-stack" aria-live="polite"><div v-if="desk.busy" class="toast busy"><Fish class="swim" :size="18"/>{{desk.busyText||'正在处理…'}}</div><div v-if="desk.notice" class="toast"><Check :size="15"/>{{desk.notice}}</div><div v-if="desk.error" class="toast error" role="alert"><span>{{desk.error}}</span><button v-if="taskReviewRequired" @click="desk.tasksOpen=true">查看任务</button><button class="icon-button" aria-label="关闭错误提示" @click="desk.error=''"><X :size="14"/></button></div></div>
  </div>
  <Forms/>
  <div v-if="desk.palette" class="modal-backdrop palette-backdrop" @click.self="desk.palette=false"><section class="command-palette" role="dialog" aria-label="命令菜单"><header><Search :size="18"/><input v-model="commandQuery" placeholder="搜索命令或页面" aria-label="搜索工作区命令" @keydown="paletteKey"><kbd>Esc</kbd></header><div class="palette-results"><button v-for="(item,i) in commands" :key="item.id" :class="{active:i===commandIndex}" @mouseenter="commandIndex=i" @click="command(item)"><span class="palette-icon"><component :is="item.icon" :size="17"/></span><span>{{item.label}}</span><kbd v-if="item.hint">{{item.hint}}</kbd><CornerDownLeft v-else-if="i===commandIndex" :size="14" class="palette-enter"/></button><p v-if="!commands.length" class="palette-empty"><Fish :size="18"/>没有匹配的命令</p></div></section></div>

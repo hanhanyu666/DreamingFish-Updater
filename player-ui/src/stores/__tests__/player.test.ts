@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getBridge } from "../../lib/bridge";
 import {
   answerConfirm,
+  applyAdminPreview,
   handleSidecarMessage,
   imageUrl,
   closeCommandForState,
@@ -27,6 +28,26 @@ describe("player store", () => {
     expect(store.state.playerName).toBe("测试玩家");
     handleSidecarMessage({ type: "log", line: "hello" });
     expect(store.state.logs).toEqual(["hello"]);
+  });
+
+  it("does not let a late background read erase an admin preview or a newer image", async () => {
+    const read = vi.spyOn(getBridge(), "assetUrl");
+    try {
+      let finish!: (url: string | null) => void;
+      read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      handleSidecarMessage({ type: "background", path: null });
+      applyAdminPreview({ type: 'dfs-admin-preview', branding: JSON.parse(JSON.stringify(store.state.branding)), backgroundUrl: "blob:new-cover", images: { "new.png": "blob:new" } });
+      finish(null); await Promise.resolve();
+      expect(store.state.backgroundUrl).toBe("blob:new-cover");
+      applyAdminPreview({ type: 'dfs-admin-preview', branding: JSON.parse(JSON.stringify(store.state.branding)), backgroundUrl: null, images: {} });
+      expect(store.state.presentationImages).toEqual({});
+      read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+        .mockResolvedValueOnce("data:image/png;base64,new");
+      handleSidecarMessage({ type: "background", path: "same-path" });
+      handleSidecarMessage({ type: "background", path: "same-path" });
+      await Promise.resolve(); finish("data:image/png;base64,old"); await Promise.resolve();
+      expect(store.state.backgroundUrl).toBe("data:image/png;base64,new");
+    } finally { read.mockRestore(); }
   });
 
   it("retries a missing image after the background download and ignores older reads", async () => {

@@ -61,6 +61,7 @@ export interface ErrorState {
 
 const MUSIC_MUTED_STORAGE_KEY = "dfs-background-music-muted";
 const MUSIC_LOOP_STORAGE_KEY = "dfs-background-music-loop";
+let backgroundReadGeneration = 0;
 
 function readMusicMutedPreference(): boolean {
   if (typeof window === "undefined") return false;
@@ -240,14 +241,15 @@ export function handleSidecarMessage(message: SidecarMessage): void {
       state.presentationImages = {};
       break;
     case "background":
+      const generation = ++backgroundReadGeneration;
       state.background = message.path;
       state.backgroundUrl = null;
       void bridge.assetUrl(message.path)
         .then((url) => {
-          if (state.background === message.path) state.backgroundUrl = url;
+          if (generation === backgroundReadGeneration) state.backgroundUrl = url;
         })
         .catch(() => {
-          if (state.background === message.path) state.backgroundUrl = null;
+          if (generation === backgroundReadGeneration) state.backgroundUrl = null;
         });
       break;
     case "identity":
@@ -934,6 +936,8 @@ export function navigationPages(): Array<{ page: Page; label: string }> {
 }
 
 export function applyAdminPreview(payload: AdminPreviewPayload): void {
+  // A late browser-demo background read must not erase the uploaded preview.
+  backgroundReadGeneration += 1;
   setBranding(payload.branding);
   state.preview = true;
   state.playerName = "玩家预览";
@@ -959,7 +963,9 @@ export function applyAdminPreview(payload: AdminPreviewPayload): void {
   state.countdownRemaining = null;
   state.launchNotice = null;
   state.serverStatus = null;
-  state.presentationImages = { ...state.presentationImages, ...(payload.images ?? {}) };
+  imageReadGeneration += 1;
+  requestedImages.clear();
+  state.presentationImages = { ...(payload.images ?? {}) };
 }
 
 export function setFileTreeExpanded(expanded: Map<string, boolean>): void {

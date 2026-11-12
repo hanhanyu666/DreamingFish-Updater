@@ -27,7 +27,7 @@
 
 这个更新器作为我学习java的练手项目，开发过程中有不少 AI agent 参与，主要用的是 Codex与claudecode，ui界面部分也和 Claude Opus 5.5 一起打磨了很多。但是这个更新器绝对不是 AI 一把梭出来的 AI slop，也绝对不是许愿编程一下许愿出来的。我们自己的服务器已经用了将近三个月（bug都让玩家吃了哈哈哈哈哈）。欢迎大家多多提issue和建议，只要有空会持续更新维护。
 
-> 最近正式发行：管理端 / 桌面 **0.3.3**、玩家端 **0.3.4**、Bootstrap **0.1.2**。加快 Windows 下包含大量小文件的整合包检查，服主需要发布玩家端程序 0.3.4 才能把提速交付给已有玩家。Windows 桌面继续按试用范围使用；自动验收不代替真实 RTSS、安装升级和硬断电验证。参见[更新日志](CHANGELOG.md)、[完整更新教程](docs/releases/v0.3.3.md#更新教程)、[程序更新](docs/PLAYER-PROGRAM-UPDATES.md)、[目录与配置合并](docs/CONTENT-ROOTS.md)与[能力矩阵](docs/CAPABILITIES.md)。
+> 最近正式发行：管理端 / 桌面 **0.3.4**、玩家端 **0.3.5**、Bootstrap **0.1.2**。本次修复背景预览和同步，并改进管理端任务清单。服主需要发布新版玩家端程序，已有玩家才能获得背景修复。Windows 桌面继续按试用范围使用。参见[更新日志](CHANGELOG.md)、[完整更新教程](docs/releases/v0.3.4.md#更新教程)、[程序更新](docs/PLAYER-PROGRAM-UPDATES.md)、[目录与配置合并](docs/CONTENT-ROOTS.md)与[能力矩阵](docs/CAPABILITIES.md)。
 
 ## 欢迎使用梦鱼更新器
 

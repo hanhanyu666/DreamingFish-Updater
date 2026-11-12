@@ -1105,3 +1105,18 @@ html[data-theme=dark] .tone-audio {--tile-bg:rgba(245,140,120,.16);--tile-fg:#f4
 @media (prefers-reduced-motion:reduce) {*,*::before,*::after {animation:none!important;transition:none!important}}
 
 .file-pagination{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px;font-size:12px;color:var(--muted)}
+.task-toggle{flex-shrink:0;gap:6px;border:1px solid var(--line);font-size:12px}
+.task-toggle b{padding:1px 6px;border-radius:10px;background:var(--accent);color:white}
+.task-card{width:min(760px,calc(100vw - var(--rail) - 24px))}
+.task-section-label{margin:4px 10px 10px;color:var(--muted);font-size:12px}
+.task-list article.backend-task{display:block;padding:14px;margin-bottom:10px;border:1px solid var(--line);border-radius:10px}
+.backend-task-heading{display:flex;align-items:center;gap:8px}
+.backend-task-heading strong{flex:1;overflow-wrap:anywhere}
+.backend-task-heading>span{flex-shrink:0;font-size:12px;color:var(--muted)}
+.backend-task p{margin:8px 0;line-height:1.6;white-space:normal;overflow-wrap:anywhere;font-size:13px}
+.backend-task-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.backend-task details{font-size:12px;color:var(--muted)}
+.backend-task details summary{cursor:pointer}
+.backend-task .task-feedback{padding:8px 10px;background:var(--surface-2);border-radius:6px}
+.task-dismiss-confirm{padding:4px 12px;border:1px solid var(--line);background:var(--surface-2);border-radius:8px}
+.shell.tasks-open .toast-stack{bottom:auto;top:calc(var(--frame-height,0px) + 56px);max-width:calc(100vw - 32px)}

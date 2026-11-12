@@ -20,6 +20,19 @@ async function store(){
 }
 function task(extra={}){return {id:crypto.randomUUID(),requestId:crypto.randomUUID(),projectId:'a',name:'a',path:'config/a',size:4,progress:100,state:'review',action:'ADD',plan:plan(),...extra};}
 
+test('unconfirmed background tasks open the visible task list, recheck without replay, and dismiss only after confirmation',async()=>{
+ const {desk,operation,recheckJob,dismissJob,inspectJob}=await store();
+ const job={id:crypto.randomUUID(),projectId:'a',kind:'official-player-prepare',state:'UNKNOWN',phase:'执行者已结束，等待核对',completed:0,total:1,status:409,error:'原执行者已释放任务，但最终结果尚未记录'};
+ desk.jobs=[job];let writes=0;const calls=[];
+ globalThis.fetch=async(path,options)=>{calls.push(path);if(options?.method&&options.method!=='GET')writes++;return ok(path.startsWith('/api/tasks/')?job:path.endsWith('/files')?{files:[]}:{id:'a',releases:[]});};
+ await assert.rejects(operation(async()=>{writes++;}),/任务清单/);assert.equal(desk.tasksOpen,true);assert.equal(writes,0);
+ desk.error='old error';await recheckJob(job.id);assert.equal(desk.error,'');assert.match(desk.notice,/仍无法确认/);assert.equal(desk.jobs[0].dismissed,undefined);
+ await inspectJob(desk.jobs[0]);assert.equal(desk.view,'delivery');assert.equal(desk.section,'programs');assert.equal(desk.tasksOpen,false);assert.equal(writes,0);
+ globalThis.confirm=()=>{throw new Error('Task dismissal must not open a native dialog');};dismissJob(desk.jobs[0]);assert.equal(desk.jobs[0].dismissed,undefined);
+ dismissJob(desk.jobs[0],true);assert.equal(desk.jobs[0].dismissed,true);assert.equal(writes,0);
+ await operation(async()=>{writes++;});assert.equal(writes,1);
+});
+
 test('reopening a directory picker clears its prior result and browses the management host',async()=>{
  const {desk,openBrowse}=await store();desk.browseValues['hosting-output']='D:/exports';
  const calls=[];globalThis.fetch=async(path,options)=>{calls.push([path,JSON.parse(options.body)]);return ok({currentPath:'D:/exports',parentPath:'D:/',entries:[{name:'updates',path:'D:/exports/updates',directory:true}]});};

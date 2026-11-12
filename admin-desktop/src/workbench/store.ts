@@ -1,4 +1,4 @@
-import {parseBackendTask,backendTaskFinished,backendTaskNeedsReview,type BackendTask} from './backend-tasks';
+import {parseBackendTask,backendTaskFinished,backendTaskNeedsReview,backendTaskReview,type BackendTask} from './backend-tasks';
 import { computed, reactive, watch } from 'vue';
 import type { Data, Entry, SourceFile, Task, ImportPlan } from './model';
 import { nameOf, newestReleases, authRequiresForm, taskFinished, imported, parseImportPlan,buildFileIndex,directoryCounts } from './model';
@@ -74,7 +74,14 @@ export async function queryJob(id:string,wait=false):Promise<unknown>{
  throw new ApiError('任务仍在执行，已保留标识；请稍后复查',408,'result_unknown');
 }
 export async function recheckJob(id:string){
- await queryJob(id,false);const job=desk.jobs.find(task=>task.id===id);
+ desk.error='';
+ try{await queryJob(id,false);}catch(error){
+  if(error instanceof ApiError&&error.code==='result_unknown'){
+   desk.tasksOpen=true;notify('服务器仍无法确认最终结果，请按任务下方的说明核对实际内容。');return;
+  }
+  throw error;
+ }
+ const job=desk.jobs.find(task=>task.id===id);
  if(job?.state==='SUCCEEDED'&&job.projectId===desk.projectId){
   if(job.kind==='files/commit'&&job.result&&typeof job.result==='object'){
    const result=job.result as {id?:string;undone?:boolean};
@@ -87,7 +94,18 @@ export async function refreshJobs(){
  if(!desk.state.capabilities?.includes('application-tasks'))return;
  const data=await request('/api/tasks');for(const raw of data.tasks||[])rememberJob(parseBackendTask(raw));
 }
-export function dismissJob(task:BackendTask){if(confirm('请先在原项目或外部目标核对实际结果。移出提示不会取消、撤销或重新执行任务。确认已核对？'))task.dismissed=true;}
+export function dismissJob(task:BackendTask,confirmed=false){if(confirmed){task.dismissed=true;desk.error='';notify('已关闭这条提醒，没有更改项目文件或玩家更新。');}}
+export const taskReviewRequired=computed(()=>desk.jobs.some(job=>backendTaskNeedsReview(job)&&(!job.projectId||job.projectId===desk.projectId)));
+export function requireTaskReview(){
+ if(taskReviewRequired.value){desk.tasksOpen=true;throw new ApiError('上次操作的结果还没确认，请在任务清单中查看原操作并按说明核对。',409,'result_unknown');}
+}
+export async function inspectJob(task:BackendTask){
+ if(task.projectId&&task.projectId!==desk.projectId){await switchProject(task.projectId);if(task.projectId!==desk.projectId)return;}
+ const target=backendTaskReview(task).destination;
+ if(task.projectId)await loadProject();
+ await openView(target.view,target.section);
+ desk.tasksOpen=false;desk.error='';
+}
 export async function cancelJob(task:BackendTask){rememberJob(parseBackendTask(await request(`/api/tasks/${encodeURIComponent(task.id)}`,'DELETE')));}
 export async function request(path:string,method='GET',body?:unknown,background=false):Promise<any>{
  const owner=path.match(/^\/api\/projects\/([^/?]+)/)?.[1],generation=projectGeneration;
@@ -105,7 +123,7 @@ export async function request(path:string,method='GET',body?:unknown,background=
  return result;
 }
 export async function operation(work: () => Promise<any>, label = '正在处理…') {
-    if(desk.jobs.some(job=>backendTaskNeedsReview(job)&&(!job.projectId||job.projectId===desk.projectId)))throw new Error('请先在任务清单中核对原操作的实际结果');
+    requireTaskReview();
     if (desk.busy)
         throw new Error('请等待当前操作完成');
     desk.busy = true;

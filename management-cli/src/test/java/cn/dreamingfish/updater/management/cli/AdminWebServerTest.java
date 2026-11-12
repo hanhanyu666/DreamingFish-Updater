@@ -214,6 +214,8 @@ class AdminWebServerTest {
             assertEquals("SAMEORIGIN", playerPreview.headers()
                     .firstValue("X-Frame-Options").orElseThrow());
             assertTrue(playerPreview.body().contains("type=\"module\""));
+            assertTrue(playerPreview.headers().firstValue("Content-Security-Policy").orElseThrow()
+                    .contains("img-src 'self' data: blob:"), "Uploaded draft images use blob URLs in the preview");
 
             HttpResponse<String> denied = send(
                     base, "/api/projects", "POST", "{}", null);

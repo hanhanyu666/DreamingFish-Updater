@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import {computed,ref,watch} from 'vue';
-import {desk,request,apiPath,operation,safely,loadProject,openView,notify,queryJob,cancelJob} from './store';
+import {desk,request,apiPath,operation,safely,loadProject,openView,notify,queryJob,cancelJob,requireTaskReview} from './store';
 import {bytes,when,type Data} from './model';
 import {playerUpdatePresentation,playerDeliveryPresentation,playerUpgradeChoices,officialOffer,autoPublishPresentation,uploadReminder,autoUploads,downloadProgress} from './player-update-presentation';
-import {backendTaskNeedsReview} from './backend-tasks';
 const props=defineProps<{platform:string;programs:Data[]}>();
 const catalog=ref<Data|null>(null),catalogProblem=ref(''),publishing=ref(false),stopped=ref('');
 const policy=computed(()=>desk.project?.playerUpdatePolicy);
@@ -26,7 +25,7 @@ const resumeNote=computed(()=>status.value.hasTargets&&!status.value.enabled?'\n
 function confirmPublish(version:string,downloads=false){return confirm(`把玩家端 ${version} 发布给玩家吗？\n玩家下次打开更新器时自动升级，服务器名称、背景和公告等个性化设置保留。${resumeNote.value}${downloads?'\n管理服务会从 GitHub 下载官方程序；国内服务器没有代理时可能需要几十分钟，期间可以继续使用管理端。':''}\n${autoUploads(saved.value)?'管理端随后自动上传到已保存的外部托管。':'如果玩家从 OSS 等外部位置下载，还需要重新导出并上传。'}`);}
 async function check(){catalogProblem.value='';await operation(async()=>{try{catalog.value=await request(apiPath('/official-player-check'),'POST',{refresh:true});}catch(error){catalog.value=null;catalogProblem.value=error instanceof Error?error.message:String(error);}},'正在检查官方新版…');}
 // The download may take most of an hour without a proxy, so it does not lock the rest of the workspace.
-async function publish(){const target=release.value;if(!target||publishing.value||!confirmPublish(target.version,true))return;if(desk.jobs.some(job=>backendTaskNeedsReview(job)&&(!job.projectId||job.projectId===desk.projectId)))throw new Error('请先在任务清单中核对原操作的实际结果');publishing.value=true;stopped.value='';desk.error='';notify('已开始下载官方程序，下载期间可以继续使用管理端');try{await request(apiPath('/official-player-publish'),'POST',{platform:props.platform,version:target.version,archiveSha256:target.archiveSha256,expectedRevision:policy.value?.revision});await loadProject();notify(`已发布玩家端 ${target.version}。${uploadReminder(saved.value)}`);}catch(error){if(!stopped.value)throw error;}finally{publishing.value=false;}}
+async function publish(){const target=release.value;if(!target||publishing.value||!confirmPublish(target.version,true))return;requireTaskReview();publishing.value=true;stopped.value='';desk.error='';notify('已开始下载官方程序，下载期间可以继续使用管理端');try{await request(apiPath('/official-player-publish'),'POST',{platform:props.platform,version:target.version,archiveSha256:target.archiveSha256,expectedRevision:policy.value?.revision});await loadProject();notify(`已发布玩家端 ${target.version}。${uploadReminder(saved.value)}`);}catch(error){if(!stopped.value)throw error;}finally{publishing.value=false;}}
 // Stopping is allowed only while downloading; the service refuses it once the program is being stored.
 async function stop(){const job=downloadJob.value;if(!job||!confirm('终止下载？已下载的部分会删除，下次发布需要重新下载。玩家和当前版本不受影响。'))return;stopped.value=job.id;try{await cancelJob(job);}catch(error){stopped.value='';throw error;}notify('已终止下载，没有发布任何内容');}
 async function approve(program:Data){if(!confirmPublish(program.version))return;await operation(async()=>{await request(apiPath('/program-approval'),'POST',{platform:props.platform,version:program.version,manifestSha256:program.manifestSha256,expectedRevision:policy.value?.revision});await loadProject();notify(`已发布玩家端 ${program.version}。${uploadReminder(saved.value)}`);});}

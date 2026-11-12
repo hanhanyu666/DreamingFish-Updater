@@ -61,6 +61,7 @@ public final class PlayerController {
     private final Runnable exitAction;
     private final PlayerServerStatusMonitor serverStatusMonitor;
     private final PlayerPresentationImages presentationImages = new PlayerPresentationImages();
+    private final PlayerBackgroundImage backgroundImage = new PlayerBackgroundImage();
     private final AtomicLong imageGeneration = new AtomicLong();
     private volatile boolean exited;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
@@ -379,7 +380,6 @@ public final class PlayerController {
         presentationBranding = presentationClient.loadCached(binding, playerHome);
         applyActiveBranding();
         refreshPresentationImages();
-        viewport.setBackground(resolveBundledCover(binding));
         viewport.setReleaseHistory(releaseHistoryClient.loadCached(binding, playerHome));
     }
 
@@ -645,9 +645,19 @@ public final class PlayerController {
     private void refreshPresentationImages() {
         long generation = imageGeneration.incrementAndGet();
         Branding snapshot = releaseBranding;
-        if (snapshot == null || snapshot.presentationImages() == null || snapshot.presentationImages().isEmpty()) return;
+        if (snapshot == null) return;
+        // Load the matching cached image immediately, never the installation's stale cover.
+        try { viewport.setBackground(backgroundImage.cached(arguments.instanceRoot(), snapshot.coverObject())); }
+        catch (IOException error) { viewport.setBackground(null); }
         Thread.ofVirtual().name("player-presentation-images").start(() -> {
             CancellationToken cancellation = () -> exited || generation != imageGeneration.get();
+            try {
+                Path cover = backgroundImage.sync(binding, arguments.instanceRoot(), snapshot.coverObject(),
+                        resolveBundledCover(binding), cancellation);
+                if (!cancellation.isCancelled()) viewport.setBackground(cover);
+            } catch (IOException | RuntimeException error) {
+                if (!cancellation.isCancelled()) log.warn("背景图片", "新背景暂时无法加载，下次启动将重试：" + error.getMessage());
+            } catch (InterruptedException error) { Thread.currentThread().interrupt(); return; }
             presentationImages.sync(binding, arguments.instanceRoot(), snapshot.presentationImages(), cancellation);
             // A superseded worker may have completed the files just before cancellation.
             // Also retry cached read failures when this worker finds everything already present.

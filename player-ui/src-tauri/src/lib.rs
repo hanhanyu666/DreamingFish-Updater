@@ -423,23 +423,24 @@ fn read_local_image_from_root(path: &Path, instance_root: &Path) -> Result<Strin
     if !canonical.starts_with(&canonical_root) || !canonical.is_file() {
         return Err("背景图片必须位于当前 Minecraft 实例目录内".to_string());
     }
-    let mime = match canonical
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("webp") => "image/webp",
-        _ => return Err("背景图片格式仅支持 PNG、JPEG 或 WebP".to_string()),
-    };
     let metadata =
         std::fs::metadata(&canonical).map_err(|error| format!("无法读取背景图片: {error}"))?;
-    if metadata.len() > 20 * 1024 * 1024 {
-        return Err("背景图片不能超过 20 MiB".to_string());
+    if metadata.len() > 32 * 1024 * 1024 {
+        return Err("背景图片不能超过 32 MiB".to_string());
     }
     let bytes = std::fs::read(&canonical).map_err(|error| format!("无法读取背景图片: {error}"))?;
+    // Bundled project-cover and downloaded hash objects have no extension.
+    let mime = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "image/png"
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        "image/jpeg"
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        "image/webp"
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        "image/gif"
+    } else {
+        return Err("背景图片内容必须是 PNG、JPEG、WebP 或 GIF".to_string());
+    };
     Ok(format!(
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
@@ -877,14 +878,34 @@ mod tests {
         let (base, external) = fixture();
         let inside = base.join("cover.png");
         let outside = external.join("cover.png");
-        std::fs::write(&inside, b"image").unwrap();
-        std::fs::write(&outside, b"image").unwrap();
+        std::fs::write(&inside, b"\x89PNG\r\n\x1a\nimage").unwrap();
+        std::fs::write(&outside, b"\x89PNG\r\n\x1a\nimage").unwrap();
 
         assert!(read_local_image_from_root(&inside, &base)
             .unwrap()
             .starts_with("data:image/png;base64,"));
         assert!(read_local_image_from_root(&outside, &base).is_err());
 
+        let _ = std::fs::remove_dir_all(base.parent().unwrap());
+    }
+
+    #[test]
+    fn backgrounds_detect_bytes_without_a_filename_extension() {
+        let (base, _) = fixture();
+        let target = base.join("project-cover");
+        for (bytes, mime) in [
+            (b"\x89PNG\r\n\x1a\n".as_slice(), "image/png"),
+            (b"\xff\xd8\xffimage".as_slice(), "image/jpeg"),
+            (b"RIFFxxxxWEBPimage".as_slice(), "image/webp"),
+            (b"GIF89aimage".as_slice(), "image/gif"),
+        ] {
+            std::fs::write(&target, bytes).unwrap();
+            assert!(read_local_image_from_root(&target, &base).unwrap().starts_with(&format!("data:{mime};base64,")));
+        }
+        std::fs::write(&target, b"not an image").unwrap();
+        assert!(read_local_image_from_root(&target, &base).is_err());
+        std::fs::File::create(&target).unwrap().set_len(32 * 1024 * 1024 + 1).unwrap();
+        assert!(read_local_image_from_root(&target, &base).is_err());
         let _ = std::fs::remove_dir_all(base.parent().unwrap());
     }
 
